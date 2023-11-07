@@ -1,0 +1,15 @@
+debug/
+target/
+Cargo.lock
+.docker
+
+**/*.rs.bk
+*~
+._*
+*.pdb
+.tags
+.idea/
+config/.env
+.DS_Store
+.AppleDouble
+.LSOverride
