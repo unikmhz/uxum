@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -60,19 +57,31 @@ pub struct HandlerTimeoutsConfig {
     #[serde(default = "HandlerTimeoutsConfig::default_allow_x_timeout")]
     use_x_timeout: bool,
     /// Default timeout for a handler.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "humantime_serde")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "humantime_serde"
+    )]
     default_timeout: Option<Duration>,
     /// Minimum allowed timeout for a method.
     ///
     /// Timeout durations less than this value will automatically be responded
     /// with a 504 HTTP status code.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "humantime_serde")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "humantime_serde"
+    )]
     min_timeout: Option<Duration>,
     /// Maximum allowed timeout for a method.
     ///
     /// Timeout durations over this value will automatically be responded
     /// with a 504 HTTP status code.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "humantime_serde")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "humantime_serde"
+    )]
     max_timeout: Option<Duration>,
 }
 

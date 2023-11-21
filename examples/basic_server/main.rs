@@ -1,20 +1,23 @@
-use uxum::{
-    reexport::axum::{routing::get, Router},
-    ServerBuilder,
-};
+use uxum::{handler, AppBuilder, ServerBuilder};
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", get(root_handler));
+    tracing_subscriber::fmt::init();
     ServerBuilder::new()
         .build()
         .await
         .unwrap()
-        .serve(app.into_make_service())
+        .serve(AppBuilder::build().into_make_service())
         .await
         .unwrap();
 }
 
+#[handler(
+    name = "hello_world",
+    path = "/",
+    method = "GET",
+    spec(tag = "tag1", tag = "tag2",)
+)]
 async fn root_handler() -> &'static str {
-    "Hello world!"
+    "Hello Axum world!"
 }

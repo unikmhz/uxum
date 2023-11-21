@@ -4,16 +4,37 @@ version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
+#repository = ""
+#description = ""
+#readme = ""
+#keywords = []
+#categories = []
+
+[workspace]
+members = ["uxum-handler-macros"]
 
 [dependencies]
+uxum-handler-macros = {path = "uxum-handler-macros"}
+
 axum = "0.6"
 humantime-serde = "1.1"
+http = "1.0"
 hyper = {version = "0.14", features = ["http2", "server"]}
+inventory = "0.3"
+okapi = { version = "0.7.0-rc.1", features = ["preserve_order"] }
 serde = {version = "1.0", features = ["derive"]}
 thiserror = "1.0"
 tokio = {version = "1.33", features = ["full"]}
+tower = "0.4"
+tower-http = {version = "0.4", features = ["trace"]}
+tracing = "0.1"
+# TODO: remove default logger
 
 [dev-dependencies]
+tracing-subscriber = {version = "0.3", features = ["tracing-log", "env-filter", "parking_lot"]}
+
+[[example]]
+name = "minimal"
 
 [[example]]
 name = "basic_server"

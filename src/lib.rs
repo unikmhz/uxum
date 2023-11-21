@@ -7,7 +7,10 @@ mod rate;
 pub mod reexport;
 mod throttle;
 
+pub use uxum_handler_macros::handler;
+
 pub use self::{
-    builder::{RouteBuilder, ServerBuilder},
+    builder::{AppBuilder, HandlerExt, ServerBuilder},
     errors::ServerBuilderError,
+    ext::HandlerName,
 };
