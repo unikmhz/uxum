@@ -6,9 +6,11 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 #[derive(Debug, FromMeta)]
 pub struct OpenApiExternalDoc {
+    ///
     #[darling(default)]
-    description: Option<String>,
-    url: String,
+    pub description: Option<String>,
+    ///
+    pub url: String,
 }
 
 #[derive(Debug, FromMeta)]
@@ -39,28 +41,28 @@ pub struct OpenApiServer {
 #[derive(Debug, Default, FromMeta)]
 pub struct HandlerSpec {
     #[darling(default, multiple, rename = "tag")]
-    tags: Vec<String>,
+    pub tags: Vec<String>,
     #[darling(default)]
-    summary: Option<String>,
+    pub summary: Option<String>,
     #[darling(default)]
-    description: Option<String>,
+    pub description: Option<String>,
     #[darling(default)]
-    external_docs: Option<OpenApiExternalDoc>,
+    pub external_docs: Option<OpenApiExternalDoc>,
     #[darling(default)]
-    operation_id: Option<String>,
+    pub operation_id: Option<String>,
     #[darling(default, multiple)]
-    parameters: Vec<OpenApiParameter>,
-    //request_body:
+    pub parameters: Vec<OpenApiParameter>,
+    // TODO: remove? request_body:
     #[darling(default)]
-    responses: OpenApiResponses,
+    pub responses: OpenApiResponses,
     #[darling(default)]
-    callbacks: HashMap<String, OpenApiCallback>,
+    pub callbacks: HashMap<String, OpenApiCallback>,
     #[darling(default)]
-    deprecated: bool,
+    pub deprecated: bool,
     #[darling(default, multiple)]
-    security: Vec<OpenApiSecurity>,
+    pub security: Vec<OpenApiSecurity>,
     #[darling(default, multiple)]
-    servers: Vec<OpenApiServer>,
+    pub servers: Vec<OpenApiServer>,
 }
 
 #[derive(Debug, Default, FromMeta)]

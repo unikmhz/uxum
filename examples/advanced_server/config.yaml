@@ -1,0 +1,13 @@
+logging:
+  subscribers:
+    - format: pretty
+      level: TRACE
+      color: true
+    - format: compact
+      level: DEBUG
+      output:
+        type: file
+        path: advanced_server.log
+handlers: {}
+server:
+  listen: 127.0.0.1:8080

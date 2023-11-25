@@ -2,10 +2,14 @@ use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-///
+use crate::logging::LoggingConfig;
+
+/// Top-level application configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct HandlersConfig {
-    ///
+pub struct AppConfig {
+    /// Logging configuration.
+    pub logging: LoggingConfig,
+    /// Individual handler configuration.
     pub handlers: HashMap<String, HandlerConfig>,
 }
 
@@ -14,25 +18,25 @@ pub struct HandlersConfig {
 pub struct HandlerConfig {
     /// Method is completely disabled at runtime.
     #[serde(default)]
-    disabled: bool,
+    pub disabled: bool,
     /// Method is hidden from OpenAPI specification.
     #[serde(default)]
-    hidden: bool,
+    pub hidden: bool,
     /// Circuit breaker configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    cb: Option<HandlerCircuitBreakerConfig>,
+    pub cb: Option<HandlerCircuitBreakerConfig>,
     /// Rate limiter configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    rate_limit: Option<usize>,
+    pub rate_limit: Option<HandlerRateLimitConfig>,
     /// Throttling configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    throttle: Option<u8>,
+    pub throttle: Option<u8>,
     /// Request timeout configuration.
     #[serde(default, skip_serializing_if = "HandlerTimeoutsConfig::is_default")]
-    timeout: Option<HandlerTimeoutsConfig>,
+    pub timeout: Option<HandlerTimeoutsConfig>,
     /// Required RBAC roles.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    roles: Vec<String>,
+    pub roles: Vec<String>,
 }
 
 ///
@@ -40,29 +44,67 @@ pub struct HandlerConfig {
 pub struct HandlerCircuitBreakerConfig {
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    consecutive_failures: Option<ConsecutiveFailuresConfig>,
+    pub consecutive_failures: Option<ConsecutiveFailuresConfig>,
 }
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ConsecutiveFailuresConfig {
     ///
-    num_failures: i32,
+    pub num_failures: i32,
 }
 
 ///
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct HandlerRateLimitConfig {
+    ///
+    #[serde(default)]
+    key: RateLimitKey,
+    ///
+    burst: u32,
+    ///
+    #[serde(
+        default = "HandlerRateLimitConfig::default_period",
+        with = "humantime_serde"
+    )]
+    period: Duration,
+    ///
+    #[serde(default)]
+    extra_headers: bool,
+}
+
+impl HandlerRateLimitConfig {
+    fn default_period() -> Duration {
+        Duration::from_millis(1)
+    }
+}
+
+///
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RateLimitKey {
+    ///
+    #[default]
+    Global,
+    ///
+    PeerIp,
+    ///
+    SmartIp,
+}
+
+///
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HandlerTimeoutsConfig {
     /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header.
-    #[serde(default = "HandlerTimeoutsConfig::default_allow_x_timeout")]
-    use_x_timeout: bool,
+    #[serde(default = "crate::util::default_true")]
+    pub use_x_timeout: bool,
     /// Default timeout for a handler.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    default_timeout: Option<Duration>,
+    pub default_timeout: Option<Duration>,
     /// Minimum allowed timeout for a method.
     ///
     /// Timeout durations less than this value will automatically be responded
@@ -72,7 +114,7 @@ pub struct HandlerTimeoutsConfig {
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    min_timeout: Option<Duration>,
+    pub min_timeout: Option<Duration>,
     /// Maximum allowed timeout for a method.
     ///
     /// Timeout durations over this value will automatically be responded
@@ -82,7 +124,18 @@ pub struct HandlerTimeoutsConfig {
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    max_timeout: Option<Duration>,
+    pub max_timeout: Option<Duration>,
+}
+
+impl Default for HandlerTimeoutsConfig {
+    fn default() -> Self {
+        Self {
+            use_x_timeout: true,
+            default_timeout: None,
+            min_timeout: None,
+            max_timeout: None,
+        }
+    }
 }
 
 impl HandlerTimeoutsConfig {
@@ -93,10 +146,5 @@ impl HandlerTimeoutsConfig {
             Some(cfg) if *cfg == Self::default() => true,
             _ => false,
         }
-    }
-
-    ///
-    fn default_allow_x_timeout() -> bool {
-        true
     }
 }

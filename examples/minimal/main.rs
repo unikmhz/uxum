@@ -1,3 +1,6 @@
+//! Absolutely minimal example using uxum framework.
+//! This does not use AppBuilder, only ServerBuilder.
+
 use uxum::{
     reexport::axum::{routing::get, Router},
     ServerBuilder,
