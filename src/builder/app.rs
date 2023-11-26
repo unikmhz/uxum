@@ -1,16 +1,22 @@
 use std::collections::BTreeMap;
 
 use axum::{
+    body::Body,
+    error_handling::HandleErrorLayer,
+    http::{Request, StatusCode},
+    middleware::AddExtension,
+    response::IntoResponse,
     routing::{MethodRouter, Router},
     Extension,
 };
-use tower::ServiceBuilder;
+use okapi::openapi3;
+use tower::{buffer::Buffer, builder::ServiceBuilder, util::Either, BoxError, Service};
 use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
 
-use crate::{AppConfig, HandlerName};
+use crate::{AppConfig, HandlerConfig, HandlerName};
 
 /// Builder for application routes.
 #[derive(Debug, Default)]
@@ -42,14 +48,18 @@ impl AppBuilder {
                 .or_insert_with(|| vec![*handler]);
         }
         for (path, handlers) in grouped.into_iter() {
-            let mut mrtr = MethodRouter::new();
+            let mut mrtr: MethodRouter<(), Body, BoxError> = MethodRouter::new();
             for handler in handlers {
-                // TODO: add layers from config
-                let layers =
-                    ServiceBuilder::new().layer(Extension(HandlerName::new(handler.name())));
-                mrtr = handler.register_method(mrtr.layer(layers));
+                let name = handler.name();
+                if let Some(cfg) = self.config.handlers.get(name) {
+                    if cfg.disabled {
+                        // TODO: log
+                        continue;
+                    }
+                }
+                mrtr = handler.register_method(mrtr, self.config.handlers.get(name));
             }
-            rtr = rtr.route(path, mrtr);
+            rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
         }
 
         let global_layers = ServiceBuilder::new().layer(
@@ -67,11 +77,49 @@ impl AppBuilder {
     }
 }
 
+// FIXME: write proper handler
+async fn error_handler(err: BoxError) -> impl IntoResponse {
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
+}
+
+pub fn apply_layers<X, H, U, E, B>(
+    hext: &X,
+    handler: H,
+    conf: Option<&HandlerConfig>,
+) -> AddExtension<Either<Buffer<H, Request<B>>, H>, HandlerName>
+where
+    X: HandlerExt,
+    H: Service<Request<B>, Response = U, Error = E> + Send + Clone + 'static,
+    H::Future: Unpin + Send + 'static,
+    E: std::error::Error + Send + Sync + 'static,
+    B: Send + 'static,
+{
+    ServiceBuilder::new()
+        .layer(Extension(HandlerName::new(hext.name())))
+        // TODO: cb
+        // TODO: rate_limit
+        // TODO: throttle
+        // TODO: timeout
+        // TODO: roles
+        .option_layer(
+            conf.and_then(|cfg| cfg.buffer.as_ref())
+                .map(|lcfg| lcfg.make_layer()),
+        )
+        .service(handler)
+}
+
 pub trait HandlerExt: Sync {
     fn name(&self) -> &'static str;
     fn path(&self) -> &'static str;
     fn method(&self) -> http::Method;
-    fn register_method(&self, mrtr: MethodRouter) -> MethodRouter;
+    fn register_method(
+        &self,
+        mrtr: MethodRouter<(), Body, BoxError>,
+        cfg: Option<&HandlerConfig>,
+    ) -> MethodRouter<(), Body, BoxError>;
+    fn openapi_spec(&self) -> Option<openapi3::Operation> {
+        None
+    }
 }
 
 inventory::collect!(&'static dyn HandlerExt);

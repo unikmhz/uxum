@@ -2,6 +2,6 @@ mod app;
 mod server;
 
 pub use self::{
-    app::{AppBuilder, HandlerExt},
+    app::{apply_layers, AppBuilder, HandlerExt},
     server::ServerBuilder,
 };

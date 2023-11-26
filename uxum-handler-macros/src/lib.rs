@@ -43,10 +43,26 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
 
         #[doc(hidden)]
         mod #mod_ident {
+            use ::uxum::{
+                reexport::{
+                    axum::{
+                        body::Body,
+                        handler::HandlerWithoutStateExt,
+                        routing::{self, MethodRouter},
+                        BoxError,
+                    },
+                    okapi::openapi3,
+                    tower::util::BoxCloneService,
+                },
+                apply_layers,
+                HandlerConfig,
+                HandlerExt,
+            };
+
             struct #handler_ident;
 
             #[automatically_derived]
-            impl ::uxum::HandlerExt for #handler_ident {
+            impl HandlerExt for #handler_ident {
                 #[inline]
                 fn name(&self) -> &'static str {
                     #handler_name
@@ -62,25 +78,30 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     #handler_method
                 }
 
-                fn register_method(&self, mrtr: ::axum::routing::MethodRouter) -> ::axum::routing::MethodRouter {
+                fn register_method(&self, mrtr: MethodRouter<(), Body, BoxError>, cfg: Option<&HandlerConfig>) -> MethodRouter<(), Body, BoxError> {
                     (match self.method() {
-                        http::Method::GET => ::axum::routing::get,
-                        http::Method::HEAD => ::axum::routing::head,
-                        http::Method::POST => ::axum::routing::post,
-                        http::Method::PUT => ::axum::routing::put,
-                        http::Method::DELETE => ::axum::routing::delete,
-                        http::Method::OPTIONS => ::axum::routing::options,
-                        http::Method::TRACE => ::axum::routing::trace,
-                        http::Method::PATCH => ::axum::routing::patch,
+                        http::Method::GET => routing::get_service,
+                        http::Method::HEAD => routing::head_service,
+                        http::Method::POST => routing::post_service,
+                        http::Method::PUT => routing::put_service,
+                        http::Method::DELETE => routing::delete_service,
+                        http::Method::OPTIONS => routing::options_service,
+                        http::Method::TRACE => routing::trace_service,
+                        http::Method::PATCH => routing::patch_service,
                         _other => {
                             // FIXME: add custom filter
-                            ::axum::routing::get
+                            routing::get_service
                         }
-                    })(super::#fn_ident)
+                    })(apply_layers(self, super::#fn_ident.into_service(), cfg))
+                }
+
+                fn openapi_spec(&self) -> Option<openapi3::Operation> {
+                    // TODO: write this
+                    None
                 }
             }
 
-            inventory::submit! { &#handler_ident as &dyn ::uxum::HandlerExt }
+            inventory::submit! { &#handler_ident as &dyn HandlerExt }
         }
     }.into()
 }

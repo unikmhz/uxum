@@ -1,3 +1,6 @@
+use std::{net::SocketAddr, time::Duration};
+
+use axum::extract::ConnectInfo;
 use config::{Config, File};
 use serde::Deserialize;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -26,7 +29,11 @@ async fn main() {
         .build()
         .await
         .unwrap()
-        .serve(app_builder.build().into_make_service())
+        .serve(
+            app_builder
+                .build()
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
         .await
         .unwrap();
 }
@@ -39,4 +46,10 @@ async fn main() {
 )]
 async fn root_handler() -> &'static str {
     "Hello Axum world!"
+}
+
+#[handler]
+async fn sleep(ConnectInfo(client): ConnectInfo<SocketAddr>) -> String {
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    format!("Hello {client}! Woken up after 3 seconds!")
 }

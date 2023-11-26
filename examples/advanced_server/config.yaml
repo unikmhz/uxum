@@ -8,6 +8,8 @@ logging:
       output:
         type: file
         path: advanced_server.log
-handlers: {}
+handlers:
+  hello_world:
+    disabled: false
 server:
   listen: 127.0.0.1:8080

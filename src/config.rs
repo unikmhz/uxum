@@ -2,7 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use crate::logging::LoggingConfig;
+use crate::{layers::*, logging::LoggingConfig};
 
 /// Top-level application configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -10,6 +10,7 @@ pub struct AppConfig {
     /// Logging configuration.
     pub logging: LoggingConfig,
     /// Individual handler configuration.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
 }
 
@@ -22,6 +23,9 @@ pub struct HandlerConfig {
     /// Method is hidden from OpenAPI specification.
     #[serde(default)]
     pub hidden: bool,
+    /// Request buffering configuration.
+    #[serde(default)]
+    pub buffer: Option<HandlerBufferConfig>,
     /// Circuit breaker configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cb: Option<HandlerCircuitBreakerConfig>,
@@ -37,59 +41,6 @@ pub struct HandlerConfig {
     /// Required RBAC roles.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<String>,
-}
-
-///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct HandlerCircuitBreakerConfig {
-    ///
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub consecutive_failures: Option<ConsecutiveFailuresConfig>,
-}
-
-///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ConsecutiveFailuresConfig {
-    ///
-    pub num_failures: i32,
-}
-
-///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct HandlerRateLimitConfig {
-    ///
-    #[serde(default)]
-    key: RateLimitKey,
-    ///
-    burst: u32,
-    ///
-    #[serde(
-        default = "HandlerRateLimitConfig::default_period",
-        with = "humantime_serde"
-    )]
-    period: Duration,
-    ///
-    #[serde(default)]
-    extra_headers: bool,
-}
-
-impl HandlerRateLimitConfig {
-    fn default_period() -> Duration {
-        Duration::from_millis(1)
-    }
-}
-
-///
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RateLimitKey {
-    ///
-    #[default]
-    Global,
-    ///
-    PeerIp,
-    ///
-    SmartIp,
 }
 
 ///
