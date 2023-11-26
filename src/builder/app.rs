@@ -4,13 +4,12 @@ use axum::{
     body::Body,
     error_handling::HandleErrorLayer,
     http::{Request, StatusCode},
-    middleware::AddExtension,
     response::IntoResponse,
     routing::{MethodRouter, Router},
     Extension,
 };
 use okapi::openapi3;
-use tower::{buffer::Buffer, builder::ServiceBuilder, util::Either, BoxError, Service};
+use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
@@ -86,25 +85,26 @@ pub fn apply_layers<X, H, U, E, B>(
     hext: &X,
     handler: H,
     conf: Option<&HandlerConfig>,
-) -> AddExtension<Either<Buffer<H, Request<B>>, H>, HandlerName>
+) -> BoxCloneService<Request<B>, U, BoxError>
 where
     X: HandlerExt,
     H: Service<Request<B>, Response = U, Error = E> + Send + Clone + 'static,
-    H::Future: Unpin + Send + 'static,
+    H::Future: Send,
     E: std::error::Error + Send + Sync + 'static,
     B: Send + 'static,
 {
     ServiceBuilder::new()
+        .layer(BoxCloneService::layer())
         .layer(Extension(HandlerName::new(hext.name())))
+        .option_layer(
+            conf.and_then(|cfg| cfg.buffer.as_ref())
+                .map(|lcfg| lcfg.make_layer()),
+        )
         // TODO: cb
         // TODO: rate_limit
         // TODO: throttle
         // TODO: timeout
         // TODO: roles
-        .option_layer(
-            conf.and_then(|cfg| cfg.buffer.as_ref())
-                .map(|lcfg| lcfg.make_layer()),
-        )
         .service(handler)
 }
 

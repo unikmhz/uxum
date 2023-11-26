@@ -88,10 +88,8 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                         http::Method::OPTIONS => routing::options_service,
                         http::Method::TRACE => routing::trace_service,
                         http::Method::PATCH => routing::patch_service,
-                        _other => {
-                            // FIXME: add custom filter
-                            routing::get_service
-                        }
+                        // axum::routing::MethodFilter does not support custom methods
+                        other => panic!("Unsupported HTTP method: {other}", other = other),
                     })(apply_layers(self, super::#fn_ident.into_service(), cfg))
                 }
 
