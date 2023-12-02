@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration, num::{NonZeroUsize, NonZeroU32}};
 
 use hyper::server::conn::AddrIncoming;
 use serde::{Deserialize, Serialize};
@@ -48,10 +48,10 @@ pub struct ServerBuilder {
     sleep_on_accept_errors: bool,
     ///
     #[serde(default)]
-    recv_buffer: Option<usize>,
+    recv_buffer: Option<NonZeroUsize>,
     ///
     #[serde(default)]
-    send_buffer: Option<usize>,
+    send_buffer: Option<NonZeroUsize>,
     ///
     #[serde(default)]
     ip: IpConfig,
@@ -96,11 +96,11 @@ impl ServerBuilder {
         let (sock, addr) = socket(&self.listen).await?;
         let sref = SockRef::from(&sock);
         if let Some(sz) = self.recv_buffer {
-            sref.set_recv_buffer_size(sz)
+            sref.set_recv_buffer_size(sz.get())
                 .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
         }
         if let Some(sz) = self.send_buffer {
-            sref.set_send_buffer_size(sz)
+            sref.set_send_buffer_size(sz.get())
                 .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
         }
         if let Some(tos) = self.ip.tos {
@@ -108,13 +108,13 @@ impl ServerBuilder {
                 .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
         }
         if let Some(mss) = self.tcp.mss {
-            sref.set_mss(mss)
+            sref.set_mss(mss.get())
                 .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
         }
         sock.bind(addr)
             .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
         let listener = sock
-            .listen(self.tcp.backlog)
+            .listen(self.tcp.backlog.get())
             .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?;
         let mut stream =
             AddrIncoming::from_listener(listener).map_err(ServerBuilderError::ListenerLocalAddr)?;
@@ -122,7 +122,7 @@ impl ServerBuilder {
             .set_nodelay(self.tcp.nodelay)
             .set_keepalive(self.tcp.keepalive.idle)
             .set_keepalive_interval(self.tcp.keepalive.interval)
-            .set_keepalive_retries(self.tcp.keepalive.retries)
+            .set_keepalive_retries(self.tcp.keepalive.retries.map(NonZeroU32::get))
             .set_sleep_on_errors(self.sleep_on_accept_errors);
         let mut builder = axum::Server::builder(stream);
         // TODO: check for NoProtocolsEnabled
@@ -134,7 +134,7 @@ impl ServerBuilder {
                 builder = builder.http1_header_read_timeout(timeout);
             }
             if let Some(bufsz) = self.http1.max_buf_size {
-                builder = builder.http1_max_buf_size(bufsz);
+                builder = builder.http1_max_buf_size(bufsz.get());
             }
             if let Some(writev) = self.http1.writev {
                 builder = builder.http1_writev(writev);
@@ -148,10 +148,10 @@ impl ServerBuilder {
         if self.http2.enabled {
             builder = builder
                 .http2_adaptive_window(self.http2.adaptive_window)
-                .http2_initial_connection_window_size(self.http2.initial_connection_window)
-                .http2_initial_stream_window_size(self.http2.initial_stream_window)
+                .http2_initial_connection_window_size(self.http2.initial_connection_window.map(NonZeroU32::get))
+                .http2_initial_stream_window_size(self.http2.initial_stream_window.map(NonZeroU32::get))
                 .http2_keep_alive_interval(self.http2.keepalive.interval)
-                .http2_max_concurrent_streams(self.http2.max_concurrent_streams);
+                .http2_max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
             if self.http2.connect_protocol {
                 builder = builder.http2_enable_connect_protocol();
             }
@@ -181,10 +181,10 @@ pub struct TcpConfig {
     nodelay: bool,
     ///
     #[serde(default = "TcpConfig::default_tcp_backlog")]
-    backlog: u32,
+    backlog: NonZeroU32,
     ///
     #[serde(default)]
-    mss: Option<u32>,
+    mss: Option<NonZeroU32>,
     /// TCP keepalive socket options.
     #[serde(default)]
     keepalive: TcpKeepaliveConfig,
@@ -202,8 +202,8 @@ impl Default for TcpConfig {
 }
 
 impl TcpConfig {
-    fn default_tcp_backlog() -> u32 {
-        1024
+    fn default_tcp_backlog() -> NonZeroU32 {
+        NonZeroU32::new(1024).unwrap()
     }
 }
 
@@ -228,7 +228,7 @@ struct TcpKeepaliveConfig {
     interval: Option<Duration>,
     /// Number of retransmissions to be carried out before declaring that remote end is not
     /// available.
-    retries: Option<u32>,
+    retries: Option<NonZeroU32>,
 }
 
 ///
@@ -253,7 +253,7 @@ struct Http1Config {
     ///
     // TODO: humansize
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    max_buf_size: Option<usize>,
+    max_buf_size: Option<NonZeroUsize>,
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
     writev: Option<bool>,
@@ -287,16 +287,16 @@ struct Http2Config {
     ///
     // TODO: humansize
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    initial_connection_window: Option<u32>,
+    initial_connection_window: Option<NonZeroU32>,
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    initial_stream_window: Option<u32>,
+    initial_stream_window: Option<NonZeroU32>,
     ///
     #[serde(default)]
     keepalive: Http2KeepaliveConfig,
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    max_concurrent_streams: Option<u32>,
+    max_concurrent_streams: Option<NonZeroU32>,
 }
 
 impl Default for Http2Config {

@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use axum::{
     body::Body,
     error_handling::HandleErrorLayer,
-    http::{Request, StatusCode},
+    http::StatusCode,
     response::IntoResponse,
     routing::{MethodRouter, Router},
     Extension,
 };
+use hyper::{Request, Response};
 use okapi::openapi3;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
@@ -81,27 +82,31 @@ async fn error_handler(err: BoxError) -> impl IntoResponse {
     (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
 }
 
-pub fn apply_layers<X, H, U, E, B>(
+pub fn apply_layers<X, S, T, U>(
     hext: &X,
-    handler: H,
+    handler: S,
     conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<B>, U, BoxError>
+) -> BoxCloneService<Request<T>, S::Response, BoxError>
 where
     X: HandlerExt,
-    H: Service<Request<B>, Response = U, Error = E> + Send + Clone + 'static,
-    H::Future: Send,
-    E: std::error::Error + Send + Sync + 'static,
-    B: Send + 'static,
+    S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
+    S::Future: Send,
+    S::Error: std::error::Error + Send + Sync,
+    T: Send + 'static,
+    U: 'static,
 {
     ServiceBuilder::new()
-        .layer(BoxCloneService::layer())
+        .boxed_clone()
         .layer(Extension(HandlerName::new(hext.name())))
         .option_layer(
             conf.and_then(|cfg| cfg.buffer.as_ref())
                 .map(|lcfg| lcfg.make_layer()),
         )
+        // .option_layer(
+        //     conf.and_then(|cfg| cfg.rate_limit.as_ref())
+        //         .and_then(|rcfg| rcfg.make_layer()),
+        // )
         // TODO: cb
-        // TODO: rate_limit
         // TODO: throttle
         // TODO: timeout
         // TODO: roles
