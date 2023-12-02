@@ -15,6 +15,7 @@ use tower_http::{
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
+use tracing::{debug, debug_span, info, info_span};
 
 use crate::{AppConfig, HandlerConfig, HandlerName};
 
@@ -39,25 +40,32 @@ impl AppBuilder {
 
     /// Build top-level Axum router.
     pub fn build(self) -> Router {
+        let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&'static dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
         for handler in inventory::iter::<&'static dyn HandlerExt> {
+            let _span = debug_span!("iter_handler", name = handler.name()).entered();
             grouped
                 .entry(handler.path())
                 .and_modify(|handlers| handlers.push(*handler))
                 .or_insert_with(|| vec![*handler]);
+            debug!("Handler recorded");
         }
         for (path, handlers) in grouped.into_iter() {
+            let _span = info_span!("register_path", path).entered();
             let mut mrtr: MethodRouter<(), Body, BoxError> = MethodRouter::new();
             for handler in handlers {
                 let name = handler.name();
+                let _span = info_span!("register_handler", name, method = ?handler.method()).entered();
                 if let Some(cfg) = self.config.handlers.get(name) {
                     if cfg.disabled {
+                        info!("Skipping disabled handler");
                         // TODO: log
                         continue;
                     }
                 }
                 mrtr = handler.register_method(mrtr, self.config.handlers.get(name));
+                info!("Handler registered");
             }
             rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
         }
@@ -73,7 +81,9 @@ impl AppBuilder {
                 ),
         );
 
-        rtr.layer(global_layers)
+        let rtr = rtr.layer(global_layers);
+        info!("Finished building application");
+        rtr
     }
 }
 

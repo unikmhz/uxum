@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
 use tokio::net::{lookup_host, TcpSocket, ToSocketAddrs};
+use tracing::{debug_span, error, info, debug};
 
 use crate::errors::IoError;
 
@@ -95,8 +96,9 @@ impl ServerBuilder {
         Default::default()
     }
 
-    ///
+    /// Build network server.
     pub async fn build(self) -> Result<hyper::server::Builder<AddrIncoming>, ServerBuilderError> {
+        let _span = debug_span!("build_server").entered();
         let (sock, addr) = socket(&self.listen).await?;
         let sref = SockRef::from(&sock);
         if let Some(sz) = self.recv_buffer {
@@ -131,6 +133,7 @@ impl ServerBuilder {
         let mut builder = hyper::Server::builder(stream);
         // TODO: check for NoProtocolsEnabled
         if self.http1.enabled {
+            debug!("Setting up HTTP/1");
             builder = builder
                 .http1_half_close(self.http1.half_close)
                 .http1_keepalive(self.http1.keepalive);
@@ -145,11 +148,13 @@ impl ServerBuilder {
             }
         } else {
             if !self.http2.enabled {
+                error!("No protocols enabled");
                 return Err(ServerBuilderError::NoProtocolsEnabled);
             }
             builder = builder.http2_only(true);
         }
         if self.http2.enabled {
+            debug!("Setting up HTTP/2");
             builder = builder
                 .http2_adaptive_window(self.http2.adaptive_window)
                 .http2_initial_connection_window_size(
@@ -171,6 +176,7 @@ impl ServerBuilder {
         } else {
             builder = builder.http1_only(true);
         }
+        info!("Finished building server");
         Ok(builder)
     }
 }
