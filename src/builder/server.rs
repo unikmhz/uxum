@@ -1,4 +1,8 @@
-use std::{net::SocketAddr, time::Duration, num::{NonZeroUsize, NonZeroU32}};
+use std::{
+    net::SocketAddr,
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 use hyper::server::conn::AddrIncoming;
 use serde::{Deserialize, Serialize};
@@ -124,7 +128,7 @@ impl ServerBuilder {
             .set_keepalive_interval(self.tcp.keepalive.interval)
             .set_keepalive_retries(self.tcp.keepalive.retries.map(NonZeroU32::get))
             .set_sleep_on_errors(self.sleep_on_accept_errors);
-        let mut builder = axum::Server::builder(stream);
+        let mut builder = hyper::Server::builder(stream);
         // TODO: check for NoProtocolsEnabled
         if self.http1.enabled {
             builder = builder
@@ -148,10 +152,16 @@ impl ServerBuilder {
         if self.http2.enabled {
             builder = builder
                 .http2_adaptive_window(self.http2.adaptive_window)
-                .http2_initial_connection_window_size(self.http2.initial_connection_window.map(NonZeroU32::get))
-                .http2_initial_stream_window_size(self.http2.initial_stream_window.map(NonZeroU32::get))
+                .http2_initial_connection_window_size(
+                    self.http2.initial_connection_window.map(NonZeroU32::get),
+                )
+                .http2_initial_stream_window_size(
+                    self.http2.initial_stream_window.map(NonZeroU32::get),
+                )
                 .http2_keep_alive_interval(self.http2.keepalive.interval)
-                .http2_max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
+                .http2_max_concurrent_streams(
+                    self.http2.max_concurrent_streams.map(NonZeroU32::get),
+                );
             if self.http2.connect_protocol {
                 builder = builder.http2_enable_connect_protocol();
             }

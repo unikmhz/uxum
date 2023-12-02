@@ -28,7 +28,7 @@ pub struct HandlerConfig {
     pub buffer: Option<HandlerBufferConfig>,
     /// Circuit breaker configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cb: Option<HandlerCircuitBreakerConfig>,
+    pub circuit_breaker: Option<HandlerCircuitBreakerConfig>,
     /// Rate limiter configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<HandlerRateLimitConfig>,

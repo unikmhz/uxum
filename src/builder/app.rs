@@ -102,10 +102,10 @@ where
             conf.and_then(|cfg| cfg.buffer.as_ref())
                 .map(|lcfg| lcfg.make_layer()),
         )
-        // .option_layer(
-        //     conf.and_then(|cfg| cfg.rate_limit.as_ref())
-        //         .and_then(|rcfg| rcfg.make_layer()),
-        // )
+        .option_layer(
+            conf.and_then(|cfg| cfg.rate_limit.as_ref())
+                .and_then(|rcfg| rcfg.make_layer::<S, T, U>()),
+        )
         // TODO: cb
         // TODO: throttle
         // TODO: timeout

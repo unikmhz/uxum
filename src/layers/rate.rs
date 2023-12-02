@@ -1,25 +1,15 @@
-use std::{time::Duration, num::NonZeroU32};
+use std::{num::NonZeroU32, time::Duration};
 
-use governor::{middleware::RateLimitingMiddleware, clock::QuantaInstant};
+use governor::{clock::QuantaInstant, middleware::RateLimitingMiddleware};
 use hyper::{Request, Response};
 use serde::{Deserialize, Serialize};
-use tower::{
-    Layer,
-    util::BoxLayer, BoxError, Service,
-};
+use tower::{BoxError, Layer, Service};
 use tower_governor::{
-    governor::{
-        Governor,
-        GovernorConfig,
-        GovernorConfigBuilder,
-    },
-    key_extractor::{
-        GlobalKeyExtractor,
-        PeerIpKeyExtractor,
-        SmartIpKeyExtractor,
-        KeyExtractor,
-    },
+    governor::{Governor, GovernorConfig, GovernorConfigBuilder},
+    key_extractor::{GlobalKeyExtractor, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor},
 };
+
+use crate::util::BoxCloneLayer;
 
 /// Configuration for rate-limiting layer.
 ///
@@ -35,7 +25,10 @@ pub struct HandlerRateLimitConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     burst_rps: Option<NonZeroU32>,
     /// Duration of burst, used for bucket size calculation.
-    #[serde(default = "HandlerRateLimitConfig::default_burst_duration", with = "humantime_serde")]
+    #[serde(
+        default = "HandlerRateLimitConfig::default_burst_duration",
+        with = "humantime_serde"
+    )]
     burst_duration: Duration,
     /// Add additional headers to response.
     ///
@@ -64,7 +57,7 @@ impl HandlerRateLimitConfig {
     }
 
     /// Create layer for use in tower services.
-    pub fn make_layer<S, T, U>(&self) -> Option<BoxLayer<S, Request<T>, S::Response, BoxError>>
+    pub fn make_layer<S, T, U>(&self) -> Option<BoxCloneLayer<S, Request<T>, S::Response, BoxError>>
     where
         S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
         S::Future: Send + 'static,
@@ -77,29 +70,29 @@ impl HandlerRateLimitConfig {
                 .key_extractor(GlobalKeyExtractor)
                 .use_headers()
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
             (RateLimitKey::Global, false) => config
                 .key_extractor(GlobalKeyExtractor)
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
             (RateLimitKey::PeerIp, true) => config
                 .key_extractor(PeerIpKeyExtractor)
                 .use_headers()
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
             (RateLimitKey::PeerIp, false) => config
                 .key_extractor(PeerIpKeyExtractor)
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
             (RateLimitKey::SmartIp, true) => config
                 .key_extractor(SmartIpKeyExtractor)
                 .use_headers()
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
             (RateLimitKey::SmartIp, false) => config
                 .key_extractor(SmartIpKeyExtractor)
                 .finish()
-                .map(|c| BoxLayer::new(OwnedGovernorLayer::from(c))),
+                .map(|c| BoxCloneLayer::new(OwnedGovernorLayer::from(c))),
         }
     }
 }
@@ -122,7 +115,7 @@ where
     K: KeyExtractor,
     M: RateLimitingMiddleware<QuantaInstant>,
 {
-        config: GovernorConfig<K, M>,
+    config: GovernorConfig<K, M>,
 }
 
 impl<K, M, S> Layer<S> for OwnedGovernorLayer<K, M>
@@ -143,7 +136,7 @@ where
     K: KeyExtractor,
     M: RateLimitingMiddleware<QuantaInstant>,
 {
-    fn from(value: GovernorConfig<K, M>) -> Self {
-        Self { config: value }
+    fn from(config: GovernorConfig<K, M>) -> Self {
+        Self { config }
     }
 }
