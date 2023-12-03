@@ -41,9 +41,9 @@ impl AppBuilder {
     /// Build top-level Axum router.
     pub fn build(self) -> Router {
         let _span = debug_span!("build_app").entered();
-        let mut grouped: BTreeMap<&str, Vec<&'static dyn HandlerExt>> = BTreeMap::new();
+        let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
-        for handler in inventory::iter::<&'static dyn HandlerExt> {
+        for handler in inventory::iter::<&dyn HandlerExt> {
             let _span = debug_span!("iter_handler", name = handler.name()).entered();
             grouped
                 .entry(handler.path())
@@ -56,11 +56,11 @@ impl AppBuilder {
             let mut mrtr: MethodRouter<(), Body, BoxError> = MethodRouter::new();
             for handler in handlers {
                 let name = handler.name();
-                let _span = info_span!("register_handler", name, method = ?handler.method()).entered();
+                let _span =
+                    info_span!("register_handler", name, method = ?handler.method()).entered();
                 if let Some(cfg) = self.config.handlers.get(name) {
                     if cfg.disabled {
                         info!("Skipping disabled handler");
-                        // TODO: log
                         continue;
                     }
                 }
@@ -102,8 +102,7 @@ where
     S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
-    T: Send + 'static,
-    U: 'static,
+    T: Send + Sync + 'static,
 {
     ServiceBuilder::new()
         .boxed_clone()
@@ -114,9 +113,9 @@ where
         )
         .option_layer(
             conf.and_then(|cfg| cfg.rate_limit.as_ref())
-                .and_then(|rcfg| rcfg.make_layer::<S, T, U>()),
+                .map(|rcfg| rcfg.make_layer()),
         )
-        // TODO: cb
+        // TODO: circuit_breaker
         // TODO: throttle
         // TODO: timeout
         // TODO: roles

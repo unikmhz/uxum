@@ -12,6 +12,6 @@ handlers:
   hello_world:
     disabled: false
     rate_limit:
-      rps: 2
+      rps: 1
 server:
   listen: 127.0.0.1:8080

@@ -17,18 +17,20 @@ members = ["uxum-handler-macros"]
 uxum-handler-macros = {path = "uxum-handler-macros"}
 
 axum = "0.6"
+dashmap = "5.5"
+forwarded-header-value = "0.1"
 governor = "0.6"
 humantime-serde = "1.1"
 http = "1.0"
 hyper = {version = "0.14", features = ["http2", "server"]}
 inventory = "0.3"
 okapi = {version = "0.7.0-rc.1", features = ["preserve_order"]}
+pin-project = "1.1"
 serde = {version = "1.0", features = ["derive"]}
 socket2 = {version = "0.5"}
 thiserror = "1.0"
 tokio = {version = "1.34", features = ["full"]}
 tower = {version = "0.4", features = ["buffer", "filter", "limit", "retry", "timeout", "util"]}
-tower_governor = "0.1"
 tower-http = {version = "0.4", features = ["trace"]}
 tracing = "0.1"
 tracing-appender = "0.2"

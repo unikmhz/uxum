@@ -9,11 +9,11 @@ use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
 use tokio::net::{lookup_host, TcpSocket, ToSocketAddrs};
-use tracing::{debug_span, error, info, debug};
+use tracing::{debug, debug_span, error, info};
 
 use crate::errors::IoError;
 
-///
+/// Error type returned by server builder.
 #[derive(Debug, Error)]
 pub enum ServerBuilderError {
     #[error("Unable to parse endpoint address: {0}")]

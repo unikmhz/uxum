@@ -52,7 +52,6 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                         BoxError,
                     },
                     okapi::openapi3,
-                    tower::util::BoxCloneService,
                 },
                 apply_layers,
                 HandlerConfig,

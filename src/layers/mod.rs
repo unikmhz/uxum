@@ -6,6 +6,8 @@ mod throttle;
 mod timeout;
 
 pub use self::{
-    buffer::HandlerBufferConfig, cb::HandlerCircuitBreakerConfig, ext::HandlerName,
-    rate::HandlerRateLimitConfig,
+    buffer::HandlerBufferConfig,
+    cb::HandlerCircuitBreakerConfig,
+    ext::HandlerName,
+    rate::{HandlerRateLimitConfig, RateLimitError},
 };
