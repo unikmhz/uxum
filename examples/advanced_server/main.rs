@@ -1,10 +1,12 @@
 use std::{net::SocketAddr, time::Duration};
 
-use axum::extract::ConnectInfo;
 use config::{Config, File};
 use serde::Deserialize;
-use tracing_subscriber::util::SubscriberInitExt;
-use uxum::{handler, AppBuilder, AppConfig, ServerBuilder};
+use uxum::{
+    handler,
+    reexport::{axum::extract::ConnectInfo, tracing_subscriber::util::SubscriberInitExt},
+    AppBuilder, AppConfig, ServerBuilder,
+};
 
 #[derive(Deserialize)]
 struct ServiceConfig {

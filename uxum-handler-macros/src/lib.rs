@@ -51,6 +51,8 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                         routing::{self, MethodRouter},
                         BoxError,
                     },
+                    http,
+                    inventory,
                     okapi::openapi3,
                 },
                 apply_layers,

@@ -82,14 +82,14 @@ pub enum HandlerMethod {
 impl ToTokens for HandlerMethod {
     fn to_tokens(&self, stream: &mut TokenStream) {
         let new_tokens: TokenStream = match self {
-            Self::Get => quote! { ::http::Method::GET },
-            Self::Head => quote! { ::http::Method::HEAD },
-            Self::Post => quote! { ::http::Method::POST },
-            Self::Put => quote! { ::http::Method::PUT },
-            Self::Delete => quote! { ::http::Method::DELETE },
-            Self::Options => quote! { ::http::Method::OPTIONS },
-            Self::Trace => quote! { ::http::Method::TRACE },
-            Self::Patch => quote! { ::http::Method::PATCH },
+            Self::Get => quote! { ::uxum::reexport::http::Method::GET },
+            Self::Head => quote! { ::uxum::reexport::http::Method::HEAD },
+            Self::Post => quote! { ::uxum::reexport::http::Method::POST },
+            Self::Put => quote! { ::uxum::reexport::http::Method::PUT },
+            Self::Delete => quote! { ::uxum::reexport::http::Method::DELETE },
+            Self::Options => quote! { ::uxum::reexport::http::Method::OPTIONS },
+            Self::Trace => quote! { ::uxum::reexport::http::Method::TRACE },
+            Self::Patch => quote! { ::uxum::reexport::http::Method::PATCH },
         };
         stream.append_all(new_tokens);
     }
