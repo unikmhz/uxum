@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use axum::{
     body::Body,
     error_handling::HandleErrorLayer,
-    http::StatusCode,
+    http::{
+        header::{self, HeaderValue},
+        StatusCode,
+    },
     response::IntoResponse,
     routing::{MethodRouter, Router},
     Extension,
@@ -12,23 +15,35 @@ use hyper::{Request, Response};
 use okapi::openapi3;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
+    set_header::SetResponseHeaderLayer,
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
 use tracing::{debug, debug_span, info, info_span};
 
-use crate::{AppConfig, HandlerConfig, HandlerName};
+use crate::{ApiDocBuilder, AppConfig, HandlerConfig, HandlerName};
 
 /// Builder for application routes.
 #[derive(Debug, Default)]
 pub struct AppBuilder {
     /// Application configuration.
     config: AppConfig,
+    ///
+    app_name: Option<String>,
+    ///
+    app_version: Option<String>,
+    /// API docs configuration.
+    api_doc: Option<ApiDocBuilder>,
 }
 
 impl From<AppConfig> for AppBuilder {
     fn from(value: AppConfig) -> Self {
-        Self { config: value }
+        Self {
+            config: value,
+            app_name: None,
+            app_version: None,
+            api_doc: None,
+        }
     }
 }
 
@@ -36,6 +51,24 @@ impl AppBuilder {
     /// Create new builder with default configuration.
     pub fn new() -> Self {
         Default::default()
+    }
+
+    ///
+    pub fn with_app_name(mut self, app_name: impl ToString) -> Self {
+        self.app_name = Some(app_name.to_string());
+        self
+    }
+
+    ///
+    pub fn with_app_version(mut self, app_version: impl ToString) -> Self {
+        self.app_version = Some(app_version.to_string());
+        self
+    }
+
+    ///
+    pub fn with_api_doc(mut self, api_doc: ApiDocBuilder) -> Self {
+        self.api_doc = Some(api_doc);
+        self
     }
 
     /// Build top-level Axum router.
@@ -70,20 +103,40 @@ impl AppBuilder {
             rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
         }
 
-        let global_layers = ServiceBuilder::new().layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().include_headers(true))
-                .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
-                .on_response(
-                    DefaultOnResponse::new()
-                        .level(tracing::Level::INFO)
-                        .latency_unit(LatencyUnit::Micros),
-                ),
-        );
+        let global_layers = ServiceBuilder::new()
+            .layer(
+                TraceLayer::new_for_http()
+                    .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                    .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(tracing::Level::INFO)
+                            .latency_unit(LatencyUnit::Micros),
+                    ),
+            )
+            .layer(SetResponseHeaderLayer::if_not_present(
+                header::SERVER,
+                self.server_header(),
+            ));
 
         let rtr = rtr.layer(global_layers);
         info!("Finished building application");
         rtr
+    }
+
+    fn server_header(&self) -> Option<HeaderValue> {
+        const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+        if let Some(app_name) = &self.app_name {
+            let val = if let Some(app_version) = &self.app_version {
+                let app_product = [app_name.as_str(), app_version.as_str()].join("/");
+                [&app_product, UXUM_PRODUCT].join(" ")
+            } else {
+                [app_name, UXUM_PRODUCT].join(" ")
+            };
+            HeaderValue::from_str(&val).ok()
+        } else {
+            HeaderValue::from_str(UXUM_PRODUCT).ok()
+        }
     }
 }
 

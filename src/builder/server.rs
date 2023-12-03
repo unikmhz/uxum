@@ -69,6 +69,7 @@ pub struct ServerBuilder {
     ///
     #[serde(default)]
     http2: Http2Config,
+    // TODO: TLS
 }
 
 impl Default for ServerBuilder {

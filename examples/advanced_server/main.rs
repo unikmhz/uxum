@@ -31,6 +31,8 @@ async fn main() {
         .unwrap()
         .serve(
             app_builder
+                .with_app_name("advanced_server")
+                .with_app_version("1.2.3")
                 .build()
                 .into_make_service_with_connect_info::<SocketAddr>(),
         )
