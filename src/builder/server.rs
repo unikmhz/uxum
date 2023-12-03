@@ -184,7 +184,7 @@ impl ServerBuilder {
 
 ///
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct IpConfig {
+struct IpConfig {
     ///
     #[serde(default)]
     tos: Option<u32>,
@@ -192,7 +192,7 @@ pub struct IpConfig {
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct TcpConfig {
+struct TcpConfig {
     /// Set TCP_NODELAY socket options for accepted connections.
     #[serde(default = "crate::util::default_true")]
     nodelay: bool,

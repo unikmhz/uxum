@@ -90,7 +90,7 @@ impl HandlerRateLimitConfig {
 /// Method of key extraction for rate limiting.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RateLimitKey {
+enum RateLimitKey {
     /// Global rate limit.
     #[default]
     Global,
@@ -244,7 +244,7 @@ impl<T> Limiter<T> for GlobalLimiter {
 }
 
 impl GlobalLimiter {
-    pub fn new(config: &HandlerRateLimitConfig) -> Self {
+    fn new(config: &HandlerRateLimitConfig) -> Self {
         Self {
             limiter: RateLimiter::direct(
                 Quota::with_period(config.period())
@@ -276,7 +276,7 @@ impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
 }
 
 impl<K: KeyExtractor> IpLimiter<K> {
-    pub fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
+    fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
         Self {
             extractor,
             limiters: RateLimiter::keyed(
@@ -294,7 +294,7 @@ trait KeyExtractor {
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, RateLimitError>;
 }
 
-pub struct PeerIpKeyExtractor;
+struct PeerIpKeyExtractor;
 
 impl KeyExtractor for PeerIpKeyExtractor {
     type Key = IpAddr;
@@ -304,7 +304,7 @@ impl KeyExtractor for PeerIpKeyExtractor {
     }
 }
 
-pub struct SmartIpKeyExtractor;
+struct SmartIpKeyExtractor;
 
 impl KeyExtractor for SmartIpKeyExtractor {
     type Key = IpAddr;

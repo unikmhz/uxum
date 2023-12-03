@@ -1,3 +1,7 @@
+#![forbid(unsafe_code)]
+#![deny(elided_lifetimes_in_paths)]
+#![deny(unreachable_pub)]
+
 mod apidoc;
 mod builder;
 mod config;
@@ -14,5 +18,5 @@ pub use self::{
     apidoc::ApiDocBuilder,
     builder::{apply_layers, AppBuilder, HandlerExt, ServerBuilder},
     config::*,
-    layers::HandlerName,
+    layers::{ext::HandlerName, rate::RateLimitError},
 };

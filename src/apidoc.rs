@@ -42,19 +42,19 @@ impl ApiDocBuilder {
     }
 }
 
-pub async fn rapidoc_index() -> impl IntoResponse {
+async fn rapidoc_index() -> impl IntoResponse {
     // TODO: get from configuration
-    ApiDocBuilder::default()
+    ApiDocBuilder::default().into_response()
 }
 
-pub async fn rapidoc_js() -> impl IntoResponse {
+async fn rapidoc_js() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/javascript")],
         include_bytes!("../static/rapidoc-min.js").as_slice(),
     )
 }
 
-pub async fn rapidoc_js_map() -> impl IntoResponse {
+async fn rapidoc_js_map() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/json")],
         include_bytes!("../static/rapidoc-min.js.map").as_slice(),
