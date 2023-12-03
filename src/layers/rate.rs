@@ -24,6 +24,7 @@ use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tower::{BoxError, Layer, Service};
+use tracing::warn;
 
 /// Error type returned by [`RateLimit`] layer.
 #[derive(Clone, Debug, Error)]
@@ -168,7 +169,12 @@ where
                 inner: self.inner.call(req),
             },
             // TODO: option to allow ignoring extraction errors
-            Err(error) => RateLimitFuture::Negative { error },
+            Err(error) => {
+                if let RateLimitError::LimitReached { remaining_seconds } = &error {
+                    warn!(wait = remaining_seconds, "Rate limit exceeded");
+                }
+                RateLimitFuture::Negative { error }
+            }
         }
     }
 }
