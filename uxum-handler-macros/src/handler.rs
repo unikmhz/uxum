@@ -21,7 +21,7 @@ impl ToTokens for OpenApiExternalDoc {
         tokens.append_all(quote! {
             ::uxum::reexport::openapi3::ExternalDocs {
                 description: #description,
-                url: #url,
+                url: #url.into(),
                 extensions: Default::default(),
             }
         });
@@ -56,7 +56,7 @@ impl ToTokens for OpenApiServer {
         let description = quote_option(&self.description);
         tokens.append_all(quote! {
             ::uxum::reexport::openapi3::Server {
-                url: #url,
+                url: #url.into(),
                 description: #description,
                 variables: Default::default(),
                 extensions: Default::default(),
@@ -75,7 +75,7 @@ pub struct HandlerSpec {
     #[darling(default)]
     pub description: Option<String>,
     #[darling(default)]
-    pub external_docs: Option<OpenApiExternalDoc>,
+    pub docs: Option<OpenApiExternalDoc>,
     #[darling(default)]
     pub operation_id: Option<String>,
     #[darling(default, multiple)]
@@ -90,16 +90,18 @@ pub struct HandlerSpec {
 
 impl ToTokens for HandlerSpec {
     fn to_tokens(&self, tokens: &mut TokenStream) {
+        let tags = &self.tags;
         let summary = quote_option(&self.summary);
         let description = quote_option(&self.description);
+        let docs = quote_option(&self.docs);
         let operation_id = quote_option(&self.operation_id);
         let deprecated = self.deprecated;
         tokens.append_all(quote! {
             ::uxum::reexport::openapi3::Operation {
-                tags: vec![], // TODO: fill
+                tags: vec![#(#tags.into()),*],
                 summary: #summary,
                 description: #description,
-                external_docs: None, // TODO: fill
+                external_docs: #docs,
                 operation_id: #operation_id,
                 parameters: vec![], // TODO: fill
                 request_body: None, // TODO: fill
