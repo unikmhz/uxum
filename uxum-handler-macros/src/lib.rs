@@ -1,5 +1,6 @@
 mod case;
 mod handler;
+mod util;
 
 use darling::{ast::NestedMeta, Error, FromMeta};
 use proc_macro::TokenStream;
@@ -29,16 +30,19 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             return TokenStream::from(err.write_errors());
         }
     };
+    // dbg!(&attr_args);
+    // dbg!(&data);
+    // if input.sig.ident == "name_from_qs" {
+    //     dbg!(&input);
+    // }
 
     let handler_name = data.name.unwrap_or_else(|| input.sig.ident.to_string());
     let handler_path = data.path.unwrap_or_else(|| format!("/{handler_name}"));
     let handler_method = data.method;
-
-    // dbg!(&attr_args);
-    // dbg!(&data);
-    // dbg!(&input);
+    let handler_spec = data.spec;
 
     quote! {
+        // TODO: instrument
         #input
 
         #[doc(hidden)]
@@ -53,7 +57,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     },
                     http,
                     inventory,
-                    okapi::openapi3,
+                    openapi3,
                 },
                 apply_layers,
                 HandlerConfig,
@@ -94,9 +98,8 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     })(apply_layers(self, super::#fn_ident.into_service(), cfg))
                 }
 
-                fn openapi_spec(&self) -> Option<openapi3::Operation> {
-                    // TODO: write this
-                    None
+                fn openapi_spec(&self) -> openapi3::Operation {
+                    #handler_spec
                 }
             }
 

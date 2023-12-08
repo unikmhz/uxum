@@ -12,7 +12,7 @@ async fn main() {
         .build()
         .await
         .unwrap()
-        .serve(app_builder.build().into_make_service())
+        .serve(app_builder.build().unwrap().into_make_service())
         .await
         .unwrap();
 }

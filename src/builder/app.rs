@@ -13,6 +13,7 @@ use axum::{
 };
 use hyper::{Request, Response};
 use okapi::openapi3;
+use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
     set_header::SetResponseHeaderLayer,
@@ -21,7 +22,17 @@ use tower_http::{
 };
 use tracing::{debug, debug_span, info, info_span};
 
-use crate::{ApiDocBuilder, AppConfig, HandlerConfig, HandlerName};
+use crate::{
+    apidoc::{ApiDocBuilder, ApiDocError},
+    config::{AppConfig, HandlerConfig},
+    layers::ext::HandlerName,
+};
+
+#[derive(Debug, Error)]
+pub enum AppBuilderError {
+    #[error(transparent)]
+    ApiDoc(#[from] ApiDocError),
+}
 
 /// Builder for application routes.
 #[derive(Debug, Default)]
@@ -72,7 +83,7 @@ impl AppBuilder {
     }
 
     /// Build top-level Axum router.
-    pub fn build(self) -> Router {
+    pub fn build(mut self) -> Result<Router, AppBuilderError> {
         let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
@@ -103,6 +114,15 @@ impl AppBuilder {
             rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
         }
 
+        if self.api_doc.is_some() {
+            let app_name = self.app_name.clone();
+            let app_version = self.app_version.clone();
+            if let Some(ref mut api_doc) = self.api_doc {
+                api_doc.set_app_defaults(app_name, app_version);
+                rtr = rtr.merge(api_doc.build_router()?);
+            }
+        }
+
         let global_layers = ServiceBuilder::new()
             .layer(
                 TraceLayer::new_for_http()
@@ -118,12 +138,14 @@ impl AppBuilder {
                 header::SERVER,
                 self.server_header(),
             ));
-
+        // TODO: DefaultBodyLimit (configurable)
+        // TODO: SetSensitiveRequestHeadersLayer
         let rtr = rtr.layer(global_layers);
         info!("Finished building application");
-        rtr
+        Ok(rtr)
     }
 
+    ///
     fn server_header(&self) -> Option<HeaderValue> {
         const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
         if let Some(app_name) = &self.app_name {
@@ -145,6 +167,7 @@ async fn error_handler(err: BoxError) -> impl IntoResponse {
     (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
 }
 
+///
 pub fn apply_layers<X, S, T, U>(
     hext: &X,
     handler: S,
@@ -184,9 +207,7 @@ pub trait HandlerExt: Sync {
         mrtr: MethodRouter<(), Body, BoxError>,
         cfg: Option<&HandlerConfig>,
     ) -> MethodRouter<(), Body, BoxError>;
-    fn openapi_spec(&self) -> Option<openapi3::Operation> {
-        None
-    }
+    fn openapi_spec(&self) -> openapi3::Operation;
 }
 
 inventory::collect!(&'static dyn HandlerExt);
