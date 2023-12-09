@@ -87,6 +87,7 @@ impl AppBuilder {
         let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
+        // TODO: error/panic on duplicate handler names
         for handler in inventory::iter::<&dyn HandlerExt> {
             let _span = debug_span!("iter_handler", name = handler.name()).entered();
             grouped
@@ -201,6 +202,7 @@ where
 pub trait HandlerExt: Sync {
     fn name(&self) -> &'static str;
     fn path(&self) -> &'static str;
+    fn spec_path(&self) -> &'static str;
     fn method(&self) -> http::Method;
     fn register_method(
         &self,

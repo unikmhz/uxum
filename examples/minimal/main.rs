@@ -12,10 +12,10 @@ async fn main() {
     ServerBuilder::new()
         .build()
         .await
-        .unwrap()
+        .expect("Unable to build server")
         .serve(app.into_make_service())
         .await
-        .unwrap();
+        .expect("Server error");
 }
 
 async fn root_handler() -> &'static str {

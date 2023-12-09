@@ -1,6 +1,6 @@
 use syn::Ident;
 
-pub fn camel_case(input: impl AsRef<str>) -> String {
+pub(crate) fn camel_case(input: impl AsRef<str>) -> String {
     input
         .as_ref()
         .split(&['_', '-', ' '])
@@ -14,7 +14,7 @@ pub fn camel_case(input: impl AsRef<str>) -> String {
         .collect()
 }
 
-pub trait ToCamelCase {
+pub(crate) trait ToCamelCase {
     type CamelCased;
     fn to_camel_case(&self) -> Self::CamelCased;
 }

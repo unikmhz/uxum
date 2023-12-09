@@ -5,16 +5,20 @@ use uxum::{handler, AppBuilder, AppConfig, ServerBuilder};
 
 #[tokio::main]
 async fn main() {
-    // TODO: remove init
     tracing_subscriber::fmt::init();
     let app_builder: AppBuilder = AppConfig::default().into();
     ServerBuilder::new()
         .build()
         .await
-        .unwrap()
-        .serve(app_builder.build().unwrap().into_make_service())
+        .expect("Unable to build server")
+        .serve(
+            app_builder
+                .build()
+                .expect("Unable to build app")
+                .into_make_service(),
+        )
         .await
-        .unwrap();
+        .expect("Server error");
 }
 
 #[handler(

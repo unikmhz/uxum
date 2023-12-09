@@ -165,7 +165,7 @@ impl ApiDocBuilder {
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
             grouped
-                .entry(handler.path())
+                .entry(handler.spec_path())
                 .and_modify(|handlers| handlers.push(*handler))
                 .or_insert_with(|| vec![*handler]);
         }
