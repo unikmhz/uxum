@@ -6,9 +6,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use syn::ItemFn;
 
 use crate::{
-    parse::{detect_request_body, extract_docstring, RequestBody},
-    path::extract_path_params,
-    util::quote_option,
+    body::RequestBody, doc::extract_docstring, path::extract_path_params, util::quote_option,
 };
 
 ///
@@ -22,7 +20,7 @@ pub(crate) struct HandlerData {
     pub(crate) path: Option<String>,
     ///
     #[darling(default)]
-    pub(crate) method: HandlerMethod,
+    pub(crate) method: Option<HandlerMethod>,
     ///
     #[darling(default)]
     pub(crate) spec: HandlerSpec,
@@ -59,6 +57,7 @@ impl HandlerSpec {
         path: &str,
         _method: &HandlerMethod,
         handler: &ItemFn,
+        request_body: &Option<RequestBody>,
     ) -> TokenStream {
         let tags = &self.tags;
         let docs = quote_option(&self.docs);
@@ -80,19 +79,19 @@ impl HandlerSpec {
                 .value_type
                 .unwrap_or(syn::Path::from_string("String").unwrap());
             quote! {
-                ::uxum::reexport::openapi3::Parameter {
+                openapi3::Parameter {
                     name: #elem.into(),
                     location: "path".into(),
                     description: #descr,
                     required: true,
                     deprecated: #deprecated,
                     allow_empty_value: #allow_empty,
-                    value: ::uxum::reexport::openapi3::ParameterValue::Schema {
+                    value: openapi3::ParameterValue::Schema {
                         style: None,
                         explode: None,
                         allow_reserved: false,
                         // FIXME: subschema
-                        schema: ::uxum::reexport::schemars::schema_for!(#value_type).schema,
+                        schema: gen.subschema_for::<#value_type>().into_object(),
                         example: None,
                         examples: None,
                     },
@@ -101,16 +100,18 @@ impl HandlerSpec {
             }
         });
 
+        let request_body = quote_option(request_body);
+
         quote! {
-            ::uxum::reexport::openapi3::Operation {
+            openapi3::Operation {
                 tags: vec![#(#tags.into()),*],
                 summary: #summary,
                 description: #description,
                 external_docs: #docs,
                 operation_id: Some(#name.into()),
                 parameters: vec![#(#path_params.into()),*],
-                request_body: None, // TODO: fill
-                responses: ::uxum::reexport::openapi3::Responses {
+                request_body: #request_body,
+                responses: openapi3::Responses {
                     default: None, // TODO: fill
                     responses: Default::default(), // TODO: fill
                     extensions: Default::default(),
@@ -140,7 +141,7 @@ impl ToTokens for OpenApiExternalDoc {
         let description = quote_option(&self.description);
         let url = &self.url;
         tokens.append_all(quote! {
-            ::uxum::reexport::openapi3::ExternalDocs {
+            openapi3::ExternalDocs {
                 description: #description,
                 url: #url.into(),
                 extensions: Default::default(),
@@ -169,9 +170,9 @@ struct OpenApiPathParameter {
 ///
 #[derive(Debug, FromMeta)]
 pub(crate) struct OpenApiServer {
-    ///
+    /// Server URL
     url: String,
-    ///
+    /// Server description
     #[darling(default)]
     description: Option<String>,
 }
@@ -181,7 +182,7 @@ impl ToTokens for OpenApiServer {
         let url = &self.url;
         let description = quote_option(&self.description);
         tokens.append_all(quote! {
-            ::uxum::reexport::openapi3::Server {
+            openapi3::Server {
                 url: #url.into(),
                 description: #description,
                 variables: Default::default(),
@@ -191,7 +192,7 @@ impl ToTokens for OpenApiServer {
     }
 }
 
-///
+/// Supported HTTP methods
 #[derive(Debug, Default, FromMeta)]
 #[darling(default, rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum HandlerMethod {

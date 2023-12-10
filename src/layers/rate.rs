@@ -26,32 +26,32 @@ use thiserror::Error;
 use tower::{BoxError, Layer, Service};
 use tracing::warn;
 
-/// Error type returned by [`RateLimit`] layer.
+/// Error type returned by rate-limiting layer
 #[derive(Clone, Debug, Error)]
 pub enum RateLimitError {
     #[error("Unable to extract rate-limiting key from request")]
     ExtractionError,
     #[error("Rate limit reached: available after {remaining_seconds} seconds")]
     LimitReached {
-        // NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110.
+        // NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
         remaining_seconds: u64,
     },
 }
 
-/// Configuration for rate-limiting layer.
+/// Configuration for rate-limiting layer
 ///
-/// Uses [`tower_governor`] crate internally.
+/// Uses [`governor`] crate internally.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HandlerRateLimitConfig {
-    /// Key extractor used to find rate-limiting bucket.
+    /// Key extractor used to find rate-limiting bucket
     #[serde(default)]
     key: RateLimitKey,
-    /// Sustained requests per second.
+    /// Sustained requests per second
     rps: NonZeroU32,
-    /// Maximum requests per second during burst.
+    /// Maximum requests per second during burst
     #[serde(default, skip_serializing_if = "Option::is_none")]
     burst_rps: Option<NonZeroU32>,
-    /// Duration of burst, used for bucket size calculation.
+    /// Duration of burst, used for bucket size calculation
     #[serde(
         default = "HandlerRateLimitConfig::default_burst_duration",
         with = "humantime_serde"
@@ -61,12 +61,12 @@ pub struct HandlerRateLimitConfig {
 }
 
 impl HandlerRateLimitConfig {
-    /// Default value when deserializing [`HandlerRateLimitConfig::burst_duration`].
+    /// Default value when deserializing [`HandlerRateLimitConfig::burst_duration`]
     fn default_burst_duration() -> Duration {
         Duration::from_secs(1)
     }
 
-    /// Helper method for governor burst_size calculation.
+    /// Helper method for governor burst_size calculation
     pub fn burst_size(&self) -> NonZeroU32 {
         let rps = match self.burst_rps {
             Some(rps) if rps > self.rps => rps,
@@ -76,31 +76,34 @@ impl HandlerRateLimitConfig {
         NonZeroU32::new((seconds * f64::from(rps.get())).ceil() as u32).unwrap_or(self.rps)
     }
 
-    /// Helper method for governor period calculation.
+    /// Helper method for governor period calculation
     pub fn period(&self) -> Duration {
         Duration::from_secs(1) / self.rps.get()
     }
 
-    /// Create layer for use in tower services.
+    /// Create layer for use in tower services
     pub fn make_layer<S, T>(&self) -> RateLimitLayer<S, T> {
         self.into()
     }
 }
 
-/// Method of key extraction for rate limiting.
+/// Method of key extraction for rate limiting
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum RateLimitKey {
-    /// Global rate limit.
+    /// Global rate limit
     #[default]
     Global,
-    /// Per-peer-IP-address rate limit.
+    /// Per-peer-IP-address rate limit
     PeerIp,
+    /// Smart per-peer-IP-address rate limit
+    ///
     /// Same as [`RateLimitKey::PeerIp`], but accounts for addresses passed via
     /// `X-Forwarded-For` and similar headers.
     SmartIp,
 }
 
+/// Rate-limiting [`tower`] layer factory
 pub struct RateLimitLayer<S, T> {
     config: HandlerRateLimitConfig,
     _phantom_service: PhantomData<S>,
@@ -130,6 +133,7 @@ where
     }
 }
 
+/// Rate-limiting [`tower`] layer
 pub struct RateLimit<S, T> {
     inner: S,
     limiter: Arc<Box<dyn Limiter<T> + Send + Sync>>,
@@ -226,10 +230,15 @@ where
     }
 }
 
+/// Trait for all rate limiters
 trait Limiter<T> {
+    /// Check whether a request can pass through a rate-limiter
     fn check_limit(&self, req: &Request<T>) -> Result<(), RateLimitError>;
 }
 
+/// Global rate limiter
+///
+/// Does no key extraction from requests.
 struct GlobalLimiter {
     limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware<QuantaInstant>>,
 }
@@ -255,6 +264,9 @@ impl GlobalLimiter {
     }
 }
 
+/// Per-IP rate limiter
+///
+/// Extracts key data from requests using provided [`Self::extractor`].
 struct IpLimiter<K: KeyExtractor> {
     extractor: K,
     limiters: RateLimiter<
@@ -325,7 +337,7 @@ impl KeyExtractor for SmartIpKeyExtractor {
 const X_REAL_IP: &str = "x-real-ip";
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
 
-/// Tries to parse the `x-forwarded-for` header.
+/// Tries to parse the `x-forwarded-for` header
 fn maybe_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_FORWARDED_FOR)
@@ -333,7 +345,7 @@ fn maybe_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
         .and_then(|s| s.split(',').find_map(|s| s.trim().parse::<IpAddr>().ok()))
 }
 
-/// Tries to parse the `x-real-ip` header.
+/// Tries to parse the `x-real-ip` header
 fn maybe_x_real_ip(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_REAL_IP)
@@ -341,7 +353,7 @@ fn maybe_x_real_ip(headers: &HeaderMap) -> Option<IpAddr> {
         .and_then(|s| s.parse::<IpAddr>().ok())
 }
 
-/// Tries to parse `forwarded` headers.
+/// Tries to parse `forwarded` headers
 fn maybe_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     headers.get_all(FORWARDED).iter().find_map(|hv| {
         hv.to_str()
@@ -359,7 +371,7 @@ fn maybe_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     })
 }
 
-/// Looks in `ConnectInfo` extension.
+/// Looks in `ConnectInfo` extension
 fn maybe_connect_info<T>(req: &Request<T>) -> Option<IpAddr> {
     req.extensions()
         .get::<ConnectInfo<SocketAddr>>()

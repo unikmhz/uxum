@@ -4,41 +4,41 @@ use serde::{Deserialize, Serialize};
 
 use crate::{layers::buffer::*, layers::cb::*, layers::rate::*, logging::LoggingConfig};
 
-/// Top-level application configuration.
+/// Top-level application configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct AppConfig {
-    /// Logging configuration.
+    /// Logging configuration
     pub logging: LoggingConfig,
-    /// Individual handler configuration.
+    /// Individual handler configuration
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
 }
 
-/// Configuration of a single handler.
+/// Configuration of a single handler
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct HandlerConfig {
-    /// Method is completely disabled at runtime.
+    /// Method is completely disabled at runtime
     #[serde(default)]
     pub disabled: bool,
-    /// Method is hidden from OpenAPI specification.
+    /// Method is hidden from OpenAPI specification
     #[serde(default)]
     pub hidden: bool,
-    /// Request buffering configuration.
+    /// Request buffering configuration
     #[serde(default)]
     pub buffer: Option<HandlerBufferConfig>,
-    /// Circuit breaker configuration.
+    /// Circuit breaker configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub circuit_breaker: Option<HandlerCircuitBreakerConfig>,
-    /// Rate limiter configuration.
+    /// Rate limiter configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<HandlerRateLimitConfig>,
-    /// Throttling configuration.
+    /// Throttling configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub throttle: Option<u8>,
-    /// Request timeout configuration.
+    /// Request timeout configuration
     #[serde(default, skip_serializing_if = "HandlerTimeoutsConfig::is_default")]
     pub timeout: Option<HandlerTimeoutsConfig>,
-    /// Required RBAC roles.
+    /// Required RBAC roles
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roles: Vec<String>,
 }
@@ -46,17 +46,17 @@ pub struct HandlerConfig {
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HandlerTimeoutsConfig {
-    /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header.
+    /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header
     #[serde(default = "crate::util::default_true")]
     pub use_x_timeout: bool,
-    /// Default timeout for a handler.
+    /// Default timeout for a handler
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
     pub default_timeout: Option<Duration>,
-    /// Minimum allowed timeout for a method.
+    /// Minimum allowed timeout for a method
     ///
     /// Timeout durations less than this value will automatically be responded
     /// with a 504 HTTP status code.
@@ -66,7 +66,7 @@ pub struct HandlerTimeoutsConfig {
         with = "humantime_serde"
     )]
     pub min_timeout: Option<Duration>,
-    /// Maximum allowed timeout for a method.
+    /// Maximum allowed timeout for a method
     ///
     /// Timeout durations over this value will automatically be responded
     /// with a 504 HTTP status code.

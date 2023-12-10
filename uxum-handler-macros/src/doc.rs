@@ -1,36 +1,6 @@
 use std::collections::VecDeque;
 
-use syn::{punctuated::Punctuated, token::Comma, Attribute, Expr, ExprLit, FnArg, Lit, Meta, Type};
-
-///
-pub(crate) enum RequestBody {
-    ///
-    Form,
-    ///
-    Json,
-}
-
-///
-pub(crate) fn detect_request_body(inputs: Punctuated<FnArg, Comma>) -> Option<RequestBody> {
-    inputs.iter().find_map(|input| match input {
-        FnArg::Typed(arg_type) => match arg_type.ty.as_ref() {
-            Type::Path(path) => {
-                path.path
-                    .segments
-                    .last()
-                    .and_then(|seg| match seg.ident.to_string().as_str() {
-                        // TODO: support other extractors
-                        "Form" => Some(RequestBody::Form),
-                        "Json" => Some(RequestBody::Json),
-                        _ => None,
-                    })
-            }
-            // TODO: support other variants
-            _ => None,
-        },
-        FnArg::Receiver(_) => None,
-    })
-}
+use syn::{Attribute, Expr, ExprLit, Lit, Meta};
 
 #[derive(Default)]
 pub(crate) struct DocData {

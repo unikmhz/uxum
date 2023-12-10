@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Circuit breaker middleware configuration.
+/// Circuit breaker middleware configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct HandlerCircuitBreakerConfig {
     ///

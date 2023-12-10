@@ -12,7 +12,7 @@ use axum::{
     Extension,
 };
 use hyper::{Request, Response};
-use okapi::openapi3;
+use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
@@ -34,16 +34,16 @@ pub enum AppBuilderError {
     ApiDoc(#[from] ApiDocError),
 }
 
-/// Builder for application routes.
+/// Builder for application routes
 #[derive(Debug, Default)]
 pub struct AppBuilder {
-    /// Application configuration.
+    /// Application configuration
     config: AppConfig,
     ///
     app_name: Option<String>,
     ///
     app_version: Option<String>,
-    /// API docs configuration.
+    /// API docs configuration
     api_doc: Option<ApiDocBuilder>,
 }
 
@@ -59,30 +59,39 @@ impl From<AppConfig> for AppBuilder {
 }
 
 impl AppBuilder {
-    /// Create new builder with default configuration.
+    /// Create new builder with default configuration
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Set short name of an application
     ///
+    /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
+    /// things.
     pub fn with_app_name(mut self, app_name: impl ToString) -> Self {
         self.app_name = Some(app_name.to_string());
         self
     }
 
+    /// Set application version
     ///
+    /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
+    /// HTTP header, among other things.
     pub fn with_app_version(mut self, app_version: impl ToString) -> Self {
         self.app_version = Some(app_version.to_string());
         self
     }
 
+    /// Set used API doc builder
     ///
+    /// The builder must be configured prior to passing it to this method. This enables OpenAPI
+    /// spec generation, and an (optional) RapiDoc UI.
     pub fn with_api_doc(mut self, api_doc: ApiDocBuilder) -> Self {
         self.api_doc = Some(api_doc);
         self
     }
 
-    /// Build top-level Axum router.
+    /// Build top-level Axum router
     pub fn build(mut self) -> Result<Router, AppBuilderError> {
         let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
@@ -98,6 +107,7 @@ impl AppBuilder {
         }
         for (path, handlers) in grouped.into_iter() {
             let _span = info_span!("register_path", path).entered();
+            let mut has_some = false;
             let mut mrtr: MethodRouter<(), Body, BoxError> = MethodRouter::new();
             for handler in handlers {
                 let name = handler.name();
@@ -110,9 +120,12 @@ impl AppBuilder {
                     }
                 }
                 mrtr = handler.register_method(mrtr, self.config.handlers.get(name));
+                has_some = true;
                 info!("Handler registered");
             }
-            rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
+            if has_some {
+                rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
+            }
         }
 
         if self.api_doc.is_some() {
@@ -209,7 +222,7 @@ pub trait HandlerExt: Sync {
         mrtr: MethodRouter<(), Body, BoxError>,
         cfg: Option<&HandlerConfig>,
     ) -> MethodRouter<(), Body, BoxError>;
-    fn openapi_spec(&self) -> openapi3::Operation;
+    fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 
 inventory::collect!(&'static dyn HandlerExt);

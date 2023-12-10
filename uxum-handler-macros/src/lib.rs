@@ -2,9 +2,10 @@
 #![deny(elided_lifetimes_in_paths)]
 #![deny(unreachable_pub)]
 
+mod body;
 mod case;
+mod doc;
 mod handler;
-mod parse;
 mod path;
 mod util;
 
@@ -14,7 +15,12 @@ use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::{format_ident, quote};
 use syn::{parse_macro_input, ItemFn};
 
-use crate::{case::ToCamelCase, handler::HandlerData, path::format_path_for_spec};
+use crate::{
+    body::detect_request_body,
+    case::ToCamelCase,
+    handler::{HandlerData, HandlerMethod},
+    path::format_path_for_spec,
+};
 
 #[proc_macro_error]
 #[proc_macro_attribute]
@@ -38,20 +44,33 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
     };
     // dbg!(&attr_args);
     // dbg!(&data);
-    if input.sig.ident == "compute" {
-        dbg!(&input);
-    }
+    // if input.sig.ident == "name_from_text_body" {
+    //     dbg!(&input);
+    // }
 
     let handler_name = data.name.unwrap_or_else(|| input.sig.ident.to_string());
     let handler_path = data.path.unwrap_or_else(|| format!("/{handler_name}"));
     let handler_spec_path = format_path_for_spec(&handler_path);
-    let handler_method = data.method;
-    let handler_spec =
-        data.spec
-            .generate_spec(&handler_name, &handler_path, &handler_method, &input);
+    let request_body = detect_request_body(&input);
+    let handler_method = match data.method {
+        Some(method) => method,
+        None => {
+            if request_body.is_some() {
+                HandlerMethod::Post
+            } else {
+                HandlerMethod::Get
+            }
+        }
+    };
+    let handler_spec = data.spec.generate_spec(
+        &handler_name,
+        &handler_path,
+        &handler_method,
+        &input,
+        &request_body,
+    );
 
     quote! {
-        // TODO: instrument
         #input
 
         #[doc(hidden)]
@@ -66,12 +85,16 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     },
                     http,
                     inventory,
+                    okapi,
                     openapi3,
+                    schemars,
                 },
                 apply_layers,
                 HandlerConfig,
                 HandlerExt,
             };
+
+            use super::*;
 
             struct #handler_ident;
 
@@ -112,7 +135,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     })(apply_layers(self, super::#fn_ident.into_service(), cfg))
                 }
 
-                fn openapi_spec(&self) -> openapi3::Operation {
+                fn openapi_spec(&self, gen: &mut schemars::gen::SchemaGenerator) -> openapi3::Operation {
                     #handler_spec
                 }
             }

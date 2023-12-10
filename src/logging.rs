@@ -23,7 +23,7 @@ pub enum LoggingError {
     Directory(#[from] tracing_appender::rolling::InitError),
 }
 
-/// Logging configuration.
+/// Logging configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct LoggingConfig {
     #[serde(default)]
@@ -56,7 +56,7 @@ pub struct LoggingSubscriberConfig {
     ///
     #[serde(default)]
     pub level: LoggingLevel,
-    /// Use ANSI escape sequences for output colors and formatting.
+    /// Use ANSI escape sequences for output colors and formatting
     #[serde(default)]
     pub color: bool,
     ///

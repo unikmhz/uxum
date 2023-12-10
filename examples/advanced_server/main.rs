@@ -16,6 +16,7 @@ use uxum::{
     ApiDocBuilder, AppBuilder, AppConfig, ServerBuilder,
 };
 
+/// Root container for app configuration.
 #[derive(Deserialize)]
 struct ServiceConfig {
     #[serde(flatten)]
@@ -103,6 +104,18 @@ async fn name_from_qs(q: Query<QueryName>) -> String {
     format!("Hello {}!", q.name)
 }
 
+/// Greet someone using a name from a text body
+#[handler]
+async fn name_from_text_body(body: String) -> String {
+    format!("Hello {}!", body)
+}
+
+/// Greet someone using a name from a binary body
+#[handler]
+async fn name_from_binary_body(body: bytes::Bytes) -> String {
+    format!("Hello {:?}!", body)
+}
+
 /// Greet someone using a name from a URL path element
 #[handler(
     path = "/hello/:name",
@@ -115,23 +128,33 @@ async fn name_from_path(args: Path<String>) -> String {
     format!("Hello {}!", args.0)
 }
 
+/// Requested operation
 #[derive(Clone, Copy, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum ComputeOp {
+    /// Add two arguments
     #[default]
     Add,
+    /// Subtract second argument from the first
     Subtract,
+    /// Multiply two arguments
     Multiply,
+    /// Divide first argument by the second
     Divide,
 }
 
+/// Request body
 #[derive(Deserialize, JsonSchema)]
 pub struct ComputeRequest {
+    /// First argument
     arg1: i64,
+    /// Second argument
     arg2: i64,
     #[serde(default)]
     op: ComputeOp,
 }
 
+/// Result of computation
 #[derive(JsonSchema, Serialize)]
 pub struct ComputeResponse {
     result: i64,
@@ -140,14 +163,13 @@ pub struct ComputeResponse {
 /// Perform simple arithmetic
 ///
 /// Gets an operator and two operands as input. Returns result of operation.
-#[handler(method = "POST")]
+#[handler(method = "POST", spec(tag = "calc"))]
 async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
     let result = match req.op {
         ComputeOp::Add => req.arg1 + req.arg2,
         ComputeOp::Subtract => req.arg1 - req.arg2,
         ComputeOp::Multiply => req.arg1 * req.arg2,
-        ComputeOp::Divide if req.arg2 != 0 => req.arg1 / req.arg2,
-        _ => todo!(),
+        ComputeOp::Divide => req.arg1 / req.arg2,
     };
     Json(ComputeResponse { result })
 }

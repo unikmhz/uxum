@@ -13,7 +13,7 @@ use tracing::{debug, debug_span, error, info};
 
 use crate::errors::IoError;
 
-/// Error type returned by server builder.
+/// Error type returned by server builder
 #[derive(Debug, Error)]
 pub enum ServerBuilderError {
     #[error("Unable to parse endpoint address: {0}")]
@@ -42,31 +42,31 @@ pub enum ServerBuilderError {
     NoProtocolsEnabled,
 }
 
-///
+/// Builder for HTTP server
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ServerBuilder {
-    /// Host/address and port to listen on.
+    /// Host/address and port to listen on
     #[serde(default = "ServerBuilder::default_listen")]
     listen: String,
-    /// Sleep on accept errors.
+    /// Sleep on accept errors
     #[serde(default)]
     sleep_on_accept_errors: bool,
-    ///
+    /// Size of TCP receive buffer, in bytes
     #[serde(default)]
     recv_buffer: Option<NonZeroUsize>,
-    ///
+    /// Size of TCP send buffer, in bytes
     #[serde(default)]
     send_buffer: Option<NonZeroUsize>,
-    ///
+    /// IP-level socket configuration
     #[serde(default)]
     ip: IpConfig,
-    ///
+    /// TCP-level socket configuration
     #[serde(default)]
     tcp: TcpConfig,
-    ///
+    /// Configuration specific to HTTP/1 protocol
     #[serde(default)]
     http1: Http1Config,
-    ///
+    /// Configuration specific to HTTP/2 protocol
     #[serde(default)]
     http2: Http2Config,
     // TODO: TLS
@@ -92,12 +92,12 @@ impl ServerBuilder {
         "localhost:8080".into()
     }
 
-    ///
+    /// Create new server builder with default configuration
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Build network server.
+    /// Build network server
     pub async fn build(self) -> Result<hyper::server::Builder<AddrIncoming>, ServerBuilderError> {
         let _span = debug_span!("build_server").entered();
         let (sock, addr) = socket(&self.listen).await?;
@@ -193,7 +193,7 @@ struct IpConfig {
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct TcpConfig {
-    /// Set TCP_NODELAY socket options for accepted connections.
+    /// Set TCP_NODELAY socket options for accepted connections
     #[serde(default = "crate::util::default_true")]
     nodelay: bool,
     ///
@@ -202,7 +202,7 @@ struct TcpConfig {
     ///
     #[serde(default)]
     mss: Option<NonZeroU32>,
-    /// TCP keepalive socket options.
+    /// TCP keepalive socket options
     #[serde(default)]
     keepalive: TcpKeepaliveConfig,
 }
@@ -224,11 +224,12 @@ impl TcpConfig {
     }
 }
 
-/// TCP keepalive configuration.
+/// TCP keepalive configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 struct TcpKeepaliveConfig {
-    /// Duration to remain idle before sending TCP keepalive probes. TCP keepalive is disabled if
-    /// value is not provided.
+    /// Duration to remain idle before sending TCP keepalive probes
+    ///
+    /// TCP keepalive is disabled if value is not provided.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -236,7 +237,7 @@ struct TcpKeepaliveConfig {
     )]
     idle: Option<Duration>,
     /// Duration between two successive TCP keepalive retransmissions, if acknowledgement
-    /// to the previous keepalive transmission is not received.
+    /// to the previous keepalive transmission is not received
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -244,14 +245,14 @@ struct TcpKeepaliveConfig {
     )]
     interval: Option<Duration>,
     /// Number of retransmissions to be carried out before declaring that remote end is not
-    /// available.
+    /// available
     retries: Option<NonZeroU32>,
 }
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Http1Config {
-    /// Enable HTTP/1 protocol.
+    /// Enable HTTP/1 protocol
     #[serde(default = "crate::util::default_true")]
     enabled: bool,
     ///
@@ -292,7 +293,7 @@ impl Default for Http1Config {
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Http2Config {
-    /// Enable HTTP/2 protocol.
+    /// Enable HTTP/2 protocol
     #[serde(default = "crate::util::default_true")]
     enabled: bool,
     ///
