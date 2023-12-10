@@ -16,7 +16,7 @@ use uxum::{
     ApiDocBuilder, AppBuilder, AppConfig, ServerBuilder,
 };
 
-/// Root container for app configuration.
+/// Root container for app configuration
 #[derive(Deserialize)]
 struct ServiceConfig {
     #[serde(flatten)]
@@ -40,6 +40,10 @@ async fn main() {
     registry.init();
     let api_doc = ApiDocBuilder::default()
         .with_app_title("Advanced Server")
+        .with_description("Kitchen sink primer for *various* library features.")
+        .with_contact_name("Uxum developers")
+        .with_contact_url("http://uxum.example.com")
+        .with_contact_email("example@example.com")
         .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
         .with_tag("tag2", Some("Some other tag"), None::<&str>);
     let app_builder: AppBuilder = config.app.into();

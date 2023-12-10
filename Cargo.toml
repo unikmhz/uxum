@@ -27,6 +27,7 @@ humantime-serde = "1.1"
 http = "1.0"
 hyper = {version = "0.14", features = ["http2", "server"]}
 inventory = "0.3"
+maplit = "1.0"
 okapi = {version = "0.7.0-rc.1", features = ["preserve_order"]}
 pin-project = "1.1"
 schemars = {version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"]}

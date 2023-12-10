@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
 use axum::{
@@ -52,10 +52,25 @@ pub struct ApiDocBuilder {
     app_title: Option<String>,
     ///
     #[serde(default)]
+    description: Option<String>,
+    ///
+    #[serde(default)]
+    contact_name: Option<String>,
+    ///
+    #[serde(default)]
+    contact_url: Option<String>,
+    ///
+    #[serde(default)]
+    contact_email: Option<String>,
+    ///
+    #[serde(default)]
     tags: Vec<openapi3::Tag>,
     ///
     #[serde(default)]
     inline_subschemas: bool,
+    ///
+    #[serde(default)]
+    rapidoc_attributes: HashMap<String, String>,
 }
 
 impl Default for ApiDocBuilder {
@@ -67,8 +82,21 @@ impl Default for ApiDocBuilder {
             app_name: None,
             app_version: None,
             app_title: None,
+            description: None,
+            contact_name: None,
+            contact_url: None,
+            contact_email: None,
             tags: vec![],
             inline_subschemas: false,
+            rapidoc_attributes: maplit::hashmap! {
+                "sort-tags".into() => "true".into(),
+                "theme".into() => "dark".into(),
+                "layout".into() => "row".into(),
+                "render-style".into() => "focused".into(),
+                "allow-spec-file-download".into() => "true".into(),
+                "schema-description-expanded".into() => "true".into(),
+                "show-components".into() => "true".into(),
+            },
         }
     }
 }
@@ -136,6 +164,30 @@ impl ApiDocBuilder {
         self
     }
 
+    /// Set top-level description
+    pub fn with_description(mut self, descr: impl ToString) -> Self {
+        self.description = Some(descr.to_string());
+        self
+    }
+
+    /// Set contact name
+    pub fn with_contact_name(mut self, name: impl ToString) -> Self {
+        self.contact_name = Some(name.to_string());
+        self
+    }
+
+    /// Set contact URL
+    pub fn with_contact_url(mut self, url: impl ToString) -> Self {
+        self.contact_url = Some(url.to_string());
+        self
+    }
+
+    /// Set contact email
+    pub fn with_contact_email(mut self, email: impl ToString) -> Self {
+        self.contact_email = Some(email.to_string());
+        self
+    }
+
     /// Add optional operation for a tag
     pub fn with_tag<T, U, V>(mut self, tag: T, description: Option<U>, url: Option<V>) -> Self
     where
@@ -159,6 +211,29 @@ impl ApiDocBuilder {
     /// Discourage use of references in generated OpenAPI schema
     pub fn with_inline_subschemas(mut self) -> Self {
         self.inline_subschemas = true;
+        self
+    }
+
+    /// Set single RapiDoc attribute
+    pub fn with_rapidoc_attribute<T, U>(mut self, key: T, value: U) -> Self
+    where
+        T: ToString,
+        U: ToString,
+    {
+        self.rapidoc_attributes
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Set multiple rapidoc attributes
+    pub fn with_rapidoc_attributes<'a, T, U, V>(mut self, kvs: V) -> Self
+    where
+        T: ToString + 'a,
+        U: ToString + 'a,
+        V: IntoIterator<Item = (&'a T, &'a U)>,
+    {
+        self.rapidoc_attributes
+            .extend(kvs.into_iter().map(|(k, v)| (k.to_string(), v.to_string())));
         self
     }
 
@@ -239,13 +314,26 @@ impl ApiDocBuilder {
             let path = path.to_string();
             paths.insert(path, path_item);
         }
+        let contact = if self.contact_name.is_some()
+            || self.contact_email.is_some()
+            || self.contact_url.is_some()
+        {
+            Some(openapi3::Contact {
+                name: self.contact_name.clone(),
+                url: self.contact_url.clone(),
+                email: self.contact_email.clone(),
+                extensions: Default::default(),
+            })
+        } else {
+            None
+        };
         Ok(openapi3::OpenApi {
             openapi: Self::OPENAPI_VERSION.into(),
             info: openapi3::Info {
                 title: self.app_title().to_string(),
-                description: None,
+                description: self.description.clone(),
                 terms_of_service: None,
-                contact: None,
+                contact,
                 license: None,
                 version: self.app_version.clone().unwrap_or("0.0.0".into()),
                 extensions: Default::default(),
