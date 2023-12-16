@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
 use axum::{
+    extract::State,
     http::header,
     response::IntoResponse,
     routing::{self, Router},
@@ -32,44 +33,49 @@ pub enum ApiDocError {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, Template)]
 #[template(path = "rapidoc.html.j2", ext = "html")]
 pub struct ApiDocBuilder {
-    ///
+    /// URL path for API documentation UI (RapiDoc)
     #[serde(default = "ApiDocBuilder::default_apidoc_path")]
     apidoc_path: String,
-    ///
+    /// URL path for generated OpenAPI spec
     #[serde(default = "ApiDocBuilder::default_spec_path")]
     spec_path: String,
-    ///
+    /// URL path for embedded RapiDoc JavaScript source
     #[serde(default = "ApiDocBuilder::default_js_path")]
     js_path: String,
-    ///
+    /// Short app name
     #[serde(default)]
     app_name: Option<String>,
-    ///
+    /// App version
     #[serde(default)]
     app_version: Option<String>,
-    ///
+    /// App title for use in UI and documentation
     #[serde(default)]
     app_title: Option<String>,
-    ///
+    /// Top-level description
     #[serde(default)]
     description: Option<String>,
-    ///
+    /// Contact name
     #[serde(default)]
     contact_name: Option<String>,
-    ///
+    /// Contact URL
     #[serde(default)]
     contact_url: Option<String>,
-    ///
+    /// Contact email
     #[serde(default)]
     contact_email: Option<String>,
-    ///
+    /// Schema tag metadata
     #[serde(default)]
     tags: Vec<openapi3::Tag>,
+    /// Whether to install RapiDoc UI endpoints
+    #[serde(default = "crate::util::default_true")]
+    enable_ui: bool,
+    /// Inline the subschemas or use references
     ///
+    /// See [`SchemaSettings::inline_subschemas`].
     #[serde(default)]
     inline_subschemas: bool,
-    ///
-    #[serde(default)]
+    /// Attributes passed to RapiDoc component
+    #[serde(default = "ApiDocBuilder::default_rapidoc_attributes")]
     rapidoc_attributes: HashMap<String, String>,
 }
 
@@ -87,16 +93,9 @@ impl Default for ApiDocBuilder {
             contact_url: None,
             contact_email: None,
             tags: vec![],
+            enable_ui: true,
             inline_subschemas: false,
-            rapidoc_attributes: maplit::hashmap! {
-                "sort-tags".into() => "true".into(),
-                "theme".into() => "dark".into(),
-                "layout".into() => "row".into(),
-                "render-style".into() => "focused".into(),
-                "allow-spec-file-download".into() => "true".into(),
-                "schema-description-expanded".into() => "true".into(),
-                "show-components".into() => "true".into(),
-            },
+            rapidoc_attributes: Self::default_rapidoc_attributes(),
         }
     }
 }
@@ -106,21 +105,39 @@ impl ApiDocBuilder {
     const OPENAPI_VERSION: &'static str = "3.0.3";
 
     /// Default value for [`Self::apidoc_path`]
+    #[must_use]
     fn default_apidoc_path() -> String {
         "/apidoc".into()
     }
 
     /// Default value for [`Self::spec_path`]
+    #[must_use]
     fn default_spec_path() -> String {
         "/openapi.json".into()
     }
 
     /// Default value for [`Self::js_path`]
+    #[must_use]
     fn default_js_path() -> String {
         "/rapidoc-min.js".into()
     }
 
+    /// Default value for [`Self::rapidoc_attributes`]
+    #[must_use]
+    fn default_rapidoc_attributes() -> HashMap<String, String> {
+        maplit::hashmap! {
+            "sort-tags".into() => "true".into(),
+            "theme".into() => "dark".into(),
+            "layout".into() => "row".into(),
+            "render-style".into() => "focused".into(),
+            "allow-spec-file-download".into() => "true".into(),
+            "schema-description-expanded".into() => "true".into(),
+            "show-components".into() => "true".into(),
+        }
+    }
+
     /// Get app title as a string slice
+    #[must_use]
     pub fn app_title(&self) -> &str {
         self.app_title
             .as_deref()
@@ -129,66 +146,77 @@ impl ApiDocBuilder {
     }
 
     /// Set URL path for API documentation UI (RapiDoc)
+    #[must_use]
     pub fn with_apidoc_path(mut self, path: impl ToString) -> Self {
         self.apidoc_path = path.to_string();
         self
     }
 
     /// Set URL path for generated OpenAPI spec
+    #[must_use]
     pub fn with_spec_path(mut self, path: impl ToString) -> Self {
         self.spec_path = path.to_string();
         self
     }
 
     /// Set URL path for embedded RapiDoc JavaScript source
+    #[must_use]
     pub fn with_js_path(mut self, path: impl ToString) -> Self {
         self.js_path = path.to_string();
         self
     }
 
     /// Set short app name
+    #[must_use]
     pub fn with_app_name(mut self, name: impl ToString) -> Self {
         self.app_name = Some(name.to_string());
         self
     }
 
     /// Set app version
+    #[must_use]
     pub fn with_app_version(mut self, version: impl ToString) -> Self {
         self.app_version = Some(version.to_string());
         self
     }
 
     /// Set app title for use in UI and documentation
+    #[must_use]
     pub fn with_app_title(mut self, title: impl ToString) -> Self {
         self.app_title = Some(title.to_string());
         self
     }
 
     /// Set top-level description
+    #[must_use]
     pub fn with_description(mut self, descr: impl ToString) -> Self {
         self.description = Some(descr.to_string());
         self
     }
 
     /// Set contact name
+    #[must_use]
     pub fn with_contact_name(mut self, name: impl ToString) -> Self {
         self.contact_name = Some(name.to_string());
         self
     }
 
     /// Set contact URL
+    #[must_use]
     pub fn with_contact_url(mut self, url: impl ToString) -> Self {
         self.contact_url = Some(url.to_string());
         self
     }
 
     /// Set contact email
+    #[must_use]
     pub fn with_contact_email(mut self, email: impl ToString) -> Self {
         self.contact_email = Some(email.to_string());
         self
     }
 
-    /// Add optional operation for a tag
+    /// Add optional information for a tag
+    #[must_use]
     pub fn with_tag<T, U, V>(mut self, tag: T, description: Option<U>, url: Option<V>) -> Self
     where
         T: ToString,
@@ -208,13 +236,22 @@ impl ApiDocBuilder {
         self
     }
 
+    /// Disable RapiDoc UI
+    #[must_use]
+    pub fn without_ui(mut self) -> Self {
+        self.enable_ui = false;
+        self
+    }
+
     /// Discourage use of references in generated OpenAPI schema
+    #[must_use]
     pub fn with_inline_subschemas(mut self) -> Self {
         self.inline_subschemas = true;
         self
     }
 
     /// Set single RapiDoc attribute
+    #[must_use]
     pub fn with_rapidoc_attribute<T, U>(mut self, key: T, value: U) -> Self
     where
         T: ToString,
@@ -226,6 +263,7 @@ impl ApiDocBuilder {
     }
 
     /// Set multiple rapidoc attributes
+    #[must_use]
     pub fn with_rapidoc_attributes<'a, T, U, V>(mut self, kvs: V) -> Self
     where
         T: ToString + 'a,
@@ -250,6 +288,7 @@ impl ApiDocBuilder {
     }
 
     /// Create schema generator for custom types
+    #[must_use]
     fn build_generator(&self) -> SchemaGenerator {
         SchemaSettings::openapi3()
             .with(|s| {
@@ -261,24 +300,23 @@ impl ApiDocBuilder {
     /// Build Axum router containing all OpenAPI methods
     pub fn build_router(&self) -> Result<Router, ApiDocError> {
         let _span = debug_span!("build_apidoc").entered();
-        let js_map_path = format!("{}.map", &self.js_path);
-        let index_path = format!("{}/index.html", &self.apidoc_path);
         let spec = self.render_spec()?;
-        let rtr = Router::new()
-            .route(
-                &self.apidoc_path,
-                routing::get(get_rapidoc_index).layer(Extension(self.clone())),
-            )
-            .route(
-                &self.spec_path,
-                routing::get(get_spec).layer(Extension(spec)),
-            )
-            .route(
-                &index_path,
-                routing::get(get_rapidoc_index).layer(Extension(self.clone())),
-            )
-            .route(&self.js_path, routing::get(get_rapidoc_js))
-            .route(&js_map_path, routing::get(get_rapidoc_js_map));
+        let mut rtr: Router = Router::new().route(
+            &self.spec_path,
+            routing::get(get_spec).layer(Extension(spec)),
+        );
+        if self.enable_ui {
+            let js_map_path = format!("{}.map", &self.js_path);
+            let index_path = format!("{}/index.html", &self.apidoc_path);
+            rtr = rtr.merge(
+                Router::new()
+                    .route(&self.apidoc_path, routing::get(get_rapidoc_index))
+                    .route(&index_path, routing::get(get_rapidoc_index))
+                    .route(&self.js_path, routing::get(get_rapidoc_js))
+                    .route(&js_map_path, routing::get(get_rapidoc_js_map))
+                    .with_state(self.clone()),
+            );
+        }
         debug!("Built API doc router");
         Ok(rtr)
     }
@@ -296,6 +334,7 @@ impl ApiDocBuilder {
         let mut gen = self.build_generator();
         let mut paths = Map::new();
         for (path, handlers) in grouped.into_iter() {
+            // TODO: skip disabled handlers
             let mut path_item = openapi3::PathItem::default();
             for handler in handlers {
                 let spec = handler.openapi_spec(&mut gen);
@@ -385,7 +424,7 @@ async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
 }
 
 ///
-async fn get_rapidoc_index(api_doc: Extension<ApiDocBuilder>) -> impl IntoResponse {
+async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
     api_doc.0.into_response()
 }
 

@@ -13,5 +13,8 @@ handlers:
     disabled: false
     rate_limit:
       rps: 1
+metrics:
+  labels:
+    env: example
 server:
   listen: 127.0.0.1:8080

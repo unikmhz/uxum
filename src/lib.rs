@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths)]
 #![deny(unreachable_pub)]
+// #![warn(missing_docs)]
 
 mod apidoc;
 mod builder;
@@ -9,6 +10,7 @@ mod errors;
 mod layers;
 mod logging;
 mod metrics;
+pub mod prelude;
 pub mod reexport;
 mod util;
 
@@ -22,4 +24,5 @@ pub use self::{
     },
     config::*,
     layers::{ext::HandlerName, rate::RateLimitError},
+    metrics::{MetricsBuilder, MetricsError, MetricsState},
 };

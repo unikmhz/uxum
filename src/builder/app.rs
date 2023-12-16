@@ -26,12 +26,16 @@ use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
     config::{AppConfig, HandlerConfig},
     layers::ext::HandlerName,
+    metrics::{MetricsBuilder, MetricsError},
 };
 
+/// Error type used in app builder
 #[derive(Debug, Error)]
 pub enum AppBuilderError {
     #[error(transparent)]
     ApiDoc(#[from] ApiDocError),
+    #[error(transparent)]
+    Metrics(#[from] MetricsError),
 }
 
 /// Builder for application routes
@@ -39,12 +43,10 @@ pub enum AppBuilderError {
 pub struct AppBuilder {
     /// Application configuration
     config: AppConfig,
-    ///
+    /// Short application name
     app_name: Option<String>,
-    ///
+    /// Application version
     app_version: Option<String>,
-    /// API docs configuration
-    api_doc: Option<ApiDocBuilder>,
 }
 
 impl From<AppConfig> for AppBuilder {
@@ -53,13 +55,13 @@ impl From<AppConfig> for AppBuilder {
             config: value,
             app_name: None,
             app_version: None,
-            api_doc: None,
         }
     }
 }
 
 impl AppBuilder {
     /// Create new builder with default configuration
+    #[must_use]
     pub fn new() -> Self {
         Default::default()
     }
@@ -68,6 +70,7 @@ impl AppBuilder {
     ///
     /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
     /// things.
+    #[must_use]
     pub fn with_app_name(mut self, app_name: impl ToString) -> Self {
         self.app_name = Some(app_name.to_string());
         self
@@ -77,6 +80,7 @@ impl AppBuilder {
     ///
     /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
     /// HTTP header, among other things.
+    #[must_use]
     pub fn with_app_version(mut self, app_version: impl ToString) -> Self {
         self.app_version = Some(app_version.to_string());
         self
@@ -86,9 +90,48 @@ impl AppBuilder {
     ///
     /// The builder must be configured prior to passing it to this method. This enables OpenAPI
     /// spec generation, and an (optional) RapiDoc UI.
+    ///
+    /// Alternatively, you can include API doc configuration in [`AppConfig::api_doc`] section.
+    #[must_use]
     pub fn with_api_doc(mut self, api_doc: ApiDocBuilder) -> Self {
-        self.api_doc = Some(api_doc);
+        self.config.api_doc = Some(api_doc);
         self
+    }
+
+    /// Set used metrics builder
+    ///
+    /// The builder must be configured prior to passing it to this method. This enables gathering
+    /// of handler execution metrics, as well as an exporter HTTP endpoint.
+    ///
+    /// Alternatively, you can include metrics configuration in [`AppConfig::metrics`] section.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: MetricsBuilder) -> Self {
+        self.config.metrics = Some(metrics);
+        self
+    }
+
+    /// Configure API doc builder
+    ///
+    /// This gets the builder from configuration, or creates a new default one if configuration
+    /// wasn't provided. Next it passes the builder to the provided callback function for
+    /// additional customization.
+    pub fn configure_api_doc<F>(&mut self, modifier: F)
+    where
+        F: FnOnce(ApiDocBuilder) -> ApiDocBuilder,
+    {
+        self.config.api_doc = Some(modifier(self.config.api_doc.take().unwrap_or_default()));
+    }
+
+    /// Configure metrics builder
+    ///
+    /// This gets the builder from configuration, or creates a new default one if configuration
+    /// wasn't provided. Next it passes the builder to the provided callback function for
+    /// additional customization.
+    pub fn configure_metrics<F>(&mut self, modifier: F)
+    where
+        F: FnOnce(MetricsBuilder) -> MetricsBuilder,
+    {
+        self.config.metrics = Some(modifier(self.config.metrics.take().unwrap_or_default()));
     }
 
     /// Build top-level Axum router
@@ -96,6 +139,18 @@ impl AppBuilder {
         let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
+
+        let metrics = match &self.config.metrics {
+            Some(builder) => {
+                // TODO: external state for application-defined metrics
+                let state = builder.build_state()?;
+                // TODO: set_app_defaults
+                rtr = rtr.merge(state.build_router());
+                Some(state)
+            }
+            None => None,
+        };
+
         // TODO: error/panic on duplicate handler names
         for handler in inventory::iter::<&dyn HandlerExt> {
             let _span = debug_span!("iter_handler", name = handler.name()).entered();
@@ -124,14 +179,19 @@ impl AppBuilder {
                 info!("Handler registered");
             }
             if has_some {
-                rtr = rtr.route(path, mrtr.layer(HandleErrorLayer::new(error_handler)));
+                // FIXME: remove multiple error handling layers
+                let path_layers = ServiceBuilder::new()
+                    .layer(HandleErrorLayer::new(error_handler))
+                    .option_layer(metrics.clone())
+                    .layer(HandleErrorLayer::new(error_handler));
+                rtr = rtr.route(path, mrtr.layer(path_layers));
             }
         }
 
-        if self.api_doc.is_some() {
+        if self.config.api_doc.is_some() {
             let app_name = self.app_name.clone();
             let app_version = self.app_version.clone();
-            if let Some(ref mut api_doc) = self.api_doc {
+            if let Some(ref mut api_doc) = self.config.api_doc {
                 api_doc.set_app_defaults(app_name, app_version);
                 rtr = rtr.merge(api_doc.build_router()?);
             }
@@ -159,7 +219,8 @@ impl AppBuilder {
         Ok(rtr)
     }
 
-    ///
+    /// Generate a value to be used in HTTP Server header
+    #[must_use]
     fn server_header(&self) -> Option<HeaderValue> {
         const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
         if let Some(app_name) = &self.app_name {
@@ -182,6 +243,7 @@ async fn error_handler(err: BoxError) -> impl IntoResponse {
 }
 
 ///
+#[must_use]
 pub fn apply_layers<X, S, T, U>(
     hext: &X,
     handler: S,

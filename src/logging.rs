@@ -89,6 +89,7 @@ impl Default for LoggingSubscriberConfig {
 
 impl LoggingSubscriberConfig {
     ///
+    #[must_use]
     pub fn default_for_dev() -> Self {
         Self {
             format: LoggingFormat::Pretty,
@@ -152,10 +153,14 @@ impl LoggingSubscriberConfig {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase", tag = "format")]
 pub enum LoggingFormat {
+    ///
     #[default]
     Full,
+    ///
     Compact,
+    ///
     Pretty,
+    ///
     Json {
         ///
         #[serde(default)]
@@ -267,6 +272,8 @@ impl LoggingBufferConfig {
         128000
     }
 
+    ///
+    #[must_use]
     pub fn make_builder(&self) -> NonBlockingBuilder {
         let mut builder = NonBlockingBuilder::default()
             .buffered_lines_limit(self.lines)
@@ -290,10 +297,14 @@ impl LoggingBufferConfig {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum LoggingDestination {
+    ///
     #[default]
     StdOut,
+    ///
     StdErr,
+    ///
     File(LoggingFileConfig),
+    ///
     Directory(LoggingDirectoryConfig),
 }
 
@@ -371,10 +382,12 @@ impl Default for LoggingDirectoryConfig {
 }
 
 impl LoggingDirectoryConfig {
+    ///
     fn default_path() -> String {
         ".".into()
     }
 
+    ///
     fn default_suffix() -> Option<String> {
         Some("log".into())
     }

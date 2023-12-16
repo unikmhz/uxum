@@ -2,19 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use config::{Config, File};
 use serde::{Deserialize, Serialize};
-use uxum::{
-    handler,
-    reexport::{
-        axum::{
-            extract::{ConnectInfo, Path, Query},
-            Json,
-        },
-        schemars::JsonSchema,
-        tracing,
-        tracing_subscriber::util::SubscriberInitExt,
-    },
-    ApiDocBuilder, AppBuilder, AppConfig, ServerBuilder,
-};
+use uxum::prelude::*;
 
 /// Root container for app configuration
 #[derive(Deserialize)]
@@ -38,15 +26,17 @@ async fn main() {
         .make_registry()
         .expect("Error setting up logging");
     registry.init();
-    let api_doc = ApiDocBuilder::default()
-        .with_app_title("Advanced Server")
-        .with_description("Kitchen sink primer for *various* library features.")
-        .with_contact_name("Uxum developers")
-        .with_contact_url("http://uxum.example.com")
-        .with_contact_email("example@example.com")
-        .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
-        .with_tag("tag2", Some("Some other tag"), None::<&str>);
-    let app_builder: AppBuilder = config.app.into();
+    let mut app_builder: AppBuilder = config.app.into();
+    app_builder.configure_api_doc(|api_doc| {
+        api_doc
+            .with_app_title("Advanced Server")
+            .with_description("Kitchen sink primer for *various* library features.")
+            .with_contact_name("Uxum developers")
+            .with_contact_url("http://uxum.example.com")
+            .with_contact_email("example@example.com")
+            .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
+            .with_tag("tag2", Some("Some other tag"), None::<&str>)
+    });
     config
         .server
         .build()
@@ -56,7 +46,6 @@ async fn main() {
             app_builder
                 .with_app_name("advanced_server")
                 .with_app_version("1.2.3")
-                .with_api_doc(api_doc)
                 .build()
                 .expect("Unable to build app")
                 .into_make_service_with_connect_info::<SocketAddr>(),

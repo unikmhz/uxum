@@ -2,16 +2,26 @@ use std::{collections::HashMap, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{layers::buffer::*, layers::cb::*, layers::rate::*, logging::LoggingConfig};
+use crate::{
+    apidoc::ApiDocBuilder, layers::buffer::*, layers::cb::*, layers::rate::*,
+    logging::LoggingConfig, metrics::MetricsBuilder,
+};
 
 /// Top-level application configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct AppConfig {
     /// Logging configuration
+    #[serde(default)]
     pub logging: LoggingConfig,
     /// Individual handler configuration
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
+    /// API doc configuration
+    #[serde(default)]
+    pub api_doc: Option<ApiDocBuilder>,
+    /// Metrics configuration
+    #[serde(default)]
+    pub metrics: Option<MetricsBuilder>,
 }
 
 /// Configuration of a single handler

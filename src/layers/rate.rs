@@ -253,6 +253,7 @@ impl<T> Limiter<T> for GlobalLimiter {
 }
 
 impl GlobalLimiter {
+    ///
     fn new(config: &HandlerRateLimitConfig) -> Self {
         Self {
             limiter: RateLimiter::direct(
@@ -278,6 +279,7 @@ struct IpLimiter<K: KeyExtractor> {
 }
 
 impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
+    ///
     fn check_limit(&self, req: &Request<T>) -> Result<(), RateLimitError> {
         let key = self.extractor.extract(req)?;
         self.limiters.check_key(&key).map(|_| ()).map_err(|neg| {
@@ -288,6 +290,7 @@ impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
 }
 
 impl<K: KeyExtractor> IpLimiter<K> {
+    ///
     fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
         Self {
             extractor,

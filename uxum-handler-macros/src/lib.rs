@@ -22,6 +22,7 @@ use crate::{
     path::format_path_for_spec,
 };
 
+/// Attribute macro for declaring service endpoints
 #[proc_macro_error]
 #[proc_macro_attribute]
 pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {

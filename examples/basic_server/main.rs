@@ -1,7 +1,7 @@
 //! Very basic example of using uxum builders to quickly set up a service.
 //! No configuration is provided.
 
-use uxum::{handler, AppBuilder, AppConfig, ServerBuilder};
+use uxum::prelude::*;
 
 #[tokio::main]
 async fn main() {
