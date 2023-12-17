@@ -45,6 +45,9 @@ pub enum MetricsError {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MetricsBuilder {
+    /// Whether HTTP metrics gathering is enabled
+    #[serde(default = "crate::util::default_true")]
+    enabled: bool,
     /// Histogram metric buckets for total request duration
     ///
     /// Measured in seconds.
@@ -69,6 +72,7 @@ pub struct MetricsBuilder {
 impl Default for MetricsBuilder {
     fn default() -> Self {
         Self {
+            enabled: true,
             duration_buckets: Self::default_duration_buckets(),
             size_buckets: Self::default_size_buckets(),
             metrics_path: Self::default_metrics_path(),
@@ -123,6 +127,12 @@ impl MetricsBuilder {
     #[must_use]
     fn default_metrics_path() -> String {
         "/metrics".into()
+    }
+
+    /// Whether HTTP metrics gathering is enabled
+    #[must_use]
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
     }
 
     /// Set histogram metric buckets for total request duration

@@ -21,7 +21,7 @@ pub struct AppConfig {
     pub api_doc: Option<ApiDocBuilder>,
     /// Metrics configuration
     #[serde(default)]
-    pub metrics: Option<MetricsBuilder>,
+    pub metrics: MetricsBuilder,
 }
 
 /// Configuration of a single handler

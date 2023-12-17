@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, convert::Infallible};
 
 use axum::{
-    body::Body,
+    body::{BoxBody, HttpBody},
     error_handling::HandleErrorLayer,
     http::{
         header::{self, HeaderValue},
@@ -106,7 +106,19 @@ impl AppBuilder {
     /// Alternatively, you can include metrics configuration in [`AppConfig::metrics`] section.
     #[must_use]
     pub fn with_metrics(mut self, metrics: MetricsBuilder) -> Self {
-        self.config.metrics = Some(metrics);
+        self.config.metrics = metrics;
+        self
+    }
+
+    /// Configure metrics builder
+    ///
+    /// This gets the builder from configuration, and then passes it to the provided callback
+    /// function for additional customization.
+    pub fn with_configured_metrics<F>(mut self, modifier: F) -> Self
+    where
+        F: FnOnce(MetricsBuilder) -> MetricsBuilder,
+    {
+        self.config.metrics = modifier(self.config.metrics);
         self
     }
 
@@ -122,34 +134,18 @@ impl AppBuilder {
         self.config.api_doc = Some(modifier(self.config.api_doc.take().unwrap_or_default()));
     }
 
-    /// Configure metrics builder
-    ///
-    /// This gets the builder from configuration, or creates a new default one if configuration
-    /// wasn't provided. Next it passes the builder to the provided callback function for
-    /// additional customization.
-    pub fn configure_metrics<F>(&mut self, modifier: F)
-    where
-        F: FnOnce(MetricsBuilder) -> MetricsBuilder,
-    {
-        self.config.metrics = Some(modifier(self.config.metrics.take().unwrap_or_default()));
-    }
-
     /// Build top-level Axum router
     pub fn build(mut self) -> Result<Router, AppBuilderError> {
         let _span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
 
-        let metrics = match &self.config.metrics {
-            Some(builder) => {
-                // TODO: external state for application-defined metrics
-                let state = builder.build_state()?;
-                // TODO: set_app_defaults
-                rtr = rtr.merge(state.build_router());
-                Some(state)
-            }
-            None => None,
-        };
+        // TODO: external state for application-defined metrics
+        let metrics_state = self.config.metrics.build_state()?;
+        // TODO: set_app_defaults for metrics
+        if self.config.metrics.is_enabled() {
+            rtr = rtr.merge(metrics_state.build_router());
+        }
 
         // TODO: error/panic on duplicate handler names
         for handler in inventory::iter::<&dyn HandlerExt> {
@@ -163,7 +159,7 @@ impl AppBuilder {
         for (path, handlers) in grouped.into_iter() {
             let _span = info_span!("register_path", path).entered();
             let mut has_some = false;
-            let mut mrtr: MethodRouter<(), Body, BoxError> = MethodRouter::new();
+            let mut mrtr: MethodRouter = MethodRouter::new();
             for handler in handlers {
                 let name = handler.name();
                 let _span =
@@ -179,12 +175,7 @@ impl AppBuilder {
                 info!("Handler registered");
             }
             if has_some {
-                // FIXME: remove multiple error handling layers
-                let path_layers = ServiceBuilder::new()
-                    .layer(HandleErrorLayer::new(error_handler))
-                    .option_layer(metrics.clone())
-                    .layer(HandleErrorLayer::new(error_handler));
-                rtr = rtr.route(path, mrtr.layer(path_layers));
+                rtr = rtr.route(path, mrtr);
             }
         }
 
@@ -208,6 +199,7 @@ impl AppBuilder {
                             .latency_unit(LatencyUnit::Micros),
                     ),
             )
+            .layer(metrics_state)
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
                 self.server_header(),
@@ -248,16 +240,19 @@ pub fn apply_layers<X, S, T, U>(
     hext: &X,
     handler: S,
     conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<T>, S::Response, BoxError>
+) -> BoxCloneService<Request<T>, Response<BoxBody>, Infallible>
 where
     X: HandlerExt,
     S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
     T: Send + Sync + 'static,
+    U: HttpBody<Data = axum::body::Bytes> + Send + 'static,
+    <U as HttpBody>::Error: std::error::Error + Send + Sync,
 {
     ServiceBuilder::new()
         .boxed_clone()
+        .layer(HandleErrorLayer::new(error_handler))
         .layer(Extension(HandlerName::new(hext.name())))
         .option_layer(
             conf.and_then(|cfg| cfg.buffer.as_ref())
@@ -279,11 +274,7 @@ pub trait HandlerExt: Sync {
     fn path(&self) -> &'static str;
     fn spec_path(&self) -> &'static str;
     fn method(&self) -> http::Method;
-    fn register_method(
-        &self,
-        mrtr: MethodRouter<(), Body, BoxError>,
-        cfg: Option<&HandlerConfig>,
-    ) -> MethodRouter<(), Body, BoxError>;
+    fn register_method(&self, mrtr: MethodRouter, cfg: Option<&HandlerConfig>) -> MethodRouter;
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 
