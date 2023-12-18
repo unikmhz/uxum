@@ -278,7 +278,11 @@ impl ApiDocBuilder {
     /// Set fallback app name and version
     ///
     /// This gets called from [`crate::AppBuilder`]
-    pub fn set_app_defaults(&mut self, name: Option<String>, version: Option<String>) {
+    pub fn set_app_defaults(
+        &mut self,
+        name: Option<impl ToString>,
+        version: Option<impl ToString>,
+    ) {
         if self.app_name.is_none() {
             self.app_name = name.map(|s| s.to_string());
         }

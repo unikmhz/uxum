@@ -23,6 +23,7 @@ use opentelemetry_sdk::{
     resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector},
     Resource,
 };
+use opentelemetry_semantic_conventions::resource as res;
 use pin_project::pin_project;
 use prometheus::{Encoder, Registry, TextEncoder};
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,20 @@ pub struct MetricsBuilder {
     /// Optional prefix to use before
     #[serde(default)]
     prefix: Option<String>,
+    /// OpenTelemetry resource detection timeout
+    #[serde(
+        default = "MetricsBuilder::default_detector_timeout",
+        with = "humantime_serde"
+    )]
+    detector_timeout: Duration,
+    /// App namespace
+    app_namespace: Option<String>,
+    /// Short app name
+    #[serde(default)]
+    app_name: Option<String>,
+    /// App version
+    #[serde(default)]
+    app_version: Option<String>,
 }
 
 impl Default for MetricsBuilder {
@@ -78,6 +93,10 @@ impl Default for MetricsBuilder {
             metrics_path: Self::default_metrics_path(),
             labels: HashMap::new(),
             prefix: None,
+            detector_timeout: Self::default_detector_timeout(),
+            app_namespace: None,
+            app_name: None,
+            app_version: None,
         }
     }
 }
@@ -127,6 +146,11 @@ impl MetricsBuilder {
     #[must_use]
     fn default_metrics_path() -> String {
         "/metrics".into()
+    }
+
+    /// Default value for [`Self::detector_timeout`]
+    fn default_detector_timeout() -> Duration {
+        Duration::from_secs(6)
     }
 
     /// Whether HTTP metrics gathering is enabled
@@ -195,6 +219,43 @@ impl MetricsBuilder {
         self
     }
 
+    /// Set app namespace
+    #[must_use]
+    pub fn with_app_namespace(mut self, namespace: impl ToString) -> Self {
+        self.app_namespace = Some(namespace.to_string());
+        self
+    }
+
+    /// Set short app name
+    #[must_use]
+    pub fn with_app_name(mut self, name: impl ToString) -> Self {
+        self.app_name = Some(name.to_string());
+        self
+    }
+
+    /// Set app version
+    #[must_use]
+    pub fn with_app_version(mut self, version: impl ToString) -> Self {
+        self.app_version = Some(version.to_string());
+        self
+    }
+
+    /// Set fallback app name and version
+    ///
+    /// This gets called from [`crate::AppBuilder`]
+    pub fn set_app_defaults(
+        &mut self,
+        name: Option<impl ToString>,
+        version: Option<impl ToString>,
+    ) {
+        if self.app_name.is_none() {
+            self.app_name = name.map(|s| s.to_string());
+        }
+        if self.app_version.is_none() {
+            self.app_version = version.map(|s| s.to_string());
+        }
+    }
+
     /// Build new Prometheus registry
     fn build_prometheus_registry(&self) -> Result<Registry, MetricsError> {
         Registry::new_custom(
@@ -212,15 +273,27 @@ impl MetricsBuilder {
     pub fn build_state(&self) -> Result<MetricsState, MetricsError> {
         let _span = debug_span!("build_metrics").entered();
         let registry = self.build_prometheus_registry()?;
-        let resource = Resource::from_detectors(
-            Duration::from_secs(6), // TODO: configure
+        let mut resource = Resource::from_detectors(
+            self.detector_timeout,
             vec![
                 Box::new(SdkProvidedResourceDetector),
                 Box::new(EnvResourceDetector::new()),
                 Box::new(TelemetryResourceDetector),
             ],
         );
-        // TODO: merge computed parameters
+        let mut static_resources = Vec::new();
+        if let Some(app_namespace) = &self.app_namespace {
+            static_resources.push(res::SERVICE_NAMESPACE.string(app_namespace.clone()));
+        }
+        if let Some(app_name) = &self.app_name {
+            static_resources.push(res::SERVICE_NAME.string(app_name.clone()));
+        }
+        if let Some(app_version) = &self.app_version {
+            static_resources.push(res::SERVICE_VERSION.string(app_version.clone()));
+        }
+        if !static_resources.is_empty() {
+            resource = resource.merge(&mut Resource::new(static_resources));
+        }
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
@@ -288,6 +361,7 @@ impl MetricsBuilder {
                 request_body_size,
                 response_body_size,
             },
+            metrics_path: self.metrics_path.clone(),
         })
     }
 }
@@ -301,6 +375,8 @@ pub struct MetricsState {
     registry: Registry,
     /// HTTP server metrics
     http_server: HttpServerMetrics,
+    /// URL path for metrics prometheus exporter
+    metrics_path: String,
 }
 
 /// Container for HTTP server metrics
@@ -330,11 +406,11 @@ impl<S> Layer<S> for MetricsState {
 }
 
 impl MetricsState {
-    ///
+    /// Build Axum router containing all metrics methods
     pub fn build_router(&self) -> Router {
         let _span = debug_span!("build_metrics_router").entered();
         Router::new()
-            .route("/metrics", routing::get(get_metrics)) // TODO: unhardcode
+            .route(&self.metrics_path, routing::get(get_metrics))
             .with_state(self.clone())
     }
 }

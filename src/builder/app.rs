@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, convert::Infallible};
+use std::{
+    collections::{BTreeMap, HashSet},
+    convert::Infallible,
+};
 
 use axum::{
     body::{BoxBody, HttpBody},
@@ -36,6 +39,8 @@ pub enum AppBuilderError {
     ApiDoc(#[from] ApiDocError),
     #[error(transparent)]
     Metrics(#[from] MetricsError),
+    #[error("Duplicate handler name: {0}")]
+    DuplicateHandlerName(&'static str),
 }
 
 /// Builder for application routes
@@ -140,16 +145,22 @@ impl AppBuilder {
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
 
-        // TODO: external state for application-defined metrics
+        self.config
+            .metrics
+            .set_app_defaults(self.app_name.as_deref(), self.app_version.as_deref());
+        // TODO: export metrics state for application-defined metrics
         let metrics_state = self.config.metrics.build_state()?;
-        // TODO: set_app_defaults for metrics
         if self.config.metrics.is_enabled() {
             rtr = rtr.merge(metrics_state.build_router());
         }
 
-        // TODO: error/panic on duplicate handler names
+        let mut handler_names = HashSet::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
-            let _span = debug_span!("iter_handler", name = handler.name()).entered();
+            let name = handler.name();
+            let _span = debug_span!("iter_handler", name).entered();
+            if !handler_names.insert(name) {
+                return Err(AppBuilderError::DuplicateHandlerName(name));
+            }
             grouped
                 .entry(handler.path())
                 .and_modify(|handlers| handlers.push(*handler))
@@ -179,13 +190,9 @@ impl AppBuilder {
             }
         }
 
-        if self.config.api_doc.is_some() {
-            let app_name = self.app_name.clone();
-            let app_version = self.app_version.clone();
-            if let Some(ref mut api_doc) = self.config.api_doc {
-                api_doc.set_app_defaults(app_name, app_version);
-                rtr = rtr.merge(api_doc.build_router()?);
-            }
+        if let Some(ref mut api_doc) = self.config.api_doc {
+            api_doc.set_app_defaults(self.app_name.as_deref(), self.app_version.as_deref());
+            rtr = rtr.merge(api_doc.build_router()?);
         }
 
         let global_layers = ServiceBuilder::new()
