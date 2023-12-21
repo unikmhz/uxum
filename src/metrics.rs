@@ -9,6 +9,7 @@ use std::{
 
 use axum::{
     extract::{MatchedPath, State},
+    http::header,
     response::IntoResponse,
     routing::{self, Router},
 };
@@ -20,7 +21,10 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{
     metrics::{new_view, Aggregation, Instrument, MeterProvider, Stream},
-    resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector},
+    resource::{
+        EnvResourceDetector, OsResourceDetector, SdkProvidedResourceDetector,
+        TelemetryResourceDetector,
+    },
     Resource,
 };
 use opentelemetry_semantic_conventions::resource as res;
@@ -276,6 +280,7 @@ impl MetricsBuilder {
         let mut resource = Resource::from_detectors(
             self.detector_timeout,
             vec![
+                Box::new(OsResourceDetector),
                 Box::new(SdkProvidedResourceDetector),
                 Box::new(EnvResourceDetector::new()),
                 Box::new(TelemetryResourceDetector),
@@ -440,8 +445,6 @@ where
         let start = Instant::now();
         let ext = req.extensions();
         let method = req.method().clone();
-        // FIXME: HandlerName is not found
-        let handler = ext.get::<HandlerName>().copied();
         let path = ext.get::<MatchedPath>().cloned();
         let request_size = req.size_hint().upper().unwrap_or(0);
         // FIXME: get scheme from request
@@ -457,14 +460,13 @@ where
             state: self.state.clone(),
             start,
             method,
-            handler,
             path,
             request_size,
         }
     }
 }
 
-///
+/// Response future for [`HttpMetrics`] middleware
 #[pin_project]
 pub struct HttpMetricsFuture<F> {
     #[pin]
@@ -472,7 +474,6 @@ pub struct HttpMetricsFuture<F> {
     state: MetricsState,
     start: Instant,
     method: Method,
-    handler: Option<HandlerName>,
     path: Option<MatchedPath>,
     request_size: u64,
 }
@@ -497,6 +498,7 @@ where
             .add(-1, &[kv_method.clone(), kv_scheme.clone()]);
 
         let resp = resp?;
+        let handler = resp.extensions().get::<HandlerName>();
         let duration = this.start.elapsed().as_secs_f64();
         let status = resp.status().as_str().to_string();
         let response_size = resp.size_hint().upper().unwrap_or(0);
@@ -512,10 +514,7 @@ where
                     .map(|p| Cow::Owned(p.as_str().to_string()))
                     .unwrap_or(Cow::Borrowed("")),
             ),
-            KeyValue::new(
-                "uxum.handler",
-                this.handler.map(|h| h.as_str()).unwrap_or(""),
-            ),
+            KeyValue::new("uxum.handler", handler.map(|h| h.as_str()).unwrap_or("")),
         ];
         // server.address?
         // server.port?
@@ -548,5 +547,5 @@ async fn get_metrics(metrics: State<MetricsState>) -> impl IntoResponse {
     encoder
         .encode(&metrics.registry.gather(), &mut buf)
         .unwrap();
-    buf
+    ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf)
 }

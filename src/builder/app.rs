@@ -12,7 +12,6 @@ use axum::{
     },
     response::IntoResponse,
     routing::{MethodRouter, Router},
-    Extension,
 };
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
@@ -30,6 +29,7 @@ use crate::{
     config::{AppConfig, HandlerConfig},
     layers::ext::HandlerName,
     metrics::{MetricsBuilder, MetricsError},
+    util::ResponseExtension,
 };
 
 /// Error type used in app builder
@@ -260,7 +260,7 @@ where
     ServiceBuilder::new()
         .boxed_clone()
         .layer(HandleErrorLayer::new(error_handler))
-        .layer(Extension(HandlerName::new(hext.name())))
+        .layer(ResponseExtension(HandlerName::new(hext.name())))
         .option_layer(
             conf.and_then(|cfg| cfg.buffer.as_ref())
                 .map(|lcfg| lcfg.make_layer()),
