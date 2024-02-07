@@ -4,10 +4,14 @@ use std::{borrow::Borrow, fmt, ops::Deref};
 pub struct HandlerName(&'static str);
 
 impl HandlerName {
+    ///
+    #[must_use]
     pub fn new(name: &'static str) -> Self {
         Self(name)
     }
 
+    ///
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.0
     }

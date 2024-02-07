@@ -4,7 +4,7 @@ use std::{
     future::Future,
     pin::Pin,
     task::{ready, Context, Poll},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use axum::{
@@ -21,13 +21,8 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{
     metrics::{new_view, Aggregation, Instrument, MeterProvider, Stream},
-    resource::{
-        EnvResourceDetector, OsResourceDetector, SdkProvidedResourceDetector,
-        TelemetryResourceDetector,
-    },
     Resource,
 };
-use opentelemetry_semantic_conventions::resource as res;
 use pin_project::pin_project;
 use prometheus::{Encoder, Registry, TextEncoder};
 use serde::{Deserialize, Serialize};
@@ -39,6 +34,7 @@ use crate::layers::ext::HandlerName;
 
 /// Error type used in metrics subsystem
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MetricsError {
     /// Prometheus exporter error
     #[error("Prometheus error: {0}")]
@@ -72,20 +68,6 @@ pub struct MetricsBuilder {
     /// Optional prefix to use before
     #[serde(default)]
     prefix: Option<String>,
-    /// OpenTelemetry resource detection timeout
-    #[serde(
-        default = "MetricsBuilder::default_detector_timeout",
-        with = "humantime_serde"
-    )]
-    detector_timeout: Duration,
-    /// App namespace
-    app_namespace: Option<String>,
-    /// Short app name
-    #[serde(default)]
-    app_name: Option<String>,
-    /// App version
-    #[serde(default)]
-    app_version: Option<String>,
 }
 
 impl Default for MetricsBuilder {
@@ -97,10 +79,6 @@ impl Default for MetricsBuilder {
             metrics_path: Self::default_metrics_path(),
             labels: HashMap::new(),
             prefix: None,
-            detector_timeout: Self::default_detector_timeout(),
-            app_namespace: None,
-            app_name: None,
-            app_version: None,
         }
     }
 }
@@ -108,53 +86,51 @@ impl Default for MetricsBuilder {
 impl MetricsBuilder {
     /// Default value for [`Self::duration_buckets`]
     #[must_use]
+    #[inline]
     fn default_duration_buckets() -> Vec<f64> {
         [
-            0.0, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5,
-            10.0, 30.0,
+            0.0_f64, 0.0025_f64, 0.005_f64, 0.01_f64, 0.025_f64, 0.05_f64, 0.075_f64, 0.1_f64,
+            0.25_f64, 0.5_f64, 0.75_f64, 1.0_f64, 2.5_f64, 5.0_f64, 7.5_f64, 10.0_f64, 30.0_f64,
         ]
         .into()
     }
 
     /// Default value for [`Self::size_buckets`]
     #[must_use]
+    #[inline]
     fn default_size_buckets() -> Vec<f64> {
         const KB: f64 = 1024.0;
         const MB: f64 = 1024.0 * KB;
 
         [
-            0.0,
-            64.0,
-            128.0,
-            256.0,
-            512.0,
-            1.0 * KB,
-            2.0 * KB,
-            4.0 * KB,
-            8.0 * KB,
-            16.0 * KB,
-            32.0 * KB,
-            64.0 * KB,
-            128.0 * KB,
-            256.0 * KB,
-            512.0 * KB,
-            1.0 * MB,
-            2.0 * MB,
-            4.0 * MB,
-            8.0 * MB,
+            0.0_f64,
+            64.0_f64,
+            128.0_f64,
+            256.0_f64,
+            512.0_f64,
+            1.0_f64 * KB,
+            2.0_f64 * KB,
+            4.0_f64 * KB,
+            8.0_f64 * KB,
+            16.0_f64 * KB,
+            32.0_f64 * KB,
+            64.0_f64 * KB,
+            128.0_f64 * KB,
+            256.0_f64 * KB,
+            512.0_f64 * KB,
+            1.0_f64 * MB,
+            2.0_f64 * MB,
+            4.0_f64 * MB,
+            8.0_f64 * MB,
         ]
         .into()
     }
 
     /// Default value for [`Self::metrics_path`]
     #[must_use]
+    #[inline]
     fn default_metrics_path() -> String {
         "/metrics".into()
-    }
-
-    /// Default value for [`Self::detector_timeout`]
-    fn default_detector_timeout() -> Duration {
-        Duration::from_secs(6)
     }
 
     /// Whether HTTP metrics gathering is enabled
@@ -187,7 +163,7 @@ impl MetricsBuilder {
 
     /// Set URL path for metrics prometheus exporter
     #[must_use]
-    pub fn with_metrics_path(mut self, path: impl ToString) -> Self {
+    pub fn with_metrics_path<B, S>(mut self, path: impl ToString) -> Self {
         self.metrics_path = path.to_string();
         self
     }
@@ -211,8 +187,10 @@ impl MetricsBuilder {
         U: ToString + 'a,
         V: IntoIterator<Item = (&'a T, &'a U)>,
     {
-        self.labels
-            .extend(kvs.into_iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        self.labels.extend(
+            kvs.into_iter()
+                .map(|(key, val)| (key.to_string(), val.to_string())),
+        );
         self
     }
 
@@ -221,43 +199,6 @@ impl MetricsBuilder {
     pub fn with_prefix(mut self, prefix: impl ToString) -> Self {
         self.prefix = Some(prefix.to_string());
         self
-    }
-
-    /// Set app namespace
-    #[must_use]
-    pub fn with_app_namespace(mut self, namespace: impl ToString) -> Self {
-        self.app_namespace = Some(namespace.to_string());
-        self
-    }
-
-    /// Set short app name
-    #[must_use]
-    pub fn with_app_name(mut self, name: impl ToString) -> Self {
-        self.app_name = Some(name.to_string());
-        self
-    }
-
-    /// Set app version
-    #[must_use]
-    pub fn with_app_version(mut self, version: impl ToString) -> Self {
-        self.app_version = Some(version.to_string());
-        self
-    }
-
-    /// Set fallback app name and version
-    ///
-    /// This gets called from [`crate::AppBuilder`]
-    pub fn set_app_defaults(
-        &mut self,
-        name: Option<impl ToString>,
-        version: Option<impl ToString>,
-    ) {
-        if self.app_name.is_none() {
-            self.app_name = name.map(|s| s.to_string());
-        }
-        if self.app_version.is_none() {
-            self.app_version = version.map(|s| s.to_string());
-        }
     }
 
     /// Build new Prometheus registry
@@ -274,31 +215,13 @@ impl MetricsBuilder {
     }
 
     /// Build metrics state object
-    pub fn build_state(&self) -> Result<MetricsState, MetricsError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if metrics registry or provider could not be initialized.
+    pub fn build_state(&self, resource: Resource) -> Result<MetricsState, MetricsError> {
         let _span = debug_span!("build_metrics").entered();
         let registry = self.build_prometheus_registry()?;
-        let mut resource = Resource::from_detectors(
-            self.detector_timeout,
-            vec![
-                Box::new(OsResourceDetector),
-                Box::new(SdkProvidedResourceDetector),
-                Box::new(EnvResourceDetector::new()),
-                Box::new(TelemetryResourceDetector),
-            ],
-        );
-        let mut static_resources = Vec::new();
-        if let Some(app_namespace) = &self.app_namespace {
-            static_resources.push(res::SERVICE_NAMESPACE.string(app_namespace.clone()));
-        }
-        if let Some(app_name) = &self.app_name {
-            static_resources.push(res::SERVICE_NAME.string(app_name.clone()));
-        }
-        if let Some(app_version) = &self.app_version {
-            static_resources.push(res::SERVICE_VERSION.string(app_version.clone()));
-        }
-        if !static_resources.is_empty() {
-            resource = resource.merge(&mut Resource::new(static_resources));
-        }
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
@@ -487,7 +410,7 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let resp = ready!(this.inner.poll(cx));
+        let resp_result = ready!(this.inner.poll(cx));
 
         let kv_method = KeyValue::new("http.request.method", this.method.to_string());
         // FIXME: get scheme from request
@@ -497,10 +420,10 @@ where
             .requests_active
             .add(-1, &[kv_method.clone(), kv_scheme.clone()]);
 
-        let resp = resp?;
+        let resp = resp_result?;
         let handler = resp.extensions().get::<HandlerName>();
         let duration = this.start.elapsed().as_secs_f64();
-        let status = resp.status().as_str().to_string();
+        let status = resp.status().as_str().to_owned();
         let response_size = resp.size_hint().upper().unwrap_or(0);
 
         let labels = [
@@ -509,12 +432,11 @@ where
             KeyValue::new("http.response.status_code", status),
             KeyValue::new(
                 "http.route",
-                this.path
-                    .as_ref()
-                    .map(|p| Cow::Owned(p.as_str().to_string()))
-                    .unwrap_or(Cow::Borrowed("")),
+                this.path.as_ref().map_or(Cow::Borrowed(""), |path| {
+                    Cow::Owned(path.as_str().to_owned())
+                }),
             ),
-            KeyValue::new("uxum.handler", handler.map(|h| h.as_str()).unwrap_or("")),
+            KeyValue::new("uxum.handler", handler.map_or("", |hdl| hdl.as_str())),
         ];
         // server.address?
         // server.port?

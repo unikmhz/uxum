@@ -106,24 +106,28 @@ impl ApiDocBuilder {
 
     /// Default value for [`Self::apidoc_path`]
     #[must_use]
+    #[inline]
     fn default_apidoc_path() -> String {
         "/apidoc".into()
     }
 
     /// Default value for [`Self::spec_path`]
     #[must_use]
+    #[inline]
     fn default_spec_path() -> String {
         "/openapi.json".into()
     }
 
     /// Default value for [`Self::js_path`]
     #[must_use]
+    #[inline]
     fn default_js_path() -> String {
         "/rapidoc-min.js".into()
     }
 
     /// Default value for [`Self::rapidoc_attributes`]
     #[must_use]
+    #[inline]
     fn default_rapidoc_attributes() -> HashMap<String, String> {
         maplit::hashmap! {
             "sort-tags".into() => "true".into(),
@@ -228,10 +232,10 @@ impl ApiDocBuilder {
             external_docs: url.as_ref().map(|u| openapi3::ExternalDocs {
                 description: description.as_ref().map(|d| d.to_string()),
                 url: u.to_string(),
-                extensions: Default::default(),
+                extensions: Map::default(),
             }),
             description: description.map(|d| d.to_string()),
-            extensions: Default::default(),
+            extensions: Map::default(),
         });
         self
     }
@@ -284,10 +288,10 @@ impl ApiDocBuilder {
         version: Option<impl ToString>,
     ) {
         if self.app_name.is_none() {
-            self.app_name = name.map(|s| s.to_string());
+            self.app_name = name.map(|val| val.to_string());
         }
         if self.app_version.is_none() {
-            self.app_version = version.map(|s| s.to_string());
+            self.app_version = version.map(|val| val.to_string());
         }
     }
 
@@ -299,6 +303,11 @@ impl ApiDocBuilder {
                 s.inline_subschemas = self.inline_subschemas;
             })
             .into_generator()
+    }
+
+    /// Check if builder has any data for [`openapi3::Contact`]
+    fn has_contact_data(&self) -> bool {
+        self.contact_name.is_some() || self.contact_email.is_some() || self.contact_url.is_some()
     }
 
     /// Build Axum router containing all OpenAPI methods
@@ -337,7 +346,7 @@ impl ApiDocBuilder {
         }
         let mut gen = self.build_generator();
         let mut paths = Map::new();
-        for (path, handlers) in grouped.into_iter() {
+        for (path, handlers) in grouped {
             // TODO: skip disabled handlers
             let mut path_item = openapi3::PathItem::default();
             for handler in handlers {
@@ -354,18 +363,14 @@ impl ApiDocBuilder {
                     other => return Err(ApiDocError::UnsupportedMethod(other)),
                 }
             }
-            let path = path.to_string();
-            paths.insert(path, path_item);
+            paths.insert(path.to_owned(), path_item);
         }
-        let contact = if self.contact_name.is_some()
-            || self.contact_email.is_some()
-            || self.contact_url.is_some()
-        {
+        let contact = if self.has_contact_data() {
             Some(openapi3::Contact {
                 name: self.contact_name.clone(),
                 url: self.contact_url.clone(),
                 email: self.contact_email.clone(),
-                extensions: Default::default(),
+                extensions: Map::default(),
             })
         } else {
             None
@@ -373,13 +378,13 @@ impl ApiDocBuilder {
         Ok(openapi3::OpenApi {
             openapi: Self::OPENAPI_VERSION.into(),
             info: openapi3::Info {
-                title: self.app_title().to_string(),
+                title: self.app_title().to_owned(),
                 description: self.description.clone(),
                 terms_of_service: None,
                 contact,
                 license: None,
                 version: self.app_version.clone().unwrap_or("0.0.0".into()),
-                extensions: Default::default(),
+                extensions: Map::default(),
             },
             servers: vec![],
             paths,
@@ -389,20 +394,20 @@ impl ApiDocBuilder {
                     .iter()
                     .map(|(key, schema)| (key.clone(), schema.clone().into_object()))
                     .collect(),
-                responses: Default::default(),
-                parameters: Default::default(),
-                examples: Default::default(),
-                request_bodies: Default::default(),
-                headers: Default::default(),
-                security_schemes: Default::default(),
-                links: Default::default(),
-                callbacks: Default::default(),
-                extensions: Default::default(),
+                responses: Map::default(),
+                parameters: Map::default(),
+                examples: Map::default(),
+                request_bodies: Map::default(),
+                headers: Map::default(),
+                security_schemes: Map::default(),
+                links: Map::default(),
+                callbacks: Map::default(),
+                extensions: Map::default(),
             }),
             security: vec![],
             tags: self.tags.clone(),
             external_docs: None,
-            extensions: Default::default(),
+            extensions: Map::default(),
         })
     }
 

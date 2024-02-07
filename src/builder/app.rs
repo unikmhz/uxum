@@ -4,7 +4,7 @@ use std::{
 };
 
 use axum::{
-    body::{BoxBody, HttpBody},
+    body::{BoxBody, Bytes, HttpBody},
     error_handling::HandleErrorLayer,
     http::{
         header::{self, HeaderValue},
@@ -15,6 +15,7 @@ use axum::{
 };
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
+use opentelemetry_sdk::trace::Tracer;
 use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
@@ -29,16 +30,21 @@ use crate::{
     config::{AppConfig, HandlerConfig},
     layers::ext::HandlerName,
     metrics::{MetricsBuilder, MetricsError},
+    otel::otel_resource,
+    tracing::TracingError,
     util::ResponseExtension,
 };
 
 /// Error type used in app builder
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AppBuilderError {
     #[error(transparent)]
     ApiDoc(#[from] ApiDocError),
     #[error(transparent)]
     Metrics(#[from] MetricsError),
+    #[error(transparent)]
+    Tracing(#[from] TracingError),
     #[error("Duplicate handler name: {0}")]
     DuplicateHandlerName(&'static str),
 }
@@ -68,7 +74,7 @@ impl AppBuilder {
     /// Create new builder with default configuration
     #[must_use]
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 
     /// Set short name of an application
@@ -77,6 +83,7 @@ impl AppBuilder {
     /// things.
     #[must_use]
     pub fn with_app_name(mut self, app_name: impl ToString) -> Self {
+        // TODO: mybe check for value correctness?
         self.app_name = Some(app_name.to_string());
         self
     }
@@ -119,6 +126,7 @@ impl AppBuilder {
     ///
     /// This gets the builder from configuration, and then passes it to the provided callback
     /// function for additional customization.
+    #[must_use]
     pub fn with_configured_metrics<F>(mut self, modifier: F) -> Self
     where
         F: FnOnce(MetricsBuilder) -> MetricsBuilder,
@@ -140,16 +148,30 @@ impl AppBuilder {
     }
 
     /// Build top-level Axum router
-    pub fn build(mut self) -> Result<Router, AppBuilderError> {
-        let _span = debug_span!("build_app").entered();
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some part of application setup did not succeed, or when there are
+    /// conflicting handlers defined in application code.
+    pub fn build(mut self) -> Result<(Router, Option<Tracer>), AppBuilderError> {
+        let _build_span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
 
-        self.config
-            .metrics
-            .set_app_defaults(self.app_name.as_deref(), self.app_version.as_deref());
+        let otel_res = otel_resource(
+            self.config.otel.detector_timeout,
+            None::<String>,
+            self.app_name.as_deref(),
+            self.app_version.as_deref(),
+        );
+        let tracer = self
+            .config
+            .tracing
+            .as_ref()
+            .map(|trace_cfg| trace_cfg.build_pipeline(otel_res.clone()))
+            .transpose()?;
         // TODO: export metrics state for application-defined metrics
-        let metrics_state = self.config.metrics.build_state()?;
+        let metrics_state = self.config.metrics.build_state(otel_res)?;
         if self.config.metrics.is_enabled() {
             rtr = rtr.merge(metrics_state.build_router());
         }
@@ -157,7 +179,7 @@ impl AppBuilder {
         let mut handler_names = HashSet::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
             let name = handler.name();
-            let _span = debug_span!("iter_handler", name).entered();
+            let _record_span = debug_span!("iter_handler", name).entered();
             if !handler_names.insert(name) {
                 return Err(AppBuilderError::DuplicateHandlerName(name));
             }
@@ -167,10 +189,10 @@ impl AppBuilder {
                 .or_insert_with(|| vec![*handler]);
             debug!("Handler recorded");
         }
-        for (path, handlers) in grouped.into_iter() {
-            let _span = info_span!("register_path", path).entered();
+        for (path, handlers) in grouped {
+            let _register_span = info_span!("register_path", path).entered();
             let mut has_some = false;
-            let mut mrtr: MethodRouter = MethodRouter::new();
+            let mut method_rtr = MethodRouter::new();
             for handler in handlers {
                 let name = handler.name();
                 let _span =
@@ -181,12 +203,12 @@ impl AppBuilder {
                         continue;
                     }
                 }
-                mrtr = handler.register_method(mrtr, self.config.handlers.get(name));
+                method_rtr = handler.register_method(method_rtr, self.config.handlers.get(name));
                 has_some = true;
                 info!("Handler registered");
             }
             if has_some {
-                rtr = rtr.route(path, mrtr);
+                rtr = rtr.route(path, method_rtr);
             }
         }
 
@@ -213,9 +235,9 @@ impl AppBuilder {
             ));
         // TODO: DefaultBodyLimit (configurable)
         // TODO: SetSensitiveRequestHeadersLayer
-        let rtr = rtr.layer(global_layers);
+        let final_rtr = rtr.layer(global_layers);
         info!("Finished building application");
-        Ok(rtr)
+        Ok((final_rtr, tracer))
     }
 
     /// Generate a value to be used in HTTP Server header
@@ -254,7 +276,7 @@ where
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
     T: Send + Sync + 'static,
-    U: HttpBody<Data = axum::body::Bytes> + Send + 'static,
+    U: HttpBody<Data = Bytes> + Send + 'static,
     <U as HttpBody>::Error: std::error::Error + Send + Sync,
 {
     ServiceBuilder::new()

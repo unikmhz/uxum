@@ -21,6 +21,7 @@ askama_axum = "0.3"
 axum = "0.6"
 bytes = {version = "1.5", features = ["serde"]}
 dashmap = "5.5"
+# deranged = {version = "0.3", features = ["serde"]}
 forwarded-header-value = "0.1"
 governor = "0.6"
 humantime-serde = "1.1"
@@ -31,6 +32,7 @@ maplit = "1.0"
 okapi = {version = "0.7.0-rc.1", features = ["preserve_order"]}
 pin-project = "1.1"
 opentelemetry = { version = "0.21", features = ["metrics"] }
+opentelemetry-otlp = { version = "0.14", features = ["tonic", "metrics", "logs"]}
 opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
 opentelemetry-prometheus = { version = "0.14", features = ["prometheus-encoding"] }
 opentelemetry-semantic-conventions = { version = "0.13"}
@@ -45,7 +47,9 @@ tower = {version = "0.4", features = ["buffer", "filter", "limit", "retry", "tim
 tower-http = {version = "0.4", features = ["set-header", "trace"]}
 tracing = "0.1"
 tracing-appender = "0.2"
+tracing-opentelemetry = "0.22"
 tracing-subscriber = {version = "0.3", features = ["tracing-log", "env-filter", "json", "parking_lot"]}
+url = {version = "2.5", features = ["serde"]}
 
 [dev-dependencies]
 config = {version = "0.13", features = ["yaml"]}

@@ -15,6 +15,7 @@ use tracing_subscriber::{
 
 type LoggingRegistry = Layered<Vec<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
 
+/// Error type used in logging configuration
 #[derive(Debug, Error)]
 pub enum LoggingError {
     #[error("Log destination I/O error: {0}")]
@@ -36,8 +37,8 @@ impl LoggingConfig {
         let num_subs = self.subscribers.len();
         let (subs, buf_guards) = self.subscribers.iter().try_fold(
             (Vec::with_capacity(num_subs), Vec::with_capacity(num_subs)),
-            |(mut acc_s, mut acc_g), s| {
-                let (sub, guard) = s.make_layer()?;
+            |(mut acc_s, mut acc_g), sub_cfg| {
+                let (sub, guard) = sub_cfg.make_layer()?;
                 acc_s.push(sub);
                 acc_g.push(guard);
                 Ok::<_, LoggingError>((acc_s, acc_g))
@@ -80,9 +81,9 @@ impl Default for LoggingSubscriberConfig {
             level: LoggingLevel::Debug,
             color: false,
             internal_errors: true,
-            print: Default::default(),
-            buffer: Default::default(),
-            output: Default::default(),
+            print: LoggingPrintingConfig::default(),
+            buffer: LoggingBufferConfig::default(),
+            output: LoggingDestination::default(),
         }
     }
 }
@@ -104,8 +105,8 @@ impl LoggingSubscriberConfig {
                 thread_name: true,
                 thread_id: false,
             },
-            buffer: Default::default(),
-            output: Default::default(),
+            buffer: LoggingBufferConfig::default(),
+            output: LoggingDestination::default(),
         }
     }
 
@@ -128,7 +129,7 @@ impl LoggingSubscriberConfig {
             .with_level(self.print.level)
             .with_thread_names(self.print.thread_name)
             .with_thread_ids(self.print.thread_id);
-        let layer = match self.format {
+        let boxed_layer = match self.format {
             LoggingFormat::Full => layer.boxed(),
             LoggingFormat::Compact => layer.compact().boxed(),
             LoggingFormat::Pretty => layer.pretty().boxed(),
@@ -145,7 +146,7 @@ impl LoggingSubscriberConfig {
         }
         .with_filter(LevelFilter::from(self.level))
         .boxed();
-        Ok((layer, buf_guard))
+        Ok((boxed_layer, buf_guard))
     }
 }
 
@@ -208,6 +209,7 @@ impl From<LoggingLevel> for LevelFilter {
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct LoggingPrintingConfig {
     ///
     #[serde(default)]
@@ -267,9 +269,11 @@ impl Default for LoggingBufferConfig {
 }
 
 impl LoggingBufferConfig {
-    ///
+    /// Default value for [`Self::lines`]
+    #[must_use]
+    #[inline]
     fn default_lines() -> usize {
-        128000
+        128_000
     }
 
     ///
@@ -382,12 +386,17 @@ impl Default for LoggingDirectoryConfig {
 }
 
 impl LoggingDirectoryConfig {
-    ///
+    /// Default value for [`Self::path`]
+    #[must_use]
+    #[inline]
     fn default_path() -> String {
         ".".into()
     }
 
-    ///
+    /// Default value for [`Self::suffix`]
+    #[must_use]
+    #[inline]
+    #[allow(clippy::unnecessary_wraps)]
     fn default_suffix() -> Option<String> {
         Some("log".into())
     }

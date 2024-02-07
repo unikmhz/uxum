@@ -4,15 +4,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     apidoc::ApiDocBuilder, layers::buffer::*, layers::cb::*, layers::rate::*,
-    logging::LoggingConfig, metrics::MetricsBuilder,
+    logging::LoggingConfig, metrics::MetricsBuilder, otel::OpenTelemetryConfig,
+    tracing::TracingConfig,
 };
 
 /// Top-level application configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct AppConfig {
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
+    /// Tracing configuration
+    #[serde(default)]
+    pub tracing: Option<TracingConfig>,
     /// Individual handler configuration
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
@@ -22,10 +27,14 @@ pub struct AppConfig {
     /// Metrics configuration
     #[serde(default)]
     pub metrics: MetricsBuilder,
+    /// Common OpenTelemetry configuration
+    #[serde(default)]
+    pub otel: OpenTelemetryConfig,
 }
 
 /// Configuration of a single handler
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct HandlerConfig {
     /// Method is completely disabled at runtime
     #[serde(default)]
@@ -55,6 +64,7 @@ pub struct HandlerConfig {
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct HandlerTimeoutsConfig {
     /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header
     #[serde(default = "crate::util::default_true")]

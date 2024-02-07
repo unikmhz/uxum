@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
-#![deny(elided_lifetimes_in_paths)]
-#![deny(unreachable_pub)]
+#![deny(elided_lifetimes_in_paths, unreachable_pub)]
 
 mod body;
 mod case;
@@ -75,6 +74,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
         #input
 
         #[doc(hidden)]
+        #[allow(missing_docs)]
         mod #mod_ident {
             use ::uxum::{
                 reexport::{

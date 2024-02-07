@@ -37,19 +37,17 @@ async fn main() {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
+    let (app, _tracer) = app_builder
+        .with_app_name("advanced_server")
+        .with_app_version("1.2.3")
+        .build()
+        .expect("Unable to build app");
     config
         .server
         .build()
         .await
         .expect("Unable to build server")
-        .serve(
-            app_builder
-                .with_app_name("advanced_server")
-                .with_app_version("1.2.3")
-                .build()
-                .expect("Unable to build app")
-                .into_make_service_with_connect_info::<SocketAddr>(),
-        )
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .expect("Server error");
 }

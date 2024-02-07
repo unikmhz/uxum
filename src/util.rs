@@ -14,6 +14,8 @@ use pin_project::pin_project;
 use tower::{Layer, Service};
 
 /// Helper function used for default boolean values in [`serde`]
+#[must_use]
+#[inline]
 pub(crate) fn default_true() -> bool {
     true
 }
@@ -21,6 +23,7 @@ pub(crate) fn default_true() -> bool {
 ///
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]
+#[non_exhaustive]
 pub struct ResponseExtension<T>(pub T);
 
 impl<T> Deref for ResponseExtension<T> {
@@ -119,10 +122,10 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
-        let resp = ready!(this.inner.poll(cx));
-        Poll::Ready(resp.map(|mut r| {
-            r.extensions_mut().insert(this.value.clone());
-            r
+        let resp_result = ready!(this.inner.poll(cx));
+        Poll::Ready(resp_result.map(|mut resp| {
+            resp.extensions_mut().insert(this.value.clone());
+            resp
         }))
     }
 }

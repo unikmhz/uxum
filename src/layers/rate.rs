@@ -28,6 +28,7 @@ use tracing::warn;
 
 /// Error type returned by rate-limiting layer
 #[derive(Clone, Debug, Error)]
+#[non_exhaustive]
 pub enum RateLimitError {
     #[error("Unable to extract rate-limiting key from request")]
     ExtractionError,
@@ -61,12 +62,14 @@ pub struct HandlerRateLimitConfig {
 }
 
 impl HandlerRateLimitConfig {
-    /// Default value when deserializing [`HandlerRateLimitConfig::burst_duration`]
+    /// Default value for [`Self::burst_duration`]
+    #[must_use]
+    #[inline]
     fn default_burst_duration() -> Duration {
         Duration::from_secs(1)
     }
 
-    /// Helper method for governor burst_size calculation
+    /// Helper method to calculate governor burst size
     pub fn burst_size(&self) -> NonZeroU32 {
         let rps = match self.burst_rps {
             Some(rps) if rps > self.rps => rps,
@@ -169,7 +172,7 @@ where
 
     fn call(&mut self, req: Request<T>) -> Self::Future {
         match self.limiter.check_limit(&req) {
-            Ok(_) => RateLimitFuture::Positive {
+            Ok(()) => RateLimitFuture::Positive {
                 inner: self.inner.call(req),
             },
             // TODO: option to allow ignoring extraction errors
@@ -188,6 +191,7 @@ where
     S: Service<Request<T>> + Send + Sync + 'static,
     T: Send + Sync + 'static,
 {
+    #[must_use]
     pub fn new(inner: S, config: &HandlerRateLimitConfig) -> Self {
         let limiter: Box<dyn Limiter<T> + Send + Sync> = match config.key {
             RateLimitKey::Global => Box::new(GlobalLimiter::new(config)),
@@ -245,7 +249,7 @@ struct GlobalLimiter {
 
 impl<T> Limiter<T> for GlobalLimiter {
     fn check_limit(&self, _req: &Request<T>) -> Result<(), RateLimitError> {
-        self.limiter.check().map(|_| ()).map_err(|neg| {
+        self.limiter.check().map_err(|neg| {
             let remaining_seconds = neg.wait_time_from(DefaultClock::default().now()).as_secs();
             RateLimitError::LimitReached { remaining_seconds }
         })
@@ -254,6 +258,7 @@ impl<T> Limiter<T> for GlobalLimiter {
 
 impl GlobalLimiter {
     ///
+    #[must_use]
     fn new(config: &HandlerRateLimitConfig) -> Self {
         Self {
             limiter: RateLimiter::direct(
@@ -282,7 +287,7 @@ impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
     ///
     fn check_limit(&self, req: &Request<T>) -> Result<(), RateLimitError> {
         let key = self.extractor.extract(req)?;
-        self.limiters.check_key(&key).map(|_| ()).map_err(|neg| {
+        self.limiters.check_key(&key).map_err(|neg| {
             let remaining_seconds = neg.wait_time_from(DefaultClock::default().now()).as_secs();
             RateLimitError::LimitReached { remaining_seconds }
         })
@@ -291,6 +296,7 @@ impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
 
 impl<K: KeyExtractor> IpLimiter<K> {
     ///
+    #[must_use]
     fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
         Self {
             extractor,
@@ -345,7 +351,10 @@ fn maybe_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_FORWARDED_FOR)
         .and_then(|hv| hv.to_str().ok())
-        .and_then(|s| s.split(',').find_map(|s| s.trim().parse::<IpAddr>().ok()))
+        .and_then(|hstr| {
+            hstr.split(',')
+                .find_map(|sp| sp.trim().parse::<IpAddr>().ok())
+        })
 }
 
 /// Tries to parse the `x-real-ip` header
@@ -353,7 +362,7 @@ fn maybe_x_real_ip(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_REAL_IP)
         .and_then(|hv| hv.to_str().ok())
-        .and_then(|s| s.parse::<IpAddr>().ok())
+        .and_then(|hstr| hstr.parse::<IpAddr>().ok())
 }
 
 /// Tries to parse `forwarded` headers
@@ -361,12 +370,12 @@ fn maybe_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     headers.get_all(FORWARDED).iter().find_map(|hv| {
         hv.to_str()
             .ok()
-            .and_then(|s| ForwardedHeaderValue::from_forwarded(s).ok())
-            .and_then(|f| {
-                f.iter()
+            .and_then(|hstr| ForwardedHeaderValue::from_forwarded(hstr).ok())
+            .and_then(|fhv| {
+                fhv.iter()
                     .filter_map(|fs| fs.forwarded_for.as_ref())
                     .find_map(|ff| match ff {
-                        Identifier::SocketAddr(a) => Some(a.ip()),
+                        Identifier::SocketAddr(addr) => Some(addr.ip()),
                         Identifier::IpAddr(ip) => Some(*ip),
                         _ => None,
                     })

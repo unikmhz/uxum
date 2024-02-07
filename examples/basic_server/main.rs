@@ -6,17 +6,13 @@ use uxum::prelude::*;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let app_builder: AppBuilder = AppConfig::default().into();
+    let app_builder = AppBuilder::default();
+    let (app, _tracer) = app_builder.build().expect("Unable to build app");
     ServerBuilder::new()
         .build()
         .await
         .expect("Unable to build server")
-        .serve(
-            app_builder
-                .build()
-                .expect("Unable to build app")
-                .into_make_service(),
-        )
+        .serve(app.into_make_service())
         .await
         .expect("Server error");
 }

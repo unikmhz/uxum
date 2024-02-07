@@ -15,6 +15,7 @@ use crate::errors::IoError;
 
 /// Error type returned by server builder
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ServerBuilderError {
     #[error("Unable to parse endpoint address: {0}")]
     AddressParse(IoError),
@@ -79,25 +80,32 @@ impl Default for ServerBuilder {
             sleep_on_accept_errors: false,
             recv_buffer: None,
             send_buffer: None,
-            ip: Default::default(),
-            tcp: Default::default(),
-            http1: Default::default(),
-            http2: Default::default(),
+            ip: IpConfig::default(),
+            tcp: TcpConfig::default(),
+            http1: Http1Config::default(),
+            http2: Http2Config::default(),
         }
     }
 }
 
 impl ServerBuilder {
+    #[must_use]
+    #[inline]
     fn default_listen() -> String {
         "localhost:8080".into()
     }
 
     /// Create new server builder with default configuration
+    #[must_use]
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 
     /// Build network server
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if builder encounters an error while setting up a listening socket.
     pub async fn build(self) -> Result<hyper::server::Builder<AddrIncoming>, ServerBuilderError> {
         let _span = debug_span!("build_server").entered();
         let (sock, addr) = socket(&self.listen).await?;
@@ -132,7 +140,6 @@ impl ServerBuilder {
             .set_keepalive_retries(self.tcp.keepalive.retries.map(NonZeroU32::get))
             .set_sleep_on_errors(self.sleep_on_accept_errors);
         let mut builder = hyper::Server::builder(stream);
-        // TODO: check for NoProtocolsEnabled
         if self.http1.enabled {
             debug!("Setting up HTTP/1");
             builder = builder
@@ -213,12 +220,15 @@ impl Default for TcpConfig {
             nodelay: true,
             backlog: Self::default_tcp_backlog(),
             mss: None,
-            keepalive: Default::default(),
+            keepalive: TcpKeepaliveConfig::default(),
         }
     }
 }
 
 impl TcpConfig {
+    #[must_use]
+    #[inline]
+    #[allow(clippy::unwrap_used)]
     fn default_tcp_backlog() -> NonZeroU32 {
         NonZeroU32::new(1024).unwrap()
     }
@@ -325,7 +335,7 @@ impl Default for Http2Config {
             connect_protocol: false,
             initial_connection_window: None,
             initial_stream_window: None,
-            keepalive: Default::default(),
+            keepalive: Http2KeepaliveConfig::default(),
             max_concurrent_streams: None,
         }
     }
