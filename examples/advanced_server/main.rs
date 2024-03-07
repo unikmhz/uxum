@@ -75,6 +75,9 @@ async fn sleep(ConnectInfo(client): ConnectInfo<SocketAddr>) -> String {
     format!("Hello {client}! Woken up after 3 seconds!")
 }
 
+#[handler]
+async fn no_op() {}
+
 /// Query parameters
 #[derive(Deserialize, JsonSchema)]
 struct QueryName {
@@ -163,4 +166,13 @@ async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
         ComputeOp::Divide => req.arg1 / req.arg2,
     };
     Json(ComputeResponse { result })
+}
+
+#[handler]
+async fn maybe_error_strings() -> Result<String, String> {
+    if rand::random() {
+        Ok("No error.".into())
+    } else {
+        Err("Error!".into())
+    }
 }

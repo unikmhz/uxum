@@ -25,7 +25,7 @@ dashmap = "5.5"
 forwarded-header-value = "0.1"
 governor = "0.6"
 humantime-serde = "1.1"
-http = "1.0"
+http = "1.1"
 hyper = {version = "0.14", features = ["http2", "server"]}
 inventory = "0.3"
 maplit = "1.0"
@@ -53,6 +53,7 @@ url = {version = "2.5", features = ["serde"]}
 
 [dev-dependencies]
 config = {version = "0.13", features = ["yaml"]}
+rand = "0.8"
 
 [[example]]
 name = "minimal"

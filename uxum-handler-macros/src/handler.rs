@@ -6,7 +6,8 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use syn::ItemFn;
 
 use crate::{
-    body::RequestBody, doc::extract_docstring, path::extract_path_params, util::quote_option,
+    body::RequestBody, doc::extract_docstring, path::extract_path_params,
+    response::detect_responses, util::quote_option,
 };
 
 ///
@@ -101,6 +102,7 @@ impl HandlerSpec {
         });
 
         let request_body = quote_option(request_body);
+        let responses = detect_responses(handler);
 
         quote! {
             openapi3::Operation {
@@ -111,11 +113,7 @@ impl HandlerSpec {
                 operation_id: Some(#name.into()),
                 parameters: vec![#(#path_params.into()),*],
                 request_body: #request_body,
-                responses: openapi3::Responses {
-                    default: None, // TODO: fill
-                    responses: Default::default(), // TODO: fill
-                    extensions: Default::default(),
-                },
+                responses: #responses,
                 callbacks: Default::default(), // TODO: fill?
                 deprecated: #deprecated,
                 security: None,

@@ -6,6 +6,7 @@ mod case;
 mod doc;
 mod handler;
 mod path;
+mod response;
 mod util;
 
 use darling::{ast::NestedMeta, FromMeta};
