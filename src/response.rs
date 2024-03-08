@@ -1,4 +1,4 @@
-use http::StatusCode;
+use axum::http::StatusCode;
 use okapi::openapi3;
 use schemars::gen::SchemaGenerator;
 
@@ -114,7 +114,8 @@ mod impls {
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             T::get_response_schemas(gen)
                 .into_iter()
-                // FIXME: This will overwrite T's responses if E has responses with same types.
+                // FIXME: This will overwrite T's responses if E has responses with same status
+                // codes.
                 .chain(E::get_response_schemas(gen))
                 .collect()
         }

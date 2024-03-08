@@ -29,6 +29,7 @@ http = "1.1"
 hyper = {version = "0.14", features = ["http2", "server"]}
 inventory = "0.3"
 maplit = "1.0"
+mime = "0.3"
 okapi = {version = "0.7.0-rc.1", features = ["preserve_order"]}
 pin-project = "1.1"
 opentelemetry = { version = "0.21", features = ["metrics"] }

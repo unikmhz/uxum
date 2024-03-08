@@ -2,7 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use config::{Config, File};
 use serde::{Deserialize, Serialize};
-use uxum::prelude::*;
+use uxum::{prelude::*, GetResponseSchemas, ResponseSchema};
 
 /// Root container for app configuration
 #[derive(Deserialize)]
@@ -157,6 +157,8 @@ pub struct ComputeResponse {
 /// Perform simple arithmetic
 ///
 /// Gets an operator and two operands as input. Returns result of operation.
+/// This is an example of using automatically (de)serialized JSON as
+/// input and output of a method.
 #[handler(method = "POST", spec(tag = "calc"))]
 async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
     let result = match req.op {
@@ -168,11 +170,92 @@ async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
     Json(ComputeResponse { result })
 }
 
+/// Return error sometimes
+///
+/// Be aware that standard [`axum::IntoResponse`] implementation is used
+/// here, which means error responses do not automatically get 4xx or 5xx
+/// HTTP statuses.
 #[handler]
 async fn maybe_error_strings() -> Result<String, String> {
     if rand::random() {
         Ok("No error.".into())
     } else {
         Err("Error!".into())
+    }
+}
+
+/// Request body
+#[derive(Deserialize, JsonSchema)]
+struct GetRandomRequest {
+    /// Low bound for a value
+    min: i64,
+    /// High bound for a value
+    max: i64,
+}
+
+/// Response body
+#[derive(JsonSchema, Serialize)]
+struct GetRandomResponse {
+    /// Generated random value
+    value: i64,
+}
+
+/// Error message
+#[derive(Debug, JsonSchema, Serialize, thiserror::Error)]
+enum GetRandomError {
+    /// Generated number is too small
+    #[error("Generated number is too small")]
+    NumberTooSmall,
+    /// Generated number is too large
+    #[error("Generated number is too large")]
+    NumberTooLarge,
+}
+
+impl IntoResponse for GetRandomError {
+    fn into_response(self) -> axum::response::Response {
+        // HTTP status code, headers and error body can be customized here.
+        let mut resp = Json::from(self).into_response();
+        *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+        resp.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+        );
+        resp
+    }
+}
+
+impl GetResponseSchemas for GetRandomError {
+    type ResponseIter = [ResponseSchema; 1];
+    fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
+        [ResponseSchema {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            response: openapi3::Response {
+                description: "Error response".into(),
+                content: okapi::map! {
+                    mime::APPLICATION_JSON.to_string() => openapi3::MediaType {
+                        schema: Some(gen.subschema_for::<Self>().into_object()),
+                        ..Default::default()
+                    },
+                },
+                ..Default::default()
+            },
+        }]
+    }
+}
+
+/// Return random number within supplied bounds
+///
+/// This is an example of using a custom error type in a handler.
+#[handler]
+async fn get_random_number(
+    req: Json<GetRandomRequest>,
+) -> Result<Json<GetRandomResponse>, GetRandomError> {
+    let value = rand::random();
+    if value < req.min {
+        Err(GetRandomError::NumberTooSmall)
+    } else if value > req.max {
+        Err(GetRandomError::NumberTooLarge)
+    } else {
+        Ok(Json(GetRandomResponse { value }))
     }
 }

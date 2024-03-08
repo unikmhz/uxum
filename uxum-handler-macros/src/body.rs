@@ -48,10 +48,10 @@ impl ToTokens for RequestBody {
 impl RequestBody {
     fn media_type(&self) -> &'static str {
         match self {
-            Self::String => "text/plain; charset=utf-8",
-            Self::Bytes => "application/octet-stream",
-            Self::Form => "application/x-www-form-urlencoded",
-            Self::Json(_) => "application/json",
+            Self::String => mime::TEXT_PLAIN_UTF_8.as_ref(),
+            Self::Bytes => mime::APPLICATION_OCTET_STREAM.as_ref(),
+            Self::Form => mime::APPLICATION_WWW_FORM_URLENCODED.as_ref(),
+            Self::Json(_) => mime::APPLICATION_JSON.as_ref(),
         }
     }
 }

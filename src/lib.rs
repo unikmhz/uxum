@@ -41,6 +41,6 @@ pub use self::{
     config::*,
     layers::{ext::HandlerName, rate::RateLimitError},
     metrics::{MetricsBuilder, MetricsError, MetricsState},
-    response::GetResponseSchemas,
+    response::{GetResponseSchemas, ResponseSchema},
     util::ResponseExtension,
 };

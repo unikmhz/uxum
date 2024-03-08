@@ -440,7 +440,7 @@ async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
 ///
 async fn get_rapidoc_js() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/javascript")],
+        [(header::CONTENT_TYPE, mime::APPLICATION_JAVASCRIPT.as_ref())],
         include_bytes!("../static/rapidoc-min.js").as_slice(),
     )
 }
@@ -448,7 +448,7 @@ async fn get_rapidoc_js() -> impl IntoResponse {
 ///
 async fn get_rapidoc_js_map() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/json")],
+        [(header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())],
         include_bytes!("../static/rapidoc-min.js.map").as_slice(),
     )
 }
