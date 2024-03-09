@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use hyper::server::conn::AddrIncoming;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
@@ -23,22 +22,28 @@ pub enum ServerBuilderError {
     Resolve(String),
     #[error("Unable to create socket: {0}")]
     SocketCreate(IoError),
-    #[error("Unable to set SO_REUSEADDR: {0}")]
-    ReuseAddr(IoError),
     #[error("Unable to bind socket to local address {0}: {1}")]
     BindAddr(SocketAddr, IoError),
     #[error("Unable to listen on socket {0}: {1}")]
     Listen(SocketAddr, IoError),
+    #[error("Unable to perform conversion into std listener: {0}")]
+    ConvertListener(IoError),
     #[error("Unable to extract local address: {0}")]
     ListenerLocalAddr(hyper::Error),
+    #[error("Unable to set SO_REUSEADDR: {0}")]
+    SetReuseAddr(IoError),
     #[error("Unable to set SO_RCVBUF: {0}")]
     SetRecvBuffer(IoError),
     #[error("Unable to set SO_SNDBUF: {0}")]
     SetSendBuffer(IoError),
+    #[error("Unable to set SO_KEEPALIVE: {0}")]
+    SetKeepAlive(IoError),
     #[error("Unable to set IP_TOS: {0}")]
     SetIpTos(IoError),
     #[error("Unable to set TCP_MAXSEG: {0}")]
     SetTcpMss(IoError),
+    #[error("Unable to set TCP_NODELAY: {0}")]
+    SetNoDelay(IoError),
     #[error("Neither HTTP/1 nor HTTP/2 are enabled")]
     NoProtocolsEnabled,
 }
@@ -106,7 +111,7 @@ impl ServerBuilder {
     /// # Errors
     ///
     /// Returns `Err` if builder encounters an error while setting up a listening socket.
-    pub async fn build(self) -> Result<hyper::server::Builder<AddrIncoming>, ServerBuilderError> {
+    pub async fn build(self) -> Result<axum_server::Server, ServerBuilderError> {
         let _span = debug_span!("build_server").entered();
         let (sock, addr) = socket(&self.listen).await?;
         let sref = SockRef::from(&sock);
@@ -126,66 +131,69 @@ impl ServerBuilder {
             sref.set_mss(mss.get())
                 .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
         }
+        if let Some(idle) = self.tcp.keepalive.idle {
+            let mut tcp_keepalive = socket2::TcpKeepalive::new().with_time(idle);
+            if let Some(interval) = self.tcp.keepalive.interval {
+                tcp_keepalive = tcp_keepalive.with_interval(interval);
+            }
+            if let Some(retries) = self.tcp.keepalive.retries {
+                tcp_keepalive = tcp_keepalive.with_retries(retries.get());
+            }
+            sref.set_tcp_keepalive(&tcp_keepalive)
+                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+        } else {
+            sref.set_keepalive(false)
+                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+        }
         sock.bind(addr)
             .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
+        sock.set_nodelay(self.tcp.nodelay)
+            .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
         let listener = sock
             .listen(self.tcp.backlog.get())
-            .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?;
-        let mut stream =
-            AddrIncoming::from_listener(listener).map_err(ServerBuilderError::ListenerLocalAddr)?;
-        stream
-            .set_nodelay(self.tcp.nodelay)
-            .set_keepalive(self.tcp.keepalive.idle)
-            .set_keepalive_interval(self.tcp.keepalive.interval)
-            .set_keepalive_retries(self.tcp.keepalive.retries.map(NonZeroU32::get))
-            .set_sleep_on_errors(self.sleep_on_accept_errors);
-        let mut builder = hyper::Server::builder(stream);
-        if self.http1.enabled {
+            .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
+            .into_std()
+            .map_err(|err| ServerBuilderError::ConvertListener(err.into()))?;
+        // TODO: from_tcp_rustls for TLS
+        let mut server = axum_server::from_tcp(listener);
+        let builder = server.http_builder();
+
+        {
             debug!("Setting up HTTP/1");
-            builder = builder
-                .http1_half_close(self.http1.half_close)
-                .http1_keepalive(self.http1.keepalive);
+            let mut http1 = builder.http1();
+            http1
+                .half_close(self.http1.half_close)
+                .keep_alive(self.http1.keepalive);
             if let Some(timeout) = self.http1.header_read_timeout {
-                builder = builder.http1_header_read_timeout(timeout);
+                http1.header_read_timeout(timeout);
             }
             if let Some(bufsz) = self.http1.max_buf_size {
-                builder = builder.http1_max_buf_size(bufsz.get());
+                http1.max_buf_size(bufsz.get());
             }
             if let Some(writev) = self.http1.writev {
-                builder = builder.http1_writev(writev);
+                http1.writev(writev);
             }
-        } else {
-            if !self.http2.enabled {
-                error!("No protocols enabled");
-                return Err(ServerBuilderError::NoProtocolsEnabled);
-            }
-            builder = builder.http2_only(true);
         }
-        if self.http2.enabled {
+        {
             debug!("Setting up HTTP/2");
-            builder = builder
-                .http2_adaptive_window(self.http2.adaptive_window)
-                .http2_initial_connection_window_size(
+            let mut http2 = builder.http2();
+            http2
+                .adaptive_window(self.http2.adaptive_window)
+                .initial_connection_window_size(
                     self.http2.initial_connection_window.map(NonZeroU32::get),
                 )
-                .http2_initial_stream_window_size(
-                    self.http2.initial_stream_window.map(NonZeroU32::get),
-                )
-                .http2_keep_alive_interval(self.http2.keepalive.interval)
-                .http2_max_concurrent_streams(
-                    self.http2.max_concurrent_streams.map(NonZeroU32::get),
-                );
+                .initial_stream_window_size(self.http2.initial_stream_window.map(NonZeroU32::get))
+                .keep_alive_interval(self.http2.keepalive.interval)
+                .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
             if self.http2.connect_protocol {
-                builder = builder.http2_enable_connect_protocol();
+                http2.enable_connect_protocol();
             }
             if let Some(timeout) = self.http2.keepalive.timeout {
-                builder = builder.http2_keep_alive_timeout(timeout);
+                http2.keep_alive_timeout(timeout);
             }
-        } else {
-            builder = builder.http1_only(true);
         }
         info!("Finished building server");
-        Ok(builder)
+        Ok(server)
     }
 }
 
@@ -262,9 +270,6 @@ struct TcpKeepaliveConfig {
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 struct Http1Config {
-    /// Enable HTTP/1 protocol
-    #[serde(default = "crate::util::default_true")]
-    enabled: bool,
     ///
     #[serde(default)]
     half_close: bool,
@@ -290,7 +295,6 @@ struct Http1Config {
 impl Default for Http1Config {
     fn default() -> Self {
         Self {
-            enabled: true,
             half_close: false,
             header_read_timeout: None,
             keepalive: true,
@@ -301,11 +305,8 @@ impl Default for Http1Config {
 }
 
 ///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 struct Http2Config {
-    /// Enable HTTP/2 protocol
-    #[serde(default = "crate::util::default_true")]
-    enabled: bool,
     ///
     #[serde(default)]
     adaptive_window: bool,
@@ -325,20 +326,6 @@ struct Http2Config {
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
     max_concurrent_streams: Option<NonZeroU32>,
-}
-
-impl Default for Http2Config {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            adaptive_window: false,
-            connect_protocol: false,
-            initial_connection_window: None,
-            initial_stream_window: None,
-            keepalive: Http2KeepaliveConfig::default(),
-            max_concurrent_streams: None,
-        }
-    }
 }
 
 ///
@@ -403,7 +390,7 @@ fn sock_create(addr: &SocketAddr) -> Result<TcpSocket, ServerBuilderError> {
     #[cfg(not(windows))]
     socket
         .set_reuseaddr(true)
-        .map_err(|err| ServerBuilderError::ReuseAddr(err.into()))?;
+        .map_err(|err| ServerBuilderError::SetReuseAddr(err.into()))?;
 
     Ok(socket)
 }

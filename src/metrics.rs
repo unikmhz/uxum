@@ -8,19 +8,20 @@ use std::{
 };
 
 use axum::{
+    body::HttpBody,
     extract::{MatchedPath, State},
     http::header,
     response::IntoResponse,
     routing::{self, Router},
 };
-use hyper::{body::HttpBody, Method, Request, Response};
+use hyper::{Method, Request, Response};
 use opentelemetry::{
     global,
-    metrics::{Counter, Histogram, MeterProvider as _, Unit, UpDownCounter},
+    metrics::{Counter, Histogram, MeterProvider, Unit, UpDownCounter},
     KeyValue,
 };
 use opentelemetry_sdk::{
-    metrics::{new_view, Aggregation, Instrument, MeterProvider, Stream},
+    metrics::{new_view, Aggregation, Instrument, MeterProviderBuilder, Stream},
     Resource,
 };
 use pin_project::pin_project;
@@ -225,7 +226,7 @@ impl MetricsBuilder {
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
-        let provider = MeterProvider::builder()
+        let provider = MeterProviderBuilder::default()
             .with_resource(resource)
             .with_reader(exporter)
             .with_view(new_view(

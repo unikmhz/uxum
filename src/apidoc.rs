@@ -386,7 +386,7 @@ impl ApiDocBuilder {
                 version: self.app_version.clone().unwrap_or("0.0.0".into()),
                 extensions: Map::default(),
             },
-            servers: vec![],
+            servers: vec![], // FIXME: read from configuration
             paths,
             components: Some(openapi3::Components {
                 schemas: gen
@@ -394,15 +394,7 @@ impl ApiDocBuilder {
                     .iter()
                     .map(|(key, schema)| (key.clone(), schema.clone().into_object()))
                     .collect(),
-                responses: Map::default(),
-                parameters: Map::default(),
-                examples: Map::default(),
-                request_bodies: Map::default(),
-                headers: Map::default(),
-                security_schemes: Map::default(),
-                links: Map::default(),
-                callbacks: Map::default(),
-                extensions: Map::default(),
+                ..Default::default()
             }),
             security: vec![],
             tags: self.tags.clone(),

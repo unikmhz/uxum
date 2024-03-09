@@ -4,7 +4,7 @@ use std::{
 };
 
 use axum::{
-    body::{BoxBody, Bytes, HttpBody},
+    body::{Body, Bytes, HttpBody},
     error_handling::HandleErrorLayer,
     http::{
         header::{self, HeaderValue},
@@ -269,13 +269,13 @@ pub fn apply_layers<X, S, T, U>(
     hext: &X,
     handler: S,
     conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<T>, Response<BoxBody>, Infallible>
+) -> BoxCloneService<Request<T>, Response<Body>, Infallible>
 where
     X: HandlerExt,
     S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
-    T: Send + Sync + 'static,
+    T: Send + 'static,
     U: HttpBody<Data = Bytes> + Send + 'static,
     <U as HttpBody>::Error: std::error::Error + Send + Sync,
 {

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use opentelemetry::KeyValue;
 use opentelemetry_sdk::{
     resource::{
         EnvResourceDetector, OsResourceDetector, ProcessResourceDetector,
@@ -54,13 +55,13 @@ pub(crate) fn otel_resource(
     );
     let mut static_resources = Vec::new();
     if let Some(val) = app_namespace {
-        static_resources.push(res::SERVICE_NAMESPACE.string(val.to_string()));
+        static_resources.push(KeyValue::new(res::SERVICE_NAMESPACE, val.to_string()));
     }
     if let Some(val) = app_name {
-        static_resources.push(res::SERVICE_NAME.string(val.to_string()));
+        static_resources.push(KeyValue::new(res::SERVICE_NAME, val.to_string()));
     }
     if let Some(val) = app_version {
-        static_resources.push(res::SERVICE_VERSION.string(val.to_string()));
+        static_resources.push(KeyValue::new(res::SERVICE_VERSION, val.to_string()));
     }
     if !static_resources.is_empty() {
         resource = resource.merge(&mut Resource::new(static_resources));

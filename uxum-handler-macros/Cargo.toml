@@ -4,11 +4,10 @@ version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
-#repository = ""
-#description = ""
-#readme = ""
-#keywords = []
-#categories = []
+rust-version = "1.74"
+repository = "https://github.com/unikmhz/uxum"
+description = "Procedural macros for uxum framework"
+readme = "../README.md"
 
 [lib]
 proc-macro = true

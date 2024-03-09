@@ -127,7 +127,7 @@ impl<S, T> From<&HandlerRateLimitConfig> for RateLimitLayer<S, T> {
 impl<S, T> Layer<S> for RateLimitLayer<S, T>
 where
     S: Service<Request<T>> + Send + Sync + 'static,
-    T: Send + Sync + 'static,
+    T: Send + 'static,
 {
     type Service = RateLimit<S, T>;
 
@@ -189,7 +189,7 @@ where
 impl<S, T> RateLimit<S, T>
 where
     S: Service<Request<T>> + Send + Sync + 'static,
-    T: Send + Sync + 'static,
+    T: Send + 'static,
 {
     #[must_use]
     pub fn new(inner: S, config: &HandlerRateLimitConfig) -> Self {

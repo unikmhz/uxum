@@ -4,11 +4,12 @@ version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
-#repository = ""
-#description = ""
-#readme = ""
-#keywords = []
-#categories = []
+rust-version = "1.74"
+repository = "https://github.com/unikmhz/uxum"
+description = "Opinionated backend service framework based on axum"
+readme = "README.md"
+keywords = ["uxum", "axum", "http", "web", "framework", "server"]
+categories = ["asynchronous", "network-programming", "web-programming::http-server"]
 
 [workspace]
 members = ["uxum-handler-macros"]
@@ -17,8 +18,9 @@ members = ["uxum-handler-macros"]
 uxum-handler-macros = {path = "uxum-handler-macros"}
 
 askama = "0.12"
-askama_axum = "0.3"
-axum = "0.6"
+askama_axum = "0.4"
+axum = "0.7"
+axum-server = {version = "0.6", features = ["tls-rustls"]}
 bytes = {version = "1.5", features = ["serde"]}
 dashmap = "5.5"
 # deranged = {version = "0.3", features = ["serde"]}
@@ -26,17 +28,18 @@ forwarded-header-value = "0.1"
 governor = "0.6"
 humantime-serde = "1.1"
 http = "1.1"
-hyper = {version = "0.14", features = ["http2", "server"]}
+hyper = {version = "1.2", features = ["http2", "server"]}
+hyper-util = {version = "0.1", features = ["http2", "server"]}
 inventory = "0.3"
 maplit = "1.0"
 mime = "0.3"
-okapi = {version = "0.7.0-rc.1", features = ["preserve_order"]}
+okapi = {version = "0.7", features = ["preserve_order"]}
 pin-project = "1.1"
-opentelemetry = { version = "0.21", features = ["metrics"] }
-opentelemetry-otlp = { version = "0.14", features = ["tonic", "metrics", "logs"]}
-opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
-opentelemetry-prometheus = { version = "0.14", features = ["prometheus-encoding"] }
-opentelemetry-semantic-conventions = { version = "0.13"}
+opentelemetry = { version = "0.22", features = ["metrics"] }
+opentelemetry-otlp = { version = "0.15", features = ["tonic", "metrics", "logs"]}
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+opentelemetry-prometheus = { version = "0.15", features = ["prometheus-encoding"] }
+opentelemetry-semantic-conventions = { version = "0.14"}
 prometheus = "0.13"
 schemars = {version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"]}
 serde = {version = "1.0", features = ["derive"]}
@@ -45,15 +48,15 @@ socket2 = {version = "0.5"}
 thiserror = "1.0"
 tokio = {version = "1.35", features = ["full"]}
 tower = {version = "0.4", features = ["buffer", "filter", "limit", "retry", "timeout", "util"]}
-tower-http = {version = "0.4", features = ["set-header", "trace"]}
+tower-http = {version = "0.5", features = ["set-header", "trace"]}
 tracing = "0.1"
 tracing-appender = "0.2"
-tracing-opentelemetry = "0.22"
+tracing-opentelemetry = "0.23"
 tracing-subscriber = {version = "0.3", features = ["tracing-log", "env-filter", "json", "parking_lot"]}
 url = {version = "2.5", features = ["serde"]}
 
 [dev-dependencies]
-config = {version = "0.13", features = ["yaml"]}
+config = {version = "0.14", features = ["yaml"]}
 rand = "0.8"
 
 [[example]]
