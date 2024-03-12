@@ -30,7 +30,7 @@ mod response;
 mod tracing;
 mod util;
 
-pub use uxum_handler_macros::handler;
+pub use uxum_macros::handler;
 
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},

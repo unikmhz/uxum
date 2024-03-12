@@ -14,7 +14,7 @@ pub(crate) enum RequestBody {
     ///
     Form,
     ///
-    Json(Box<Path>),
+    Json(Path),
 }
 
 impl ToTokens for RequestBody {
@@ -56,7 +56,7 @@ impl RequestBody {
     }
 }
 
-///
+/// Detect request body extractor inside handler function signature
 pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
     handler.sig.inputs.iter().find_map(|input| match input {
         FnArg::Typed(arg_type) => match arg_type.ty.as_ref() {
@@ -76,7 +76,7 @@ pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
                                 ..
                             }) if args.len() == 1 => match &args[0] {
                                 GenericArgument::Type(Type::Path(TypePath { path, .. })) => {
-                                    Some(RequestBody::Json(Box::new(path.clone())))
+                                    Some(RequestBody::Json(path.clone()))
                                 }
                                 _ => None,
                             },

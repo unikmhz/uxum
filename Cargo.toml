@@ -12,10 +12,10 @@ keywords = ["uxum", "axum", "http", "web", "framework", "server"]
 categories = ["asynchronous", "network-programming", "web-programming::http-server"]
 
 [workspace]
-members = ["uxum-handler-macros"]
+members = ["uxum-macros"]
 
 [dependencies]
-uxum-handler-macros = {path = "uxum-handler-macros"}
+uxum-macros = {path = "uxum-macros"}
 
 askama = "0.12"
 askama_axum = "0.4"

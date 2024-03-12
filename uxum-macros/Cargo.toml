@@ -1,5 +1,5 @@
 [package]
-name = "uxum-handler-macros"
+name = "uxum-macros"
 version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"

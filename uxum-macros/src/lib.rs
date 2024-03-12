@@ -1,12 +1,8 @@
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
 
-mod body;
 mod case;
-mod doc;
 mod handler;
-mod path;
-mod response;
 mod util;
 
 use darling::{ast::NestedMeta, FromMeta};
@@ -16,10 +12,12 @@ use quote::{format_ident, quote};
 use syn::{parse_macro_input, ItemFn};
 
 use crate::{
-    body::detect_request_body,
     case::ToCamelCase,
-    handler::{HandlerData, HandlerMethod},
-    path::format_path_for_spec,
+    handler::{
+        body::detect_request_body,
+        data::{HandlerData, HandlerMethod},
+        path::format_path_for_spec,
+    },
 };
 
 /// Attribute macro for declaring service endpoints

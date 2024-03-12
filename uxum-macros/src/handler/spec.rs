@@ -2,30 +2,21 @@ use std::collections::HashMap;
 
 use darling::FromMeta;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens, TokenStreamExt};
+use quote::quote;
 use syn::ItemFn;
 
 use crate::{
-    body::RequestBody, doc::extract_docstring, path::extract_path_params,
-    response::detect_responses, util::quote_option,
+    handler::{
+        body::RequestBody,
+        data::HandlerMethod,
+        doc::extract_docstring,
+        external_doc::OpenApiExternalDoc,
+        path::extract_path_params,
+        path_param::OpenApiPathParameter,
+        response::detect_responses,
+    },
+    util::quote_option,
 };
-
-///
-#[derive(Debug, FromMeta)]
-pub(crate) struct HandlerData {
-    ///
-    #[darling(default)]
-    pub(crate) name: Option<String>,
-    ///
-    #[darling(default)]
-    pub(crate) path: Option<String>,
-    ///
-    #[darling(default)]
-    pub(crate) method: Option<HandlerMethod>,
-    ///
-    #[darling(default)]
-    pub(crate) spec: HandlerSpec,
-}
 
 ///
 #[derive(Debug, Default, FromMeta)]
@@ -121,102 +112,5 @@ impl HandlerSpec {
                 extensions: Default::default(),
             }
         }
-    }
-}
-
-///
-#[derive(Debug, FromMeta)]
-pub(crate) struct OpenApiExternalDoc {
-    ///
-    #[darling(default)]
-    description: Option<String>,
-    ///
-    url: String,
-}
-
-impl ToTokens for OpenApiExternalDoc {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let description = quote_option(&self.description);
-        let url = &self.url;
-        tokens.append_all(quote! {
-            openapi3::ExternalDocs {
-                description: #description,
-                url: #url.into(),
-                extensions: Default::default(),
-            }
-        });
-    }
-}
-
-///
-#[derive(Clone, Debug, Default, FromMeta)]
-struct OpenApiPathParameter {
-    ///
-    #[darling(default)]
-    description: Option<String>,
-    ///
-    #[darling(default)]
-    deprecated: bool,
-    ///
-    #[darling(default)]
-    allow_empty: bool,
-    ///
-    #[darling(default)]
-    value_type: Option<syn::Path>,
-}
-
-///
-#[derive(Debug, FromMeta)]
-pub(crate) struct OpenApiServer {
-    /// Server URL
-    url: String,
-    /// Server description
-    #[darling(default)]
-    description: Option<String>,
-}
-
-impl ToTokens for OpenApiServer {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let url = &self.url;
-        let description = quote_option(&self.description);
-        tokens.append_all(quote! {
-            openapi3::Server {
-                url: #url.into(),
-                description: #description,
-                variables: Default::default(),
-                extensions: Default::default(),
-            }
-        });
-    }
-}
-
-/// Supported HTTP methods
-#[derive(Debug, Default, FromMeta)]
-#[darling(default, rename_all = "SCREAMING_SNAKE_CASE")]
-pub(crate) enum HandlerMethod {
-    #[default]
-    Get,
-    Head,
-    Post,
-    Put,
-    Delete,
-    Options,
-    Trace,
-    Patch,
-}
-
-impl ToTokens for HandlerMethod {
-    fn to_tokens(&self, stream: &mut TokenStream) {
-        let new_tokens: TokenStream = match self {
-            Self::Get => quote! { ::uxum::reexport::http::Method::GET },
-            Self::Head => quote! { ::uxum::reexport::http::Method::HEAD },
-            Self::Post => quote! { ::uxum::reexport::http::Method::POST },
-            Self::Put => quote! { ::uxum::reexport::http::Method::PUT },
-            Self::Delete => quote! { ::uxum::reexport::http::Method::DELETE },
-            Self::Options => quote! { ::uxum::reexport::http::Method::OPTIONS },
-            Self::Trace => quote! { ::uxum::reexport::http::Method::TRACE },
-            Self::Patch => quote! { ::uxum::reexport::http::Method::PATCH },
-        };
-        stream.append_all(new_tokens);
     }
 }
