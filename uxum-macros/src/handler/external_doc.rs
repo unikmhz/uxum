@@ -1,6 +1,6 @@
 use darling::FromMeta;
 use proc_macro2::TokenStream;
-use quote::{quote, TokenStreamExt, ToTokens};
+use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::util::quote_option;
 

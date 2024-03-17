@@ -1,10 +1,19 @@
+use proc_macro2::TokenStream;
+use quote::ToTokens;
 use syn::{
     AngleBracketedGenericArguments, FnArg, GenericArgument, ItemFn, Path, PathArguments, Type,
     TypePath,
 };
 
 ///
+#[derive(Debug)]
 pub(crate) struct QueryType(Path);
+
+impl ToTokens for QueryType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.0.to_tokens(tokens)
+    }
+}
 
 /// Detect query string extractor inside handler function signature
 pub(crate) fn detect_query_strings(handler: &ItemFn) -> Option<QueryType> {

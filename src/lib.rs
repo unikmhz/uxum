@@ -2,7 +2,7 @@
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
 // #![warn(clippy::pedantic)]
 // #![warn(clippy::restriction)]
-#![warn(clippy::cargo)]
+// #![warn(clippy::cargo)]
 // #![warn(missing_docs)]
 // #![allow(clippy::module_name_repetitions)]
 // #![allow(clippy::single_call_fn)]

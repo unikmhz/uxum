@@ -7,13 +7,9 @@ use syn::ItemFn;
 
 use crate::{
     handler::{
-        body::RequestBody,
-        data::HandlerMethod,
-        doc::extract_docstring,
-        external_doc::OpenApiExternalDoc,
-        path::extract_path_params,
-        path_param::OpenApiPathParameter,
-        response::detect_responses,
+        body::RequestBody, data::HandlerMethod, doc::extract_docstring,
+        external_doc::OpenApiExternalDoc, path::extract_path_params,
+        path_param::OpenApiPathParameter, query::detect_query_strings, response::detect_responses,
     },
     util::quote_option,
 };
@@ -92,6 +88,46 @@ impl HandlerSpec {
             }
         });
 
+        let query_params = detect_query_strings(handler)
+            .map(|qt| {
+                quote! {
+                    .into_iter()
+                    .chain({
+                        let mut params = Vec::new();
+                        let query_schema = schemars::schema_for!(#qt);
+                        if let Some(query_object) = query_schema.schema.object {
+                            for (key, param) in query_object.properties.into_iter() {
+                                let obj = match &param {
+                                    schemars::schema::Schema::Object(obj) => obj,
+                                    _ => continue,
+                                };
+                                let meta = obj.metadata.as_ref();
+                                params.push(openapi3::Parameter {
+                                    name: key.into(),
+                                    location: "query".into(),
+                                    description: meta.and_then(|m| m.description.clone()),
+                                    required: true, // FIXME
+                                    deprecated: meta.map(|m| m.deprecated).unwrap_or_default(),
+                                    allow_empty_value: false,
+                                    value: openapi3::ParameterValue::Schema {
+                                        style: None,
+                                        explode: None,
+                                        allow_reserved: false,
+                                        schema: param.into(),
+                                        example: None, // TODO: maybe extract examples?
+                                        examples: None,
+                                    },
+                                    extensions: Default::default(),
+                                }.into());
+                            }
+                        }
+                        params
+                    })
+                    .collect()
+                }
+            })
+            .unwrap_or_else(|| quote! {});
+
         let request_body = quote_option(request_body);
         let responses = detect_responses(handler);
 
@@ -102,7 +138,7 @@ impl HandlerSpec {
                 description: #description,
                 external_docs: #docs,
                 operation_id: Some(#name.into()),
-                parameters: vec![#(#path_params.into()),*],
+                parameters: vec![#(#path_params.into()),*] #query_params,
                 request_body: #request_body,
                 responses: #responses,
                 callbacks: Default::default(), // TODO: fill?
