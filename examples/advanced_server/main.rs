@@ -172,9 +172,13 @@ async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
 
 /// Return error sometimes
 ///
+/// This is an example of returning Result from a handler.
+///
 /// Be aware that standard [`axum::IntoResponse`] implementation is used
 /// here, which means error responses do not automatically get 4xx or 5xx
 /// HTTP statuses.
+///
+/// For proper error response generation, see [`get_random_number`].
 #[handler]
 async fn maybe_error_strings() -> Result<String, String> {
     if rand::random() {
@@ -184,7 +188,7 @@ async fn maybe_error_strings() -> Result<String, String> {
     }
 }
 
-/// Request body
+/// Request body used in [`get_random_number`]
 #[derive(Deserialize, JsonSchema)]
 struct GetRandomRequest {
     /// Low bound for a value
@@ -193,14 +197,14 @@ struct GetRandomRequest {
     max: i64,
 }
 
-/// Response body
+/// Response body used in [`get_random_number`]
 #[derive(JsonSchema, Serialize)]
 struct GetRandomResponse {
     /// Generated random value
     value: i64,
 }
 
-/// Error message
+/// Error message used in [`get_random_number`]
 #[derive(Debug, JsonSchema, Serialize, thiserror::Error)]
 enum GetRandomError {
     /// Generated number is too small

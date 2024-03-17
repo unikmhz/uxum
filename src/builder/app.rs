@@ -19,6 +19,7 @@ use opentelemetry_sdk::trace::Tracer;
 use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
+    sensitive_headers::SetSensitiveHeadersLayer,
     set_header::SetResponseHeaderLayer,
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
@@ -218,6 +219,7 @@ impl AppBuilder {
         }
 
         let global_layers = ServiceBuilder::new()
+            .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
@@ -234,7 +236,6 @@ impl AppBuilder {
                 self.server_header(),
             ));
         // TODO: DefaultBodyLimit (configurable)
-        // TODO: SetSensitiveRequestHeadersLayer
         let final_rtr = rtr.layer(global_layers);
         info!("Finished building application");
         Ok((final_rtr, tracer))
