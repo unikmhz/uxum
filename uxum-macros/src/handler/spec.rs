@@ -39,6 +39,7 @@ pub(crate) struct HandlerSpec {
 
 impl HandlerSpec {
     ///
+    #[must_use]
     pub(crate) fn generate_spec(
         &self,
         name: &str,

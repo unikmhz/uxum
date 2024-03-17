@@ -31,6 +31,7 @@ impl ToTokens for ResponseTemplate {
 }
 
 ///
+#[must_use]
 pub(crate) fn detect_responses(handler: &ItemFn) -> ResponseTemplate {
     match &handler.sig.output {
         ReturnType::Default => ResponseTemplate::Default,

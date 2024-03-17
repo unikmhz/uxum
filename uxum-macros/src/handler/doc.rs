@@ -11,6 +11,7 @@ pub(crate) struct DocData {
 }
 
 ///
+#[must_use]
 pub(crate) fn extract_docstring(attrs: &[Attribute]) -> DocData {
     let mut literals: VecDeque<_> = attrs
         .iter()

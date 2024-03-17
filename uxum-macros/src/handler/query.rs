@@ -16,6 +16,7 @@ impl ToTokens for QueryType {
 }
 
 /// Detect query string extractor inside handler function signature
+#[must_use]
 pub(crate) fn detect_query_strings(handler: &ItemFn) -> Option<QueryType> {
     handler.sig.inputs.iter().find_map(|input| match input {
         FnArg::Typed(arg_type) => match arg_type.ty.as_ref() {

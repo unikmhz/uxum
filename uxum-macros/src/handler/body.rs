@@ -57,6 +57,7 @@ impl RequestBody {
 }
 
 /// Detect request body extractor inside handler function signature
+#[must_use]
 pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
     handler.sig.inputs.iter().find_map(|input| match input {
         FnArg::Typed(arg_type) => match arg_type.ty.as_ref() {

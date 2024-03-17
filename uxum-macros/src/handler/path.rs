@@ -1,5 +1,6 @@
 use std::{borrow::Cow, str::Split};
 
+#[must_use]
 fn path_segments(path: &str) -> Split<'_, char> {
     path.trim_start_matches('/').split('/')
 }
@@ -11,6 +12,7 @@ pub(crate) fn extract_path_params(path: &str) -> impl Iterator<Item = &str> {
     })
 }
 
+#[must_use]
 pub(crate) fn format_path_for_spec(path: &str) -> String {
     path_segments(path)
         .map(|segment| match segment.get(..1) {

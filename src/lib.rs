@@ -23,6 +23,7 @@ mod errors;
 mod layers;
 mod logging;
 mod metrics;
+mod notify;
 mod otel;
 pub mod prelude;
 pub mod reexport;
@@ -41,6 +42,7 @@ pub use self::{
     config::*,
     layers::{ext::HandlerName, rate::RateLimitError},
     metrics::{MetricsBuilder, MetricsError, MetricsState},
+    notify::ServiceNotifier,
     response::{GetResponseSchemas, ResponseSchema},
     util::ResponseExtension,
 };

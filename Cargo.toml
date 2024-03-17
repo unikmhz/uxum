@@ -10,6 +10,7 @@ description = "Opinionated backend service framework based on axum"
 readme = "README.md"
 keywords = ["uxum", "axum", "http", "web", "framework", "server"]
 categories = ["asynchronous", "network-programming", "web-programming::http-server"]
+exclude = [".gitignore"]
 
 [workspace]
 members = ["uxum-macros"]
@@ -24,12 +25,14 @@ axum-server = {version = "0.6", features = ["tls-rustls"]}
 bytes = {version = "1.5", features = ["serde"]}
 dashmap = "5.5"
 forwarded-header-value = "0.1"
+futures = "0.3"
 governor = "0.6"
 humantime-serde = "1.1"
 http = "1.1"
 hyper = {version = "1.2", features = ["http2", "server"]}
 hyper-util = {version = "0.1", features = ["http2", "server"]}
 inventory = "0.3"
+libsystemd = "0.7"
 maplit = "1.0"
 mime = "0.3"
 okapi = {version = "0.7", features = ["preserve_order"]}
@@ -47,7 +50,7 @@ socket2 = {version = "0.5"}
 thiserror = "1.0"
 tokio = {version = "1.35", features = ["full"]}
 tower = {version = "0.4", features = ["buffer", "filter", "limit", "retry", "timeout", "util"]}
-tower-http = {version = "0.5", features = ["sensitive-headers", "set-header", "trace"]}
+tower-http = {version = "0.5", features = ["sensitive-headers", "set-header", "trace", "util"]}
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-opentelemetry = "0.23"
@@ -66,3 +69,11 @@ name = "basic_server"
 
 [[example]]
 name = "advanced_server"
+
+[package.metadata.release]
+publish = false
+push = false
+pre-release-commit-message = "uxum {{version}}"
+sign-commit = true
+sign-tag = true
+tag-message = "uxum {{version}}"
