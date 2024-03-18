@@ -28,6 +28,7 @@ mod otel;
 pub mod prelude;
 pub mod reexport;
 mod response;
+mod signal;
 mod tracing;
 mod util;
 
@@ -44,5 +45,6 @@ pub use self::{
     metrics::{MetricsBuilder, MetricsError, MetricsState},
     notify::ServiceNotifier,
     response::{GetResponseSchemas, ResponseSchema},
+    signal::{SignalError, SignalStream},
     util::ResponseExtension,
 };
