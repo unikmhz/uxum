@@ -14,6 +14,8 @@ use pin_project::pin_project;
 use tower::{Layer, Service};
 
 /// Helper function used for default boolean values in [`serde`]
+///
+/// Always returns `true`.
 #[must_use]
 #[inline]
 pub(crate) fn default_true() -> bool {

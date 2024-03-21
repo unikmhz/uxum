@@ -30,6 +30,38 @@ pub struct AppConfig {
     /// Common OpenTelemetry configuration
     #[serde(default)]
     pub otel: OpenTelemetryConfig,
+    /// Short application name
+    #[serde(skip)]
+    pub app_name: Option<String>,
+    /// Application version
+    #[serde(skip)]
+    pub app_version: Option<String>,
+    /// OpenTelemetry static attributes
+    #[serde(skip)]
+    pub otel_res: Option<opentelemetry_sdk::Resource>,
+}
+
+impl AppConfig {
+    /// Set short name of an application
+    ///
+    /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
+    /// things.
+    #[must_use]
+    pub fn with_app_name(&mut self, app_name: impl ToString) -> &mut Self {
+        // TODO: mybe check for value correctness?
+        self.app_name = Some(app_name.to_string());
+        self
+    }
+
+    /// Set application version
+    ///
+    /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
+    /// HTTP header, among other things.
+    #[must_use]
+    pub fn with_app_version(&mut self, app_version: impl ToString) -> &mut Self {
+        self.app_version = Some(app_version.to_string());
+        self
+    }
 }
 
 /// Configuration of a single handler

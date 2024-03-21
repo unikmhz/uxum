@@ -87,13 +87,13 @@ impl SignalStream {
     pub async fn next(&mut self) -> Result<Signal, SignalError> {
         macro_rules! sig_recv {
             ($name:literal, $value:ident) => {
-                info!(kind = $name, "Received signal");
+                info!(kind = $name, "received signal");
                 return Ok(Signal::$value);
             };
         }
         macro_rules! sig_restart {
             ($name:literal, $sig:ident, $create:ident) => {
-                warn!(kind = $name, "Signal handler exited, restarting");
+                warn!(kind = $name, "signal handler exited, restarting");
                 self.$sig = register(unix::SignalKind::$create())?;
                 continue;
             };

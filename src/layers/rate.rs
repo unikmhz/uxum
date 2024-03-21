@@ -178,7 +178,7 @@ where
             // TODO: option to allow ignoring extraction errors
             Err(error) => {
                 if let RateLimitError::LimitReached { remaining_seconds } = &error {
-                    warn!(wait = remaining_seconds, "Rate limit exceeded");
+                    warn!(wait = remaining_seconds, "rate limit exceeded");
                 }
                 RateLimitFuture::Negative { error }
             }

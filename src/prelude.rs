@@ -11,7 +11,6 @@ pub use crate::{
         mime, okapi, openapi3,
         schemars::{self, JsonSchema},
         tracing,
-        tracing_subscriber::util::SubscriberInitExt,
     },
     AppBuilder, AppConfig, ServerBuilder,
 };

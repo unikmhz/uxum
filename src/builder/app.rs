@@ -15,7 +15,6 @@ use axum::{
 };
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
-use opentelemetry_sdk::trace::Tracer;
 use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
@@ -31,7 +30,6 @@ use crate::{
     config::{AppConfig, HandlerConfig},
     layers::ext::HandlerName,
     metrics::{MetricsBuilder, MetricsError},
-    otel::otel_resource,
     tracing::TracingError,
     util::ResponseExtension,
 };
@@ -55,19 +53,11 @@ pub enum AppBuilderError {
 pub struct AppBuilder {
     /// Application configuration
     config: AppConfig,
-    /// Short application name
-    app_name: Option<String>,
-    /// Application version
-    app_version: Option<String>,
 }
 
 impl From<AppConfig> for AppBuilder {
     fn from(value: AppConfig) -> Self {
-        Self {
-            config: value,
-            app_name: None,
-            app_version: None,
-        }
+        Self { config: value }
     }
 }
 
@@ -78,25 +68,9 @@ impl AppBuilder {
         Self::default()
     }
 
-    /// Set short name of an application
-    ///
-    /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
-    /// things.
     #[must_use]
-    pub fn with_app_name(mut self, app_name: impl ToString) -> Self {
-        // TODO: mybe check for value correctness?
-        self.app_name = Some(app_name.to_string());
-        self
-    }
-
-    /// Set application version
-    ///
-    /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
-    /// HTTP header, among other things.
-    #[must_use]
-    pub fn with_app_version(mut self, app_version: impl ToString) -> Self {
-        self.app_version = Some(app_version.to_string());
-        self
+    pub fn from_config(cfg: &AppConfig) -> Self {
+        cfg.clone().into()
     }
 
     /// Set used API doc builder
@@ -154,25 +128,14 @@ impl AppBuilder {
     ///
     /// Returns `Err` if some part of application setup did not succeed, or when there are
     /// conflicting handlers defined in application code.
-    pub fn build(mut self) -> Result<(Router, Option<Tracer>), AppBuilderError> {
+    pub fn build(mut self) -> Result<Router, AppBuilderError> {
         let _build_span = debug_span!("build_app").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
 
-        let otel_res = otel_resource(
-            self.config.otel.detector_timeout,
-            None::<String>,
-            self.app_name.as_deref(),
-            self.app_version.as_deref(),
-        );
-        let tracer = self
-            .config
-            .tracing
-            .as_ref()
-            .map(|trace_cfg| trace_cfg.build_pipeline(otel_res.clone()))
-            .transpose()?;
+        let otel_res = self.config.otel_resource();
         // TODO: export metrics state for application-defined metrics
-        let metrics_state = self.config.metrics.build_state(otel_res)?;
+        let metrics_state = self.config.metrics.build_state(otel_res.clone())?;
         if self.config.metrics.is_enabled() {
             rtr = rtr.merge(metrics_state.build_router());
         }
@@ -188,7 +151,7 @@ impl AppBuilder {
                 .entry(handler.path())
                 .and_modify(|handlers| handlers.push(*handler))
                 .or_insert_with(|| vec![*handler]);
-            debug!("Handler recorded");
+            debug!("handler recorded");
         }
         for (path, handlers) in grouped {
             let _register_span = info_span!("register_path", path).entered();
@@ -200,13 +163,13 @@ impl AppBuilder {
                     info_span!("register_handler", name, method = ?handler.method()).entered();
                 if let Some(cfg) = self.config.handlers.get(name) {
                     if cfg.disabled {
-                        info!("Skipping disabled handler");
+                        info!("skipping disabled handler");
                         continue;
                     }
                 }
                 method_rtr = handler.register_method(method_rtr, self.config.handlers.get(name));
                 has_some = true;
-                info!("Handler registered");
+                info!("handler registered");
             }
             if has_some {
                 rtr = rtr.route(path, method_rtr);
@@ -214,7 +177,10 @@ impl AppBuilder {
         }
 
         if let Some(ref mut api_doc) = self.config.api_doc {
-            api_doc.set_app_defaults(self.app_name.as_deref(), self.app_version.as_deref());
+            api_doc.set_app_defaults(
+                self.config.app_name.as_deref(),
+                self.config.app_version.as_deref(),
+            );
             rtr = rtr.merge(api_doc.build_router()?);
         }
 
@@ -237,16 +203,16 @@ impl AppBuilder {
             ));
         // TODO: DefaultBodyLimit (configurable)
         let final_rtr = rtr.layer(global_layers);
-        info!("Finished building application");
-        Ok((final_rtr, tracer))
+        info!("finished building application");
+        Ok(final_rtr)
     }
 
     /// Generate a value to be used in HTTP Server header
     #[must_use]
     fn server_header(&self) -> Option<HeaderValue> {
         const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
-        if let Some(app_name) = &self.app_name {
-            let val = if let Some(app_version) = &self.app_version {
+        if let Some(app_name) = &self.config.app_name {
+            let val = if let Some(app_version) = &self.config.app_version {
                 let app_product = [app_name.as_str(), app_version.as_str()].join("/");
                 [&app_product, UXUM_PRODUCT].join(" ")
             } else {
@@ -264,7 +230,7 @@ async fn error_handler(err: BoxError) -> impl IntoResponse {
     (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
 }
 
-///
+/// Apply standard layer stack to provided handler function
 #[must_use]
 pub fn apply_layers<X, S, T, U>(
     hext: &X,

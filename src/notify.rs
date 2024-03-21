@@ -2,7 +2,7 @@ use std::{future::Future, time::Duration};
 
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, trace, warn};
 
 pub struct ServiceNotifier {
     has_systemd: bool,
@@ -73,7 +73,7 @@ impl ServiceNotifier {
                         // TODO: cancellation token?
                         tokio::select! {
                             _ = interval.tick() => match daemon::notify(false, &[NotifyState::Watchdog]) {
-                                Ok(true) => debug!("supervisor notified: watchdog tick"),
+                                Ok(true) => trace!("supervisor notified: watchdog tick"),
                                 Ok(false) => warn!("supervisor unavailable: watchdog tick"),
                                 Err(err) => error!(%err, "watchdog notification error"),
                             }

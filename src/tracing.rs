@@ -177,7 +177,7 @@ impl Default for TracingSpanLimits {
 }
 
 impl TracingSpanLimits {
-    ///
+    /// Default value for all attributes
     #[must_use]
     #[inline]
     fn default_max() -> u32 {

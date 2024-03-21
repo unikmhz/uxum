@@ -12,21 +12,22 @@ struct ServiceConfig {
     server: ServerBuilder,
 }
 
+/// Application entry point
 #[tokio::main]
 async fn main() {
-    let config: ServiceConfig = Config::builder()
+    let mut config: ServiceConfig = Config::builder()
         .add_source(File::with_name("examples/advanced_server/config.yaml"))
         .build()
         .expect("Unable to load configuration")
         .try_deserialize()
         .expect("Error deserializing configuration");
-    let (registry, _buf_guards) = config
+    let _tele_guard = config
         .app
-        .logging
-        .make_registry()
-        .expect("Error setting up logging");
-    registry.init();
-    let mut app_builder: AppBuilder = config.app.into();
+        .with_app_name("advanced_server")
+        .with_app_version("1.2.3")
+        .init_telemetry()
+        .expect("Error initializing telemetry");
+    let mut app_builder = AppBuilder::from_config(&config.app);
     app_builder.configure_api_doc(|api_doc| {
         api_doc
             .with_app_title("Advanced Server")
@@ -37,11 +38,7 @@ async fn main() {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
-    let (app, _tracer) = app_builder
-        .with_app_name("advanced_server")
-        .with_app_version("1.2.3")
-        .build()
-        .expect("Unable to build app");
+    let app = app_builder.build().expect("Unable to build app");
     config
         .server
         .build()

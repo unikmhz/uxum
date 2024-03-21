@@ -94,6 +94,7 @@ impl Default for ServerBuilder {
 }
 
 impl ServerBuilder {
+    /// Default value for [`Self::listen`]
     #[must_use]
     #[inline]
     fn default_listen() -> String {
@@ -159,7 +160,7 @@ impl ServerBuilder {
         let builder = server.http_builder();
 
         {
-            debug!("Setting up HTTP/1");
+            debug!("setting up HTTP/1");
             let mut http1 = builder.http1();
             http1
                 .half_close(self.http1.half_close)
@@ -175,7 +176,7 @@ impl ServerBuilder {
             }
         }
         {
-            debug!("Setting up HTTP/2");
+            debug!("setting up HTTP/2");
             let mut http2 = builder.http2();
             http2
                 .adaptive_window(self.http2.adaptive_window)
@@ -192,7 +193,7 @@ impl ServerBuilder {
                 http2.keep_alive_timeout(timeout);
             }
         }
-        info!("Finished building server");
+        info!("finished building server");
         Ok(server)
     }
 }
@@ -212,7 +213,7 @@ struct TcpConfig {
     #[serde(default = "crate::util::default_true")]
     nodelay: bool,
     ///
-    #[serde(default = "TcpConfig::default_tcp_backlog")]
+    #[serde(default = "TcpConfig::default_backlog")]
     backlog: NonZeroU32,
     ///
     #[serde(default)]
@@ -226,7 +227,7 @@ impl Default for TcpConfig {
     fn default() -> Self {
         Self {
             nodelay: true,
-            backlog: Self::default_tcp_backlog(),
+            backlog: Self::default_backlog(),
             mss: None,
             keepalive: TcpKeepaliveConfig::default(),
         }
@@ -234,10 +235,11 @@ impl Default for TcpConfig {
 }
 
 impl TcpConfig {
+    /// Default value for [`Self::backlog`]
     #[must_use]
     #[inline]
     #[allow(clippy::unwrap_used)]
-    fn default_tcp_backlog() -> NonZeroU32 {
+    fn default_backlog() -> NonZeroU32 {
         NonZeroU32::new(1024).unwrap()
     }
 }

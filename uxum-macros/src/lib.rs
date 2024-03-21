@@ -70,6 +70,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     quote! {
+        #[tracing::instrument(name = "handler", skip_all, fields(name = #handler_name))]
         #input
 
         #[doc(hidden)]

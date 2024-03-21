@@ -6,10 +6,16 @@ use opentelemetry_sdk::{
         EnvResourceDetector, OsResourceDetector, ProcessResourceDetector,
         SdkProvidedResourceDetector, TelemetryResourceDetector,
     },
+    trace::Tracer,
     Resource,
 };
 use opentelemetry_semantic_conventions::resource as res;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::config::AppConfig;
 
 /// Common OpenTelemetry configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -37,34 +43,83 @@ impl OpenTelemetryConfig {
     }
 }
 
-pub(crate) fn otel_resource(
-    timeout: Duration,
-    app_namespace: Option<impl ToString>,
-    app_name: Option<impl ToString>,
-    app_version: Option<impl ToString>,
-) -> Resource {
-    let mut resource = Resource::from_detectors(
-        timeout,
-        vec![
-            Box::new(OsResourceDetector),
-            Box::new(ProcessResourceDetector),
-            Box::new(SdkProvidedResourceDetector),
-            Box::new(EnvResourceDetector::new()),
-            Box::new(TelemetryResourceDetector),
-        ],
-    );
-    let mut static_resources = Vec::new();
-    if let Some(val) = app_namespace {
-        static_resources.push(KeyValue::new(res::SERVICE_NAMESPACE, val.to_string()));
+/// Guard for logging and tracing subsystems
+///
+/// Unwritten logs will be flushed when dropping this object. This might help even in case of a
+/// panic.
+#[allow(dead_code)]
+pub struct TelemetryGuard {
+    buf_guards: Vec<WorkerGuard>,
+    tracer: Option<Tracer>,
+}
+
+/// Error type returned on telemetry initialization
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum TelemetryError {
+    /// Error while setting up logging
+    #[error(transparent)]
+    Logging(#[from] crate::logging::LoggingError),
+    /// Error while setting up trace collection and propagation
+    #[error(transparent)]
+    Tracing(#[from] crate::tracing::TracingError),
+}
+
+impl AppConfig {
+    /// Initialize logging and tracing subsystems
+    ///
+    /// Returns a guard that shouldn't be dropped as long as there is a need for these subsystems.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if any part of initializing of tracing or logging subsystems ends with and
+    /// error.
+    pub fn init_telemetry(&mut self) -> Result<TelemetryGuard, TelemetryError> {
+        let (registry, buf_guards) = self.logging.make_registry()?;
+        let otel_res = self.otel_resource();
+        let tracer = if let Some(tcfg) = self.tracing.as_mut() {
+            let tracer = tcfg.build_pipeline(otel_res)?;
+            let layer = tcfg.build_layer(&tracer);
+            registry.with(layer).init();
+            Some(tracer)
+        } else {
+            registry.init();
+            None
+        };
+        Ok(TelemetryGuard { buf_guards, tracer })
     }
-    if let Some(val) = app_name {
-        static_resources.push(KeyValue::new(res::SERVICE_NAME, val.to_string()));
+
+    /// Get OpenTelemetry resource
+    ///
+    /// Creates new resource object on first call. On subsequent calls returns previously created
+    /// object as a clone.
+    #[must_use]
+    pub fn otel_resource(&mut self) -> Resource {
+        if let Some(res) = &self.otel_res {
+            return res.clone();
+        }
+        let mut resource = Resource::from_detectors(
+            self.otel.detector_timeout,
+            vec![
+                Box::new(OsResourceDetector),
+                Box::new(ProcessResourceDetector),
+                Box::new(SdkProvidedResourceDetector),
+                Box::new(EnvResourceDetector::new()),
+                Box::new(TelemetryResourceDetector),
+            ],
+        );
+        // TODO: res::SERVICE_NAMESPACE
+        let mut static_resources = Vec::new();
+        if let Some(val) = &self.app_name {
+            static_resources.push(KeyValue::new(res::SERVICE_NAME, val.clone()));
+        }
+        if let Some(val) = &self.app_version {
+            static_resources.push(KeyValue::new(res::SERVICE_VERSION, val.clone()));
+        }
+        if !static_resources.is_empty() {
+            resource = resource.merge(&mut Resource::new(static_resources));
+        }
+        self.otel_res = Some(resource.clone());
+        resource
     }
-    if let Some(val) = app_version {
-        static_resources.push(KeyValue::new(res::SERVICE_VERSION, val.to_string()));
-    }
-    if !static_resources.is_empty() {
-        resource = resource.merge(&mut Resource::new(static_resources));
-    }
-    resource
 }

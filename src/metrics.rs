@@ -456,7 +456,7 @@ where
             .http_server
             .response_body_size
             .record(response_size, &labels);
-        trace!("Metrics recorded");
+        trace!("metrics recorded");
 
         Poll::Ready(Ok(resp))
     }

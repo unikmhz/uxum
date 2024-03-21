@@ -330,7 +330,7 @@ impl ApiDocBuilder {
                     .with_state(self.clone()),
             );
         }
-        debug!("Built API doc router");
+        debug!("built API doc router");
         Ok(rtr)
     }
 
