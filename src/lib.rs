@@ -1,3 +1,4 @@
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
 // #![warn(clippy::pedantic)]
@@ -24,11 +25,11 @@ mod layers;
 mod logging;
 mod metrics;
 mod notify;
-mod otel;
 pub mod prelude;
 pub mod reexport;
 mod response;
 mod signal;
+mod telemetry;
 mod tracing;
 mod util;
 
@@ -38,13 +39,19 @@ pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
     builder::{
         app::{apply_layers, AppBuilder, AppBuilderError, HandlerExt},
-        server::{ServerBuilder, ServerBuilderError},
+        server::{
+            Http1Config, Http2Config, Http2KeepaliveConfig, IpConfig, ServerBuilder,
+            ServerBuilderError, TcpConfig, TcpKeepaliveConfig,
+        },
     },
     config::*,
     layers::{ext::HandlerName, rate::RateLimitError},
+    logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsError, MetricsState},
     notify::ServiceNotifier,
     response::{GetResponseSchemas, ResponseSchema},
     signal::{SignalError, SignalStream},
+    telemetry::OpenTelemetryConfig,
+    tracing::TracingConfig,
     util::ResponseExtension,
 };

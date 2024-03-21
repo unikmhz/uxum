@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     apidoc::ApiDocBuilder, layers::buffer::*, layers::cb::*, layers::rate::*,
-    logging::LoggingConfig, metrics::MetricsBuilder, otel::OpenTelemetryConfig,
+    logging::LoggingConfig, metrics::MetricsBuilder, telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
 };
 
@@ -94,7 +94,7 @@ pub struct HandlerConfig {
     pub roles: Vec<String>,
 }
 
-///
+/// Handler request timeout configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HandlerTimeoutsConfig {
@@ -142,7 +142,7 @@ impl Default for HandlerTimeoutsConfig {
 }
 
 impl HandlerTimeoutsConfig {
-    ///
+    /// Predicate to skip serializing timeout for [`serde`]
     fn is_default(this: &Option<Self>) -> bool {
         match this {
             None => true,

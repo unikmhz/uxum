@@ -26,6 +26,7 @@ pub enum LoggingError {
 
 /// Logging configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LoggingConfig {
     /// List of subscribers defined in configuration
     #[serde(default)]
@@ -55,6 +56,7 @@ impl LoggingConfig {
 
 /// Individual logging subscriber configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LoggingSubscriberConfig {
     /// Overall format for logging output
     #[serde(default, flatten)]
@@ -196,7 +198,7 @@ pub enum LoggingFormat {
     },
 }
 
-///
+/// Minumum event severity for log output
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LoggingLevel {
@@ -242,6 +244,7 @@ impl From<LoggingLevel> for LevelFilter {
 
 /// Additional information to include in output
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 #[allow(clippy::struct_excessive_bools)]
 pub struct LoggingPrintingConfig {
     /// Print event target
@@ -279,6 +282,7 @@ impl Default for LoggingPrintingConfig {
 
 /// Configuration for a non-blocking writer
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LoggingBufferConfig {
     /// Maximum buffered lines to store
     ///
@@ -342,24 +346,27 @@ impl LoggingBufferConfig {
     }
 }
 
-///
+/// Logging output destination configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum LoggingDestination {
-    ///
+    /// Output to standard output (stdout, fd 1)
     #[default]
+    #[serde(alias = "stdout", alias = "out")]
     StdOut,
-    ///
+    /// Output to standard error (stderr, fd 2)
+    #[serde(alias = "stderr", alias = "err")]
     StdErr,
-    ///
+    /// Output to file
     File(LoggingFileConfig),
-    ///
+    /// Output to files in a directory with optional rotation
+    #[serde(alias = "dir")]
     Directory(LoggingDirectoryConfig),
 }
 
 impl LoggingDestination {
-    ///
+    /// Make [`tracing_subscriber::fmt::writer::BoxMakeWriter`] from configuration
     pub fn make_writer(
         &self,
         buf_builder: NonBlockingBuilder,
@@ -382,9 +389,17 @@ impl LoggingDestination {
                 Ok((BoxMakeWriter::new(wr), wg))
             }
             Self::Directory(dir_cfg) => {
-                let appender = RollingFileAppender::builder()
-                    .rotation(dir_cfg.rotate.into())
-                    .build(&dir_cfg.path)?;
+                let mut builder = RollingFileAppender::builder().rotation(dir_cfg.rotate.into());
+                if let Some(prefix) = &dir_cfg.prefix {
+                    builder = builder.filename_prefix(prefix);
+                }
+                if let Some(suffix) = &dir_cfg.suffix {
+                    builder = builder.filename_suffix(suffix);
+                }
+                if let Some(max_files) = dir_cfg.max_files {
+                    builder = builder.max_log_files(max_files);
+                }
+                let appender = builder.build(&dir_cfg.path)?;
                 let (wr, wg) = buf_builder.finish(appender);
                 Ok((BoxMakeWriter::new(wr), wg))
             }
@@ -392,29 +407,31 @@ impl LoggingDestination {
     }
 }
 
-///
+/// Configuration of file output
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LoggingFileConfig {
-    ///
+    /// Path to file
     pub path: String,
 }
 
-///
+/// Configuration of directory output
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct LoggingDirectoryConfig {
-    ///
+    /// Path to directory
     #[serde(default = "LoggingDirectoryConfig::default_path")]
     pub path: String,
-    ///
+    /// Log rotation configuration
     #[serde(default)]
     pub rotate: LogRotation,
-    ///
+    /// Template prefix for file names
     #[serde(default)]
     pub prefix: Option<String>,
-    ///
+    /// Template suffix for file names
     #[serde(default = "LoggingDirectoryConfig::default_suffix")]
     pub suffix: Option<String>,
-    ///
+    /// Maximum amount of files to keep in directory
     #[serde(default)]
     pub max_files: Option<usize>,
 }
@@ -423,7 +440,7 @@ impl Default for LoggingDirectoryConfig {
     fn default() -> Self {
         Self {
             path: Self::default_path(),
-            rotate: LogRotation::Daily,
+            rotate: LogRotation::default(),
             prefix: None,
             suffix: Self::default_suffix(),
             max_files: None,
@@ -448,18 +465,19 @@ impl LoggingDirectoryConfig {
     }
 }
 
-///
+/// Log rotation configuration
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LogRotation {
-    ///
+    /// Rotate logs once every minute
     Minutely,
-    ///
+    /// Rotate logs once every hour
     Hourly,
-    ///
+    /// Rotate logs once every day
     #[default]
     Daily,
-    ///
+    /// Never rotate logs
     Never,
 }
 

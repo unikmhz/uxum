@@ -50,31 +50,32 @@ pub enum ServerBuilderError {
 
 /// Builder for HTTP server
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct ServerBuilder {
     /// Host/address and port to listen on
     #[serde(default = "ServerBuilder::default_listen")]
-    listen: String,
+    pub listen: String,
     /// Sleep on accept errors
     #[serde(default)]
-    sleep_on_accept_errors: bool,
+    pub sleep_on_accept_errors: bool,
     /// Size of TCP receive buffer, in bytes
     #[serde(default)]
-    recv_buffer: Option<NonZeroUsize>,
+    pub recv_buffer: Option<NonZeroUsize>,
     /// Size of TCP send buffer, in bytes
     #[serde(default)]
-    send_buffer: Option<NonZeroUsize>,
+    pub send_buffer: Option<NonZeroUsize>,
     /// IP-level socket configuration
     #[serde(default)]
-    ip: IpConfig,
+    pub ip: IpConfig,
     /// TCP-level socket configuration
     #[serde(default)]
-    tcp: TcpConfig,
+    pub tcp: TcpConfig,
     /// Configuration specific to HTTP/1 protocol
     #[serde(default)]
-    http1: Http1Config,
+    pub http1: Http1Config,
     /// Configuration specific to HTTP/2 protocol
     #[serde(default)]
-    http2: Http2Config,
+    pub http2: Http2Config,
     // TODO: TLS
 }
 
@@ -198,29 +199,31 @@ impl ServerBuilder {
     }
 }
 
-///
+/// IP-level configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-struct IpConfig {
+#[non_exhaustive]
+pub struct IpConfig {
     ///
     #[serde(default)]
-    tos: Option<u32>,
+    pub tos: Option<u32>,
 }
 
-///
+/// TCP-level configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-struct TcpConfig {
+#[non_exhaustive]
+pub struct TcpConfig {
     /// Set TCP_NODELAY socket options for accepted connections
     #[serde(default = "crate::util::default_true")]
-    nodelay: bool,
+    pub nodelay: bool,
     ///
     #[serde(default = "TcpConfig::default_backlog")]
-    backlog: NonZeroU32,
+    pub backlog: NonZeroU32,
     ///
     #[serde(default)]
-    mss: Option<NonZeroU32>,
+    pub mss: Option<NonZeroU32>,
     /// TCP keepalive socket options
     #[serde(default)]
-    keepalive: TcpKeepaliveConfig,
+    pub keepalive: TcpKeepaliveConfig,
 }
 
 impl Default for TcpConfig {
@@ -240,13 +243,15 @@ impl TcpConfig {
     #[inline]
     #[allow(clippy::unwrap_used)]
     fn default_backlog() -> NonZeroU32 {
+        // SAFETY: 1024 is always not a zero
         NonZeroU32::new(1024).unwrap()
     }
 }
 
 /// TCP keepalive configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-struct TcpKeepaliveConfig {
+#[non_exhaustive]
+pub struct TcpKeepaliveConfig {
     /// Duration to remain idle before sending TCP keepalive probes
     ///
     /// TCP keepalive is disabled if value is not provided.
@@ -255,7 +260,7 @@ struct TcpKeepaliveConfig {
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    idle: Option<Duration>,
+    pub idle: Option<Duration>,
     /// Duration between two successive TCP keepalive retransmissions, if acknowledgement
     /// to the previous keepalive transmission is not received
     #[serde(
@@ -263,35 +268,48 @@ struct TcpKeepaliveConfig {
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    interval: Option<Duration>,
+    pub interval: Option<Duration>,
     /// Number of retransmissions to be carried out before declaring that remote end is not
     /// available
-    retries: Option<NonZeroU32>,
+    pub retries: Option<NonZeroU32>,
 }
 
-///
+/// HTTP/1 protocol configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-struct Http1Config {
+#[non_exhaustive]
+pub struct Http1Config {
+    /// Support half-closed HTTP/1 connections
     ///
+    /// See [`hyper_util::server::conn::auto::Http1Builder::half_close`].
     #[serde(default)]
-    half_close: bool,
+    pub half_close: bool,
+    /// Maximum allowed time to wait for client to send HTTP header
     ///
+    /// If this time is reached without a complete header present, the client connection is closed.
+    ///
+    /// See [`hyper_util::server::conn::auto::Http1Builder::header_read_timeout`].
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    header_read_timeout: Option<Duration>,
+    pub header_read_timeout: Option<Duration>,
     ///
     #[serde(default = "crate::util::default_true")]
-    keepalive: bool,
+    pub keepalive: bool,
+    /// Set maximum per-connection buffer size
     ///
-    // TODO: humansize
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    max_buf_size: Option<NonZeroUsize>,
+    /// Default is approx. 400KiB.
     ///
+    /// See [`hyper_util::server::conn::auto::Http1Builder::max_buf_size`].
+    // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    writev: Option<bool>,
+    pub max_buf_size: Option<NonZeroUsize>,
+    /// Use vectored I/O when writing to network sockets
+    ///
+    /// See [`hyper_util::server::conn::auto::Http1Builder::writev`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writev: Option<bool>,
 }
 
 impl Default for Http1Config {
@@ -306,49 +324,58 @@ impl Default for Http1Config {
     }
 }
 
-///
+/// HTTP/2 protocol configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-struct Http2Config {
+#[non_exhaustive]
+pub struct Http2Config {
     ///
     #[serde(default)]
-    adaptive_window: bool,
+    pub adaptive_window: bool,
     ///
     #[serde(default)]
-    connect_protocol: bool,
+    pub connect_protocol: bool,
     ///
-    // TODO: humansize
+    // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    initial_connection_window: Option<NonZeroU32>,
+    pub initial_connection_window: Option<NonZeroU32>,
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    initial_stream_window: Option<NonZeroU32>,
+    pub initial_stream_window: Option<NonZeroU32>,
     ///
     #[serde(default)]
-    keepalive: Http2KeepaliveConfig,
+    pub keepalive: Http2KeepaliveConfig,
     ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    max_concurrent_streams: Option<NonZeroU32>,
+    pub max_concurrent_streams: Option<NonZeroU32>,
 }
 
-///
+/// HTTP/2 keepalive configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-struct Http2KeepaliveConfig {
+#[non_exhaustive]
+pub struct Http2KeepaliveConfig {
     ///
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    interval: Option<Duration>,
+    pub interval: Option<Duration>,
     ///
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
-    timeout: Option<Duration>,
+    pub timeout: Option<Duration>,
 }
 
+/// Turn DNS name or address into a socket
+///
+/// # Errors
+///
+/// Returns an error if there was an error parsing or resolving a name, or later on
+/// when creating a socket. Note that if a name resolves to multiple addresses then
+/// all of them are tried in order.
 async fn socket<O>(origin: O) -> Result<(TcpSocket, SocketAddr), ServerBuilderError>
 where
     O: ToSocketAddrs + ToString,
@@ -372,6 +399,12 @@ where
     }
 }
 
+/// Resolve DNS name or address into a list of socket address/port pairs
+///
+/// # Errors
+///
+/// Returns `Err` if there was an error parsing or resolving a name.
+/// Note that not-found errors result in `Ok` with an empty iterator.
 async fn resolve<O>(origin: &O) -> Result<impl Iterator<Item = SocketAddr> + '_, ServerBuilderError>
 where
     O: ToSocketAddrs + ToString,
@@ -382,6 +415,12 @@ where
         .map_err(|err| ServerBuilderError::AddressParse(err.into()))
 }
 
+/// Create a socket of needed type, based on the type of passed in socked address
+///
+/// # Errors
+///
+/// Returns `Err` if there was a problem creating a socket or setting `SO_REUSEADDR`
+/// socket option.
 fn sock_create(addr: &SocketAddr) -> Result<TcpSocket, ServerBuilderError> {
     let socket = match addr {
         SocketAddr::V4(_) => TcpSocket::new_v4(),

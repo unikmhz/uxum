@@ -1,3 +1,5 @@
+//! Commonly imported types for use in applications
+
 pub use crate::{
     handler,
     reexport::{
