@@ -18,10 +18,10 @@ use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
 use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
 use tower_http::{
-    sensitive_headers::SetSensitiveHeadersLayer,
+    request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
     trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
-    LatencyUnit,
+    LatencyUnit, ServiceBuilderExt,
 };
 use tracing::{debug, debug_span, info, info_span};
 
@@ -185,7 +185,8 @@ impl AppBuilder {
         }
 
         let global_layers = ServiceBuilder::new()
-            .layer(SetSensitiveHeadersLayer::new([header::AUTHORIZATION]))
+            .set_x_request_id(MakeRequestUuid)
+            .sensitive_headers([header::AUTHORIZATION])
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
@@ -193,10 +194,12 @@ impl AppBuilder {
                     .on_response(
                         DefaultOnResponse::new()
                             .level(tracing::Level::INFO)
+                            .include_headers(true)
                             .latency_unit(LatencyUnit::Micros),
                     ),
             )
             .layer(metrics_state)
+            .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
                 self.server_header(),

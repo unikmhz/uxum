@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
 use tokio::net::{lookup_host, TcpSocket, ToSocketAddrs};
-use tracing::{debug, debug_span, error, info};
+use tracing::{debug, debug_span, error, info, Instrument};
 
 use crate::errors::IoError;
 
@@ -114,88 +114,94 @@ impl ServerBuilder {
     ///
     /// Returns `Err` if builder encounters an error while setting up a listening socket.
     pub async fn build(self) -> Result<axum_server::Server, ServerBuilderError> {
-        let _span = debug_span!("build_server").entered();
-        let (sock, addr) = socket(&self.listen).await?;
-        let sref = SockRef::from(&sock);
-        if let Some(sz) = self.recv_buffer {
-            sref.set_recv_buffer_size(sz.get())
-                .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
-        }
-        if let Some(sz) = self.send_buffer {
-            sref.set_send_buffer_size(sz.get())
-                .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
-        }
-        if let Some(tos) = self.ip.tos {
-            sref.set_tos(tos)
-                .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
-        }
-        if let Some(mss) = self.tcp.mss {
-            sref.set_mss(mss.get())
-                .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
-        }
-        if let Some(idle) = self.tcp.keepalive.idle {
-            let mut tcp_keepalive = socket2::TcpKeepalive::new().with_time(idle);
-            if let Some(interval) = self.tcp.keepalive.interval {
-                tcp_keepalive = tcp_keepalive.with_interval(interval);
+        let span = debug_span!("build_server");
+        async move {
+            let (sock, addr) = socket(&self.listen).await?;
+            let sref = SockRef::from(&sock);
+            if let Some(sz) = self.recv_buffer {
+                sref.set_recv_buffer_size(sz.get())
+                    .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
             }
-            if let Some(retries) = self.tcp.keepalive.retries {
-                tcp_keepalive = tcp_keepalive.with_retries(retries.get());
+            if let Some(sz) = self.send_buffer {
+                sref.set_send_buffer_size(sz.get())
+                    .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
             }
-            sref.set_tcp_keepalive(&tcp_keepalive)
-                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
-        } else {
-            sref.set_keepalive(false)
-                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
-        }
-        sock.bind(addr)
-            .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
-        sock.set_nodelay(self.tcp.nodelay)
-            .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
-        let listener = sock
-            .listen(self.tcp.backlog.get())
-            .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
-            .into_std()
-            .map_err(|err| ServerBuilderError::ConvertListener(err.into()))?;
-        // TODO: from_tcp_rustls for TLS
-        let mut server = axum_server::from_tcp(listener);
-        let builder = server.http_builder();
+            if let Some(tos) = self.ip.tos {
+                sref.set_tos(tos)
+                    .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
+            }
+            if let Some(mss) = self.tcp.mss {
+                sref.set_mss(mss.get())
+                    .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
+            }
+            if let Some(idle) = self.tcp.keepalive.idle {
+                let mut tcp_keepalive = socket2::TcpKeepalive::new().with_time(idle);
+                if let Some(interval) = self.tcp.keepalive.interval {
+                    tcp_keepalive = tcp_keepalive.with_interval(interval);
+                }
+                if let Some(retries) = self.tcp.keepalive.retries {
+                    tcp_keepalive = tcp_keepalive.with_retries(retries.get());
+                }
+                sref.set_tcp_keepalive(&tcp_keepalive)
+                    .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+            } else {
+                sref.set_keepalive(false)
+                    .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+            }
+            sock.bind(addr)
+                .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
+            sock.set_nodelay(self.tcp.nodelay)
+                .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
+            let listener = sock
+                .listen(self.tcp.backlog.get())
+                .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
+                .into_std()
+                .map_err(|err| ServerBuilderError::ConvertListener(err.into()))?;
+            // TODO: from_tcp_rustls for TLS
+            let mut server = axum_server::from_tcp(listener);
+            let builder = server.http_builder();
 
-        {
-            debug!("setting up HTTP/1");
-            let mut http1 = builder.http1();
-            http1
-                .half_close(self.http1.half_close)
-                .keep_alive(self.http1.keepalive);
-            if let Some(timeout) = self.http1.header_read_timeout {
-                http1.header_read_timeout(timeout);
+            {
+                debug!("setting up HTTP/1");
+                let mut http1 = builder.http1();
+                http1
+                    .half_close(self.http1.half_close)
+                    .keep_alive(self.http1.keepalive);
+                if let Some(timeout) = self.http1.header_read_timeout {
+                    http1.header_read_timeout(timeout);
+                }
+                if let Some(bufsz) = self.http1.max_buf_size {
+                    http1.max_buf_size(bufsz.get());
+                }
+                if let Some(writev) = self.http1.writev {
+                    http1.writev(writev);
+                }
             }
-            if let Some(bufsz) = self.http1.max_buf_size {
-                http1.max_buf_size(bufsz.get());
+            {
+                debug!("setting up HTTP/2");
+                let mut http2 = builder.http2();
+                http2
+                    .adaptive_window(self.http2.adaptive_window)
+                    .initial_connection_window_size(
+                        self.http2.initial_connection_window.map(NonZeroU32::get),
+                    )
+                    .initial_stream_window_size(
+                        self.http2.initial_stream_window.map(NonZeroU32::get),
+                    )
+                    .keep_alive_interval(self.http2.keepalive.interval)
+                    .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
+                if self.http2.connect_protocol {
+                    http2.enable_connect_protocol();
+                }
+                if let Some(timeout) = self.http2.keepalive.timeout {
+                    http2.keep_alive_timeout(timeout);
+                }
             }
-            if let Some(writev) = self.http1.writev {
-                http1.writev(writev);
-            }
+            info!("finished building server");
+            Ok(server)
         }
-        {
-            debug!("setting up HTTP/2");
-            let mut http2 = builder.http2();
-            http2
-                .adaptive_window(self.http2.adaptive_window)
-                .initial_connection_window_size(
-                    self.http2.initial_connection_window.map(NonZeroU32::get),
-                )
-                .initial_stream_window_size(self.http2.initial_stream_window.map(NonZeroU32::get))
-                .keep_alive_interval(self.http2.keepalive.interval)
-                .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
-            if self.http2.connect_protocol {
-                http2.enable_connect_protocol();
-            }
-            if let Some(timeout) = self.http2.keepalive.timeout {
-                http2.keep_alive_timeout(timeout);
-            }
-        }
-        info!("finished building server");
-        Ok(server)
+        .instrument(span)
+        .await
     }
 }
 

@@ -31,6 +31,7 @@ pub enum ApiDocError {
 
 /// Builder for API documentation spec and UI
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, Template)]
+#[non_exhaustive]
 #[template(path = "rapidoc.html.j2", ext = "html")]
 pub struct ApiDocBuilder {
     /// URL path for API documentation UI (RapiDoc)

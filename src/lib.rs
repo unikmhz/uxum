@@ -18,6 +18,7 @@
 // #![allow(clippy::missing_trait_methods)]
 
 mod apidoc;
+mod auth;
 mod builder;
 mod config;
 mod errors;
@@ -37,6 +38,7 @@ pub use uxum_macros::handler;
 
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
+    auth::{AuthConfig, HashedPassword, RoleConfig, UserConfig},
     builder::{
         app::{apply_layers, AppBuilder, AppBuilderError, HandlerExt},
         server::{

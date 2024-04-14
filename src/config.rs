@@ -3,9 +3,9 @@ use std::{collections::HashMap, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    apidoc::ApiDocBuilder, layers::buffer::*, layers::cb::*, layers::rate::*,
-    logging::LoggingConfig, metrics::MetricsBuilder, telemetry::OpenTelemetryConfig,
-    tracing::TracingConfig,
+    apidoc::ApiDocBuilder, layers::buffer::HandlerBufferConfig,
+    layers::rate::HandlerRateLimitConfig, logging::LoggingConfig, metrics::MetricsBuilder,
+    telemetry::OpenTelemetryConfig, tracing::TracingConfig,
 };
 
 /// Top-level application configuration
@@ -77,9 +77,6 @@ pub struct HandlerConfig {
     /// Request buffering configuration
     #[serde(default)]
     pub buffer: Option<HandlerBufferConfig>,
-    /// Circuit breaker configuration
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub circuit_breaker: Option<HandlerCircuitBreakerConfig>,
     /// Rate limiter configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<HandlerRateLimitConfig>,
@@ -89,9 +86,9 @@ pub struct HandlerConfig {
     /// Request timeout configuration
     #[serde(default, skip_serializing_if = "HandlerTimeoutsConfig::is_default")]
     pub timeout: Option<HandlerTimeoutsConfig>,
-    /// Required RBAC roles
+    /// Required RBAC permissions
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub roles: Vec<String>,
+    pub permissions: Vec<String>,
 }
 
 /// Handler request timeout configuration

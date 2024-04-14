@@ -108,6 +108,7 @@ impl TracingConfig {
     where
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
+        let _span = debug_span!("build_tracing_layer").entered();
         // TODO: additional params from config
         tracing_opentelemetry::layer()
             .with_tracer(tracer.clone())
