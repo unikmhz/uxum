@@ -81,6 +81,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     axum::{
                         handler::HandlerWithoutStateExt,
                         routing::{self, MethodRouter},
+                        BoxError,
                     },
                     http,
                     inventory,
@@ -119,7 +120,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     #handler_method
                 }
 
-                fn register_method(&self, mrtr: MethodRouter, cfg: Option<&HandlerConfig>) -> MethodRouter {
+                fn register_method(&self, mrtr: MethodRouter<(), BoxError>, cfg: Option<&HandlerConfig>) -> MethodRouter<(), BoxError> {
                     (match self.method() {
                         http::Method::GET => routing::get_service,
                         http::Method::HEAD => routing::head_service,

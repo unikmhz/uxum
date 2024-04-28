@@ -3,17 +3,9 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use argon2::{Argon2, PasswordVerifier};
 use password_hash::PasswordHashString;
 use serde::{Deserialize, Serialize};
-
-///
-trait AuthUser {}
-
-///
-trait AuthProvider {}
-
-///
-trait AuthMethod {}
 
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -48,6 +40,16 @@ pub enum UserPassword {
     Hashed(HashedPassword),
 }
 
+impl PartialEq<&str> for UserPassword {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            Self::Plaintext(pwd) => crypto::util::fixed_time_eq(pwd.as_bytes(), other.as_bytes()),
+            // FIXME: generalize hash verification
+            Self::Hashed(pwd) => Argon2::default().verify_password(other.as_bytes(), &pwd.password_hash()).is_ok(),
+        }
+    }
+}
+
 ///
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
@@ -55,10 +57,13 @@ pub struct RoleConfig {
     ///
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     pub permissions: HashSet<String>,
+    ///
+    #[serde(default, skip_serializing_if = "<&bool as std::ops::Not>::not")]
+    pub super_user: bool,
 }
 
 ///
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct AuthConfig {
     ///
@@ -70,11 +75,13 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
+    ///
     pub fn user(&self, name: &str) -> Option<&UserConfig> {
         self.users.get(name)
     }
 }
 
+/// Newtype for hashed password
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct HashedPassword(PasswordHashString);

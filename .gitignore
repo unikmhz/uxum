@@ -13,3 +13,6 @@ config/.env
 .DS_Store
 .AppleDouble
 .LSOverride
+
+.gdb_history
+*.log

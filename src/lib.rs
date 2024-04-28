@@ -38,7 +38,7 @@ pub use uxum_macros::handler;
 
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
-    auth::{AuthConfig, HashedPassword, RoleConfig, UserConfig},
+    auth::*,
     builder::{
         app::{apply_layers, AppBuilder, AppBuilderError, HandlerExt},
         server::{

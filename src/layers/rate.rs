@@ -8,6 +8,11 @@ use std::{
     time::Duration,
 };
 
+use axum::{
+    body::Body,
+    http::{Request, Response, StatusCode},
+    response::IntoResponse,
+};
 use dashmap::DashMap;
 use governor::{
     clock::{Clock, DefaultClock, QuantaClock, QuantaInstant},
@@ -15,7 +20,6 @@ use governor::{
     state::{InMemoryState, NotKeyed},
     Quota, RateLimiter,
 };
-use http::Request;
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -35,6 +39,23 @@ pub enum RateLimitError {
         // NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
         remaining_seconds: u64,
     },
+}
+
+impl RateLimitError {
+    fn http_status(&self) -> StatusCode {
+        match self {
+            Self::LimitReached { .. } => StatusCode::TOO_MANY_REQUESTS,
+            _ => StatusCode::BAD_REQUEST,
+        }
+    }
+}
+
+impl IntoResponse for RateLimitError {
+    fn into_response(self) -> Response<Body> {
+        problemdetails::new(self.http_status())
+            .with_title(self.to_string())
+            .into_response()
+    }
 }
 
 /// Configuration for rate-limiting layer
@@ -107,8 +128,11 @@ enum RateLimitKey {
 
 /// Rate-limiting [`tower`] layer factory
 pub struct RateLimitLayer<S, T> {
+    ///
     config: HandlerRateLimitConfig,
+    ///
     _phantom_service: PhantomData<S>,
+    ///
     _phantom_request: PhantomData<T>,
 }
 
@@ -137,7 +161,9 @@ where
 
 /// Rate-limiting [`tower`] layer
 pub struct RateLimit<S, T> {
+    ///
     inner: S,
+    ///
     limiter: Arc<Box<dyn Limiter<T> + Send + Sync>>,
 }
 

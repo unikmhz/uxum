@@ -1,22 +1,22 @@
 use std::{
+    borrow::Borrow,
     collections::{BTreeMap, HashSet},
-    convert::Infallible,
 };
 
 use axum::{
-    body::{Body, Bytes, HttpBody},
+    body::Body,
     error_handling::HandleErrorLayer,
     http::{
         header::{self, HeaderValue},
         StatusCode,
     },
     response::IntoResponse,
-    routing::{MethodRouter, Router},
+    routing::{MethodRouter, Router}, BoxError,
 };
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
-use tower::{builder::ServiceBuilder, util::BoxCloneService, BoxError, Service};
+use tower::{builder::ServiceBuilder, util::BoxCloneService, Service};
 use tower_http::{
     request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
@@ -27,8 +27,12 @@ use tracing::{debug, debug_span, info, info_span};
 
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
+    auth::{AuthError, AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider, NoOpAuthExtractor, NoOpAuthProvider},
     config::{AppConfig, HandlerConfig},
-    layers::ext::HandlerName,
+    layers::{
+        ext::HandlerName,
+        rate::RateLimitError,
+    },
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
@@ -49,15 +53,33 @@ pub enum AppBuilderError {
 }
 
 /// Builder for application routes
-#[derive(Debug, Default)]
-pub struct AppBuilder {
+#[derive(Debug)]
+pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
+    ///
+    auth_provider: AuthProv,
+    ///
+    auth_extractor: AuthExt,
     /// Application configuration
     config: AppConfig,
 }
 
 impl From<AppConfig> for AppBuilder {
     fn from(value: AppConfig) -> Self {
-        Self { config: value }
+        Self {
+            auth_provider: NoOpAuthProvider,
+            auth_extractor: NoOpAuthExtractor,
+            config: value,
+        }
+    }
+}
+
+impl Default for AppBuilder<NoOpAuthProvider, NoOpAuthExtractor> {
+    fn default() -> Self {
+        Self {
+            auth_provider: NoOpAuthProvider,
+            auth_extractor: NoOpAuthExtractor,
+            config: AppConfig::default(),
+        }
     }
 }
 
@@ -71,6 +93,30 @@ impl AppBuilder {
     #[must_use]
     pub fn from_config(cfg: &AppConfig) -> Self {
         cfg.clone().into()
+    }
+}
+
+impl<AuthProv, AuthExt> AppBuilder<AuthProv, AuthExt>
+where
+    AuthProv: AuthProvider + 'static,
+    AuthExt: AuthExtractor + 'static,
+    AuthExt::User: Borrow<AuthProv::User>,
+    AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
+{
+    ///
+    #[must_use]
+    pub fn with_basic_auth(self) -> AppBuilder<ConfigAuthProvider, BasicAuthExtractor> {
+        AppBuilder {
+            auth_provider: self.config.auth.clone().into(),
+            auth_extractor: BasicAuthExtractor,
+            config: self.config,
+        }
+    }
+
+    ///
+    #[must_use]
+    pub fn auth_layer<S>(&self) -> AuthLayer<S, AuthProv, AuthExt> {
+        AuthLayer::new(self.auth_provider.clone(), self.auth_extractor.clone())
     }
 
     /// Set used API doc builder
@@ -140,6 +186,7 @@ impl AppBuilder {
             rtr = rtr.merge(metrics_state.build_router());
         }
 
+        // A set to ensure uniqueness of handler names
         let mut handler_names = HashSet::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
             let name = handler.name();
@@ -156,7 +203,7 @@ impl AppBuilder {
         for (path, handlers) in grouped {
             let _register_span = info_span!("register_path", path).entered();
             let mut has_some = false;
-            let mut method_rtr = MethodRouter::new();
+            let mut method_rtr = MethodRouter::<(), BoxError>::new();
             for handler in handlers {
                 let name = handler.name();
                 let _span =
@@ -172,7 +219,9 @@ impl AppBuilder {
                 info!("handler registered");
             }
             if has_some {
-                rtr = rtr.route(path, method_rtr);
+                rtr = rtr.route(path, method_rtr
+                    .layer(self.auth_layer())
+                    .layer(HandleErrorLayer::new(error_handler)));
             }
         }
 
@@ -229,29 +278,35 @@ impl AppBuilder {
 }
 
 // FIXME: write proper handler
-async fn error_handler(err: BoxError) -> impl IntoResponse {
-    (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
+async fn error_handler(err: BoxError) -> Response<Body> {
+    // TODO: generalize, remove all the downcasts
+    if let Some(auth_err) = err.downcast_ref::<AuthError>().cloned() {
+        return auth_err.into_response();
+    }
+    if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
+        return rate_err.into_response();
+    }
+    problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+        .with_title(err.to_string())
+        .into_response()
 }
 
 /// Apply standard layer stack to provided handler function
 #[must_use]
-pub fn apply_layers<X, S, T, U>(
+pub fn apply_layers<X, S, T>(
     hext: &X,
     handler: S,
     conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<T>, Response<Body>, Infallible>
+) -> BoxCloneService<Request<T>, Response<Body>, BoxError>
 where
     X: HandlerExt,
-    S: Service<Request<T>, Response = Response<U>> + Send + Sync + Clone + 'static,
+    S: Service<Request<T>, Response = Response<Body>> + Send + Sync + Clone + 'static,
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
     T: Send + 'static,
-    U: HttpBody<Data = Bytes> + Send + 'static,
-    <U as HttpBody>::Error: std::error::Error + Send + Sync,
 {
     ServiceBuilder::new()
         .boxed_clone()
-        .layer(HandleErrorLayer::new(error_handler))
         .layer(ResponseExtension(HandlerName::new(hext.name())))
         .option_layer(
             conf.and_then(|cfg| cfg.buffer.as_ref())
@@ -273,7 +328,7 @@ pub trait HandlerExt: Sync {
     fn path(&self) -> &'static str;
     fn spec_path(&self) -> &'static str;
     fn method(&self) -> http::Method;
-    fn register_method(&self, mrtr: MethodRouter, cfg: Option<&HandlerConfig>) -> MethodRouter;
+    fn register_method(&self, mrtr: MethodRouter<(), BoxError>, cfg: Option<&HandlerConfig>) -> MethodRouter<(), BoxError>;
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 

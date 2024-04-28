@@ -3,7 +3,8 @@ use std::{collections::HashMap, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    apidoc::ApiDocBuilder, layers::buffer::HandlerBufferConfig,
+    apidoc::ApiDocBuilder, auth::AuthConfig,
+    layers::buffer::HandlerBufferConfig,
     layers::rate::HandlerRateLimitConfig, logging::LoggingConfig, metrics::MetricsBuilder,
     telemetry::OpenTelemetryConfig, tracing::TracingConfig,
 };
@@ -30,6 +31,9 @@ pub struct AppConfig {
     /// Common OpenTelemetry configuration
     #[serde(default)]
     pub otel: OpenTelemetryConfig,
+    ///
+    #[serde(default)]
+    pub auth: AuthConfig,
     /// Short application name
     #[serde(skip)]
     pub app_name: Option<String>,
