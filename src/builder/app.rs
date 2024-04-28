@@ -11,7 +11,8 @@ use axum::{
         StatusCode,
     },
     response::IntoResponse,
-    routing::{MethodRouter, Router}, BoxError,
+    routing::{MethodRouter, Router},
+    BoxError,
 };
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
@@ -27,12 +28,12 @@ use tracing::{debug, debug_span, info, info_span};
 
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
-    auth::{AuthError, AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider, NoOpAuthExtractor, NoOpAuthProvider},
-    config::{AppConfig, HandlerConfig},
-    layers::{
-        ext::HandlerName,
-        rate::RateLimitError,
+    auth::{
+        AuthError, AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
+        NoOpAuthExtractor, NoOpAuthProvider,
     },
+    config::{AppConfig, HandlerConfig},
+    layers::{ext::HandlerName, rate::RateLimitError},
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
@@ -219,9 +220,12 @@ where
                 info!("handler registered");
             }
             if has_some {
-                rtr = rtr.route(path, method_rtr
-                    .layer(self.auth_layer())
-                    .layer(HandleErrorLayer::new(error_handler)));
+                rtr = rtr.route(
+                    path,
+                    method_rtr
+                        .layer(self.auth_layer())
+                        .layer(HandleErrorLayer::new(error_handler)),
+                );
             }
         }
 
@@ -293,17 +297,16 @@ async fn error_handler(err: BoxError) -> Response<Body> {
 
 /// Apply standard layer stack to provided handler function
 #[must_use]
-pub fn apply_layers<X, S, T>(
+pub fn apply_layers<X, S>(
     hext: &X,
     handler: S,
     conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<T>, Response<Body>, BoxError>
+) -> BoxCloneService<Request<Body>, Response<Body>, BoxError>
 where
     X: HandlerExt,
-    S: Service<Request<T>, Response = Response<Body>> + Send + Sync + Clone + 'static,
+    S: Service<Request<Body>, Response = Response<Body>> + Send + Sync + Clone + 'static,
     S::Future: Send,
     S::Error: std::error::Error + Send + Sync,
-    T: Send + 'static,
 {
     ServiceBuilder::new()
         .boxed_clone()
@@ -328,7 +331,11 @@ pub trait HandlerExt: Sync {
     fn path(&self) -> &'static str;
     fn spec_path(&self) -> &'static str;
     fn method(&self) -> http::Method;
-    fn register_method(&self, mrtr: MethodRouter<(), BoxError>, cfg: Option<&HandlerConfig>) -> MethodRouter<(), BoxError>;
+    fn register_method(
+        &self,
+        mrtr: MethodRouter<(), BoxError>,
+        cfg: Option<&HandlerConfig>,
+    ) -> MethodRouter<(), BoxError>;
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 

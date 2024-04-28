@@ -10,7 +10,7 @@ use axum::body::Body;
 use http::Request;
 use pin_project::pin_project;
 use tower::{BoxError, Layer, Service};
-use tracing::trace_span;
+use tracing::{trace_span, warn};
 
 use crate::auth::{
     errors::AuthError,
@@ -105,13 +105,22 @@ where
         let _span = trace_span!("auth").entered();
         let (user, tokens) = match self.auth_extractor.extract_auth(&req) {
             Ok(pair) => pair,
-            Err(error) => return AuthFuture::Negative { error },
+            Err(error) => {
+                warn!(cause = %error, "auth extraction error");
+                return AuthFuture::Negative { error }
+            }
         };
-        if let Err(error) = self.auth_provider.authenticate(user.borrow(), tokens.borrow()) {
+        if let Err(error) = self
+            .auth_provider
+            .authenticate(user.borrow(), tokens.borrow())
+        {
+            warn!(cause = %error, "authentication error");
             return AuthFuture::Negative { error };
         }
         req.extensions_mut().insert(user);
-        AuthFuture::Positive { inner: self.inner.call(req) }
+        AuthFuture::Positive {
+            inner: self.inner.call(req),
+        }
     }
 }
 

@@ -27,8 +27,7 @@ async fn main() {
         .with_app_version("1.2.3")
         .init_telemetry()
         .expect("Error initializing telemetry");
-    let mut app_builder = AppBuilder::from_config(&config.app)
-        .with_basic_auth();
+    let mut app_builder = AppBuilder::from_config(&config.app).with_basic_auth();
     app_builder.configure_api_doc(|api_doc| {
         api_doc
             .with_app_title("Advanced Server")

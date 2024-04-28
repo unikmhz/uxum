@@ -45,7 +45,9 @@ impl PartialEq<&str> for UserPassword {
         match self {
             Self::Plaintext(pwd) => crypto::util::fixed_time_eq(pwd.as_bytes(), other.as_bytes()),
             // FIXME: generalize hash verification
-            Self::Hashed(pwd) => Argon2::default().verify_password(other.as_bytes(), &pwd.password_hash()).is_ok(),
+            Self::Hashed(pwd) => Argon2::default()
+                .verify_password(other.as_bytes(), &pwd.password_hash())
+                .is_ok(),
         }
     }
 }

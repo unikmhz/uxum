@@ -1,17 +1,10 @@
 use axum::{
     body::Body,
-    http::{
-        HeaderValue,
-        Request,
-        header::AUTHORIZATION,
-    },
+    http::{header::AUTHORIZATION, HeaderValue, Request},
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 
-use crate::auth::{
-    errors::AuthError,
-    user::UserId,
-};
+use crate::auth::{errors::AuthError, user::UserId};
 
 ///
 pub trait AuthExtractor: Clone + Send {
@@ -21,7 +14,10 @@ pub trait AuthExtractor: Clone + Send {
     type AuthTokens;
 
     ///
-    fn extract_auth(&self, req: &Request<Body>) -> Result<(Self::User, Self::AuthTokens), AuthError>;
+    fn extract_auth(
+        &self,
+        req: &Request<Body>,
+    ) -> Result<(Self::User, Self::AuthTokens), AuthError>;
 }
 
 ///
@@ -32,7 +28,10 @@ impl AuthExtractor for NoOpAuthExtractor {
     type User = ();
     type AuthTokens = ();
 
-    fn extract_auth(&self, _req: &Request<Body>) -> Result<(Self::User, Self::AuthTokens), AuthError> {
+    fn extract_auth(
+        &self,
+        _req: &Request<Body>,
+    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
         Ok(((), ()))
     }
 }
@@ -45,7 +44,10 @@ impl AuthExtractor for BasicAuthExtractor {
     type User = UserId;
     type AuthTokens = String;
 
-    fn extract_auth(&self, req: &Request<Body>) -> Result<(Self::User, Self::AuthTokens), AuthError> {
+    fn extract_auth(
+        &self,
+        req: &Request<Body>,
+    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
         match req.headers().get(AUTHORIZATION) {
             Some(header) => Self::parse_header(header).map(|(user, pwd)| (user.into(), pwd)),
             None => Err(AuthError::NoAuthProvided),
@@ -63,7 +65,9 @@ impl BasicAuthExtractor {
             return Err(AuthError::InvalidAuthHeader);
         };
         match header.split_once(' ') {
-            Some((scheme, payload)) if scheme.eq_ignore_ascii_case(Self::SCHEME) => Self::parse_payload(payload),
+            Some((scheme, payload)) if scheme.eq_ignore_ascii_case(Self::SCHEME) => {
+                Self::parse_payload(payload)
+            }
             Some((scheme, _)) => Err(AuthError::UnknownAuthScheme(scheme.to_string())),
             None => Err(AuthError::InvalidAuthHeader),
         }

@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use crate::auth::{
-    config::AuthConfig,
-    errors::AuthError,
-    user::UserId,
-};
+use crate::auth::{config::AuthConfig, errors::AuthError, user::UserId};
 
 pub trait AuthProvider: Clone + Send {
     ///
@@ -24,7 +20,11 @@ impl AuthProvider for NoOpAuthProvider {
     type User = ();
     type AuthTokens = ();
 
-    fn authenticate(&self, _user: &Self::User, _tokens: &Self::AuthTokens) -> Result<(), AuthError> {
+    fn authenticate(
+        &self,
+        _user: &Self::User,
+        _tokens: &Self::AuthTokens,
+    ) -> Result<(), AuthError> {
         Ok(())
     }
 }
@@ -56,6 +56,8 @@ impl AuthProvider for ConfigAuthProvider {
 
 impl From<AuthConfig> for ConfigAuthProvider {
     fn from(value: AuthConfig) -> Self {
-        Self { config: Arc::new(value) }
+        Self {
+            config: Arc::new(value),
+        }
     }
 }

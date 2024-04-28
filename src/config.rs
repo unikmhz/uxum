@@ -3,8 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    apidoc::ApiDocBuilder, auth::AuthConfig,
-    layers::buffer::HandlerBufferConfig,
+    apidoc::ApiDocBuilder, auth::AuthConfig, layers::buffer::HandlerBufferConfig,
     layers::rate::HandlerRateLimitConfig, logging::LoggingConfig, metrics::MetricsBuilder,
     telemetry::OpenTelemetryConfig, tracing::TracingConfig,
 };
