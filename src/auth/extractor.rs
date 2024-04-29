@@ -1,8 +1,13 @@
 use axum::{
     body::Body,
-    http::{header::AUTHORIZATION, HeaderValue, Request},
+    http::{
+        header::{AUTHORIZATION, WWW_AUTHENTICATE},
+        HeaderValue, Request, Response, StatusCode,
+    },
+    response::IntoResponse,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use tracing::error;
 
 use crate::auth::{errors::AuthError, user::UserId};
 
@@ -18,6 +23,9 @@ pub trait AuthExtractor: Clone + Send {
         &self,
         req: &Request<Body>,
     ) -> Result<(Self::User, Self::AuthTokens), AuthError>;
+
+    ///
+    fn error_response(&self, err: AuthError) -> Response<Body>;
 }
 
 ///
@@ -33,6 +41,14 @@ impl AuthExtractor for NoOpAuthExtractor {
         _req: &Request<Body>,
     ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
         Ok(((), ()))
+    }
+
+    fn error_response(&self, err: AuthError) -> Response<Body> {
+        // This shuld never get executed for a NoOp extractor
+        error!("tried to generated auth error response for NoOpAuthExtractor");
+        problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_title(err.to_string())
+            .into_response()
     }
 }
 
@@ -52,6 +68,28 @@ impl AuthExtractor for BasicAuthExtractor {
             Some(header) => Self::parse_header(header).map(|(user, pwd)| (user.into(), pwd)),
             None => Err(AuthError::NoAuthProvided),
         }
+    }
+
+    fn error_response(&self, err: AuthError) -> Response<Body> {
+        let unauth = matches!(
+            err,
+            AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed
+        );
+        let status = match unauth {
+            true => StatusCode::UNAUTHORIZED,
+            false => StatusCode::BAD_REQUEST,
+        };
+        let mut resp = problemdetails::new(status)
+            .with_title(err.to_string())
+            .into_response();
+        if unauth {
+            // TODO: add realm, use Self::SCHEME
+            let _ = resp.headers_mut().insert(
+                WWW_AUTHENTICATE,
+                HeaderValue::from_static(r#"Basic charset="UTF-8""#),
+            );
+        }
+        resp
     }
 }
 

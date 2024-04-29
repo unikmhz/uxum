@@ -29,7 +29,7 @@ use tracing::{debug, debug_span, info, info_span};
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::{
-        AuthError, AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
+        AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
         NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::{AppConfig, HandlerConfig},
@@ -284,9 +284,6 @@ where
 // FIXME: write proper handler
 async fn error_handler(err: BoxError) -> Response<Body> {
     // TODO: generalize, remove all the downcasts
-    if let Some(auth_err) = err.downcast_ref::<AuthError>().cloned() {
-        return auth_err.into_response();
-    }
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();
     }

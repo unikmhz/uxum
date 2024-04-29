@@ -1,8 +1,3 @@
-use axum::{
-    body::Body,
-    http::{Response, StatusCode},
-    response::IntoResponse,
-};
 use thiserror::Error;
 
 ///
@@ -33,24 +28,4 @@ pub enum AuthError {
     ///
     #[error("Authentication failed")]
     AuthFailed,
-}
-
-impl AuthError {
-    fn http_status(&self) -> StatusCode {
-        match self {
-            Self::NoAuthProvided => StatusCode::UNAUTHORIZED,
-            Self::UserNotFound => StatusCode::UNAUTHORIZED,
-            Self::AuthFailed => StatusCode::UNAUTHORIZED,
-            _ => StatusCode::BAD_REQUEST,
-        }
-    }
-}
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response<Body> {
-        // TODO: add WWW-Authenticate
-        problemdetails::new(self.http_status())
-            .with_title(self.to_string())
-            .into_response()
-    }
 }

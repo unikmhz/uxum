@@ -6,25 +6,23 @@ use std::{
     task::{ready, Context, Poll},
 };
 
-use axum::body::Body;
-use http::Request;
+use axum::{
+    body::Body,
+    http::{Request, Response, StatusCode},
+    response::IntoResponse,
+};
 use pin_project::pin_project;
 use tower::{BoxError, Layer, Service};
 use tracing::{trace_span, warn};
 
 use crate::auth::{
-    errors::AuthError,
     extractor::{AuthExtractor, NoOpAuthExtractor},
     provider::{AuthProvider, NoOpAuthProvider},
 };
 
 ///
 #[derive(Clone)]
-pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor>
-where
-    AuthProv: AuthProvider,
-    AuthExt: AuthExtractor,
-{
+pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
     ///
     auth_provider: AuthProv,
     ///
@@ -50,7 +48,6 @@ where
 
 impl<S, AuthProv, AuthExt> Layer<S> for AuthLayer<S, AuthProv, AuthExt>
 where
-    S: Service<Request<Body>> + Clone + Send + Sync + 'static,
     AuthProv: AuthProvider,
     AuthExt: AuthExtractor,
 {
@@ -67,12 +64,7 @@ where
 
 /// Authenticating [`tower`] layer
 #[derive(Clone)]
-pub struct AuthService<S, AuthProv, AuthExt>
-where
-    S: Service<Request<Body>> + Clone + Send + Sync + 'static,
-    AuthProv: AuthProvider,
-    AuthExt: AuthExtractor,
-{
+pub struct AuthService<S, AuthProv, AuthExt> {
     ///
     auth_provider: AuthProv,
     ///
@@ -83,7 +75,7 @@ where
 
 impl<S, AuthProv, AuthExt> Service<Request<Body>> for AuthService<S, AuthProv, AuthExt>
 where
-    S: Service<Request<Body>> + Clone + Send + Sync + 'static,
+    S: Service<Request<Body>, Response = Response<Body>>,
     S::Error: Into<BoxError>,
     AuthProv: AuthProvider,
     AuthExt: AuthExtractor,
@@ -107,7 +99,9 @@ where
             Ok(pair) => pair,
             Err(error) => {
                 warn!(cause = %error, "auth extraction error");
-                return AuthFuture::Negative { error }
+                return AuthFuture::Negative {
+                    error_response: Some(self.auth_extractor.error_response(error)),
+                };
             }
         };
         if let Err(error) = self
@@ -115,7 +109,9 @@ where
             .authenticate(user.borrow(), tokens.borrow())
         {
             warn!(cause = %error, "authentication error");
-            return AuthFuture::Negative { error };
+            return AuthFuture::Negative {
+                error_response: Some(self.auth_extractor.error_response(error)),
+            };
         }
         req.extensions_mut().insert(user);
         AuthFuture::Positive {
@@ -132,16 +128,16 @@ pub enum AuthFuture<F> {
         inner: F,
     },
     Negative {
-        error: AuthError,
+        error_response: Option<Response<Body>>,
     },
 }
 
-impl<F, U, E> Future for AuthFuture<F>
+impl<F, E> Future for AuthFuture<F>
 where
-    F: Future<Output = Result<U, E>>,
+    F: Future<Output = Result<Response<Body>, E>>,
     E: Into<BoxError>,
 {
-    type Output = Result<U, BoxError>;
+    type Output = Result<Response<Body>, BoxError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
@@ -149,7 +145,9 @@ where
                 let resp = ready!(inner.poll(cx).map_err(Into::into))?;
                 Poll::Ready(Ok(resp))
             }
-            ProjectedOutcome::Negative { error } => Poll::Ready(Err(Box::new(error.clone()))),
+            ProjectedOutcome::Negative { error_response } => Poll::Ready(Ok(error_response
+                .take()
+                .unwrap_or_else(|| StatusCode::INTERNAL_SERVER_ERROR.into_response()))),
         }
     }
 }
