@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     ops::{Deref, DerefMut},
 };
 
@@ -15,8 +15,8 @@ pub struct UserConfig {
     #[serde(flatten)]
     pub password: UserPassword,
     ///
-    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
-    pub roles: HashSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub roles: BTreeSet<String>,
 }
 
 ///
@@ -57,8 +57,8 @@ impl PartialEq<&str> for UserPassword {
 #[non_exhaustive]
 pub struct RoleConfig {
     ///
-    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
-    pub permissions: HashSet<String>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub permissions: BTreeSet<String>,
     ///
     #[serde(default, skip_serializing_if = "<&bool as std::ops::Not>::not")]
     pub super_user: bool,
@@ -69,11 +69,11 @@ pub struct RoleConfig {
 #[non_exhaustive]
 pub struct AuthConfig {
     ///
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub users: HashMap<String, UserConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub users: BTreeMap<String, UserConfig>,
     ///
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub roles: HashMap<String, RoleConfig>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub roles: BTreeMap<String, RoleConfig>,
 }
 
 impl AuthConfig {

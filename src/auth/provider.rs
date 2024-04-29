@@ -10,6 +10,9 @@ pub trait AuthProvider: Clone + Send {
 
     ///
     fn authenticate(&self, user: &Self::User, tokens: &Self::AuthTokens) -> Result<(), AuthError>;
+
+    ///
+    fn authorize(&self, user: &Self::User, permission: &'static str) -> Result<(), AuthError>;
 }
 
 ///
@@ -25,6 +28,10 @@ impl AuthProvider for NoOpAuthProvider {
         _user: &Self::User,
         _tokens: &Self::AuthTokens,
     ) -> Result<(), AuthError> {
+        Ok(())
+    }
+
+    fn authorize(&self, _user: &Self::User, _permission: &'static str) -> Result<(), AuthError> {
         Ok(())
     }
 }
@@ -48,6 +55,23 @@ impl AuthProvider for ConfigAuthProvider {
                 } else {
                     Err(AuthError::AuthFailed)
                 }
+            }
+            None => Err(AuthError::UserNotFound),
+        }
+    }
+
+    fn authorize(&self, user: &Self::User, permission: &'static str) -> Result<(), AuthError> {
+        // TODO: combine with authentication to avoid double lookup
+        match self.config.user(user) {
+            Some(user_cfg) => {
+                for role in &user_cfg.roles {
+                    if let Some(role_cfg) = self.config.roles.get(role) {
+                        if role_cfg.super_user || role_cfg.permissions.contains(permission) {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(AuthError::NoPermission(permission))
             }
             None => Err(AuthError::UserNotFound),
         }

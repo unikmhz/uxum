@@ -55,7 +55,8 @@ async fn main() {
     path = "/",
     method = "GET",
     docs(description = "Some link", url = "http://example.com/hello_world"),
-    tags = ["tag1", "tag2"]
+    tags = ["tag1", "tag2"],
+    permissions = ["perm1"]
 )]
 async fn root_handler() -> &'static str {
     tracing::info!("Said hello to the Axum world");

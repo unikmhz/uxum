@@ -71,18 +71,17 @@ impl AuthExtractor for BasicAuthExtractor {
     }
 
     fn error_response(&self, err: AuthError) -> Response<Body> {
-        let unauth = matches!(
-            err,
-            AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed
-        );
-        let status = match unauth {
-            true => StatusCode::UNAUTHORIZED,
-            false => StatusCode::BAD_REQUEST,
+        let status = match err {
+            AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed => {
+                StatusCode::UNAUTHORIZED
+            }
+            AuthError::NoPermission(_) => StatusCode::FORBIDDEN,
+            _ => StatusCode::BAD_REQUEST,
         };
         let mut resp = problemdetails::new(status)
             .with_title(err.to_string())
             .into_response();
-        if unauth {
+        if status == StatusCode::UNAUTHORIZED {
             // TODO: add realm, use Self::SCHEME
             let _ = resp.headers_mut().insert(
                 WWW_AUTHENTICATE,

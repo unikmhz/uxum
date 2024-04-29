@@ -24,6 +24,8 @@ use crate::auth::{
 #[derive(Clone)]
 pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
     ///
+    permissions: &'static [&'static str],
+    ///
     auth_provider: AuthProv,
     ///
     auth_extractor: AuthExt,
@@ -37,8 +39,13 @@ where
     AuthExt: AuthExtractor,
 {
     ///
-    pub fn new(auth_provider: AuthProv, auth_extractor: AuthExt) -> Self {
+    pub fn new(
+        permissions: &'static [&'static str],
+        auth_provider: AuthProv,
+        auth_extractor: AuthExt,
+    ) -> Self {
         Self {
+            permissions,
             auth_provider,
             auth_extractor,
             _phantom_service: PhantomData,
@@ -55,6 +62,7 @@ where
 
     fn layer(&self, inner: S) -> Self::Service {
         AuthService {
+            permissions: self.permissions,
             auth_provider: self.auth_provider.clone(),
             auth_extractor: self.auth_extractor.clone(),
             inner,
@@ -65,6 +73,8 @@ where
 /// Authenticating [`tower`] layer
 #[derive(Clone)]
 pub struct AuthService<S, AuthProv, AuthExt> {
+    ///
+    permissions: &'static [&'static str],
     ///
     auth_provider: AuthProv,
     ///
@@ -112,6 +122,14 @@ where
             return AuthFuture::Negative {
                 error_response: Some(self.auth_extractor.error_response(error)),
             };
+        }
+        for perm in self.permissions {
+            if let Err(error) = self.auth_provider.authorize(user.borrow(), perm) {
+                warn!(cause = %error, "authorization error");
+                return AuthFuture::Negative {
+                    error_response: Some(self.auth_extractor.error_response(error)),
+                };
+            }
         }
         req.extensions_mut().insert(user);
         drop(span);

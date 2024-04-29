@@ -32,6 +32,12 @@ auth:
       roles:
         - role1
         - role2
+    guest:
+      password: guest
+    super:
+      password: super
+      roles:
+        - super
   roles:
     super:
       super_user: true

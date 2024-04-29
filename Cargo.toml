@@ -21,7 +21,7 @@ uxum-macros = {path = "uxum-macros"}
 argon2 = "0.5"
 askama = "0.12"
 askama_axum = "0.4"
-axum = "0.7"
+axum = {version = "0.7.4", features = ["macros"]}
 axum-server = {version = "0.6", features = ["tls-rustls"]}
 base64 = "0.22"
 bytes = {version = "1.5", features = ["serde"]}

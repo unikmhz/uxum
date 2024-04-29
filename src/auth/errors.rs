@@ -28,4 +28,7 @@ pub enum AuthError {
     ///
     #[error("Authentication failed")]
     AuthFailed,
+    ///
+    #[error("User does not have permission: {0}")]
+    NoPermission(&'static str),
 }

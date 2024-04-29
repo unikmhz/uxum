@@ -118,7 +118,11 @@ where
     ///
     #[must_use]
     pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
-        AuthLayer::new(self.auth_provider.clone(), self.auth_extractor.clone())
+        AuthLayer::new(
+            perms,
+            self.auth_provider.clone(),
+            self.auth_extractor.clone(),
+        )
     }
 
     /// Set used API doc builder
