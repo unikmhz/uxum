@@ -149,7 +149,7 @@ impl<S, T> From<&HandlerRateLimitConfig> for RateLimitLayer<S, T> {
 
 impl<S, T> Layer<S> for RateLimitLayer<S, T>
 where
-    S: Service<Request<T>> + Send + Sync + 'static,
+    S: Service<Request<T>> + Send + 'static,
     T: Send + 'static,
 {
     type Service = RateLimit<S, T>;
@@ -196,8 +196,11 @@ where
     }
 
     fn call(&mut self, req: Request<T>) -> Self::Future {
-        let _span = trace_span!("rate").entered();
-        match self.limiter.check_limit(&req) {
+        let rate_result = {
+            let _span = trace_span!("rate").entered();
+            self.limiter.check_limit(&req)
+        };
+        match rate_result {
             Ok(()) => RateLimitFuture::Positive {
                 inner: self.inner.call(req),
             },
@@ -214,7 +217,7 @@ where
 
 impl<S, T> RateLimit<S, T>
 where
-    S: Service<Request<T>> + Send + Sync + 'static,
+    S: Service<Request<T>> + Send + 'static,
     T: Send + 'static,
 {
     #[must_use]

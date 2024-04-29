@@ -40,7 +40,7 @@ pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::*,
     builder::{
-        app::{apply_layers, AppBuilder, AppBuilderError, HandlerExt},
+        app::{AppBuilder, AppBuilderError, HandlerExt},
         server::{
             Http1Config, Http2Config, Http2KeepaliveConfig, IpConfig, ServerBuilder,
             ServerBuilderError, TcpConfig, TcpKeepaliveConfig,

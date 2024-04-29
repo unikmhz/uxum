@@ -21,7 +21,7 @@ async fn main() {
     name = "hello_world",
     path = "/",
     method = "GET",
-    spec(tag = "tag1", tag = "tag2")
+    tags = ["tag1", "tag2"]
 )]
 async fn root_handler() -> &'static str {
     "Hello Axum world!"
@@ -30,7 +30,7 @@ async fn root_handler() -> &'static str {
 // This handler has no metadata, so everything is deduced from function signature.
 // Handler name is taken from function name.
 // Path is composed by prepending '/' to handler name.
-// Method is always GET (FIXME).
+// Method is POST if some request body extractor is provided, otherwise it is GET.
 #[handler]
 async fn other() -> &'static str {
     "Another handler"

@@ -41,11 +41,6 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             err
         ),
     };
-    // dbg!(&attr_args);
-    // dbg!(&data);
-    // if input.sig.ident == "name_from_text_body" {
-    //     dbg!(&input);
-    // }
 
     let handler_name = data.name.unwrap_or_else(|| input.sig.ident.to_string());
     let handler_path = data.path.unwrap_or_else(|| format!("/{handler_name}"));
@@ -61,6 +56,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
     };
+    let permissions = data.permissions;
     let handler_spec = data.spec.generate_spec(
         &handler_name,
         &handler_path,
@@ -70,27 +66,29 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     quote! {
-        #[tracing::instrument(name = "handler", skip_all, fields(name = #handler_name))]
+        #[::uxum::reexport::tracing::instrument(name = "handler", skip_all, fields(name = #handler_name))]
+        #[::uxum::reexport::axum::debug_handler]
         #input
 
         #[doc(hidden)]
         #[allow(missing_docs)]
         mod #mod_ident {
+            use ::std::convert::Infallible;
+
             use ::uxum::{
                 reexport::{
                     axum::{
+                        body::Body,
                         handler::HandlerWithoutStateExt,
-                        routing::{self, MethodRouter},
-                        BoxError,
                     },
                     http,
+                    hyper::{Request, Response},
                     inventory,
                     okapi,
                     openapi3,
                     schemars,
+                    tower::util::BoxCloneService,
                 },
-                apply_layers,
-                HandlerConfig,
                 HandlerExt,
             };
 
@@ -101,40 +99,43 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             #[automatically_derived]
             impl HandlerExt for #handler_ident {
                 #[inline]
+                #[must_use]
                 fn name(&self) -> &'static str {
                     #handler_name
                 }
 
                 #[inline]
+                #[must_use]
                 fn path(&self) -> &'static str {
                     #handler_path
                 }
 
                 #[inline]
+                #[must_use]
                 fn spec_path(&self) -> &'static str {
                     #handler_spec_path
                 }
 
                 #[inline]
+                #[must_use]
                 fn method(&self) -> http::Method {
                     #handler_method
                 }
 
-                fn register_method(&self, mrtr: MethodRouter<(), BoxError>, cfg: Option<&HandlerConfig>) -> MethodRouter<(), BoxError> {
-                    (match self.method() {
-                        http::Method::GET => routing::get_service,
-                        http::Method::HEAD => routing::head_service,
-                        http::Method::POST => routing::post_service,
-                        http::Method::PUT => routing::put_service,
-                        http::Method::DELETE => routing::delete_service,
-                        http::Method::OPTIONS => routing::options_service,
-                        http::Method::TRACE => routing::trace_service,
-                        http::Method::PATCH => routing::patch_service,
-                        // axum::routing::MethodFilter does not support custom methods
-                        other => panic!("Unsupported HTTP method: {other}", other = other),
-                    })(apply_layers(self, super::#fn_ident.into_service(), cfg))
+                #[inline]
+                #[must_use]
+                fn permissions(&self) -> &'static [&'static str] {
+                    &[#(#permissions),*]
                 }
 
+                #[inline]
+                #[must_use]
+                fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible> {
+                    BoxCloneService::new(super::#fn_ident.into_service())
+                }
+
+                #[inline]
+                #[must_use]
                 fn openapi_spec(&self, gen: &mut schemars::gen::SchemaGenerator) -> openapi3::Operation {
                     #handler_spec
                 }

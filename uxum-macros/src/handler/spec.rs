@@ -18,8 +18,8 @@ use crate::{
 #[derive(Debug, Default, FromMeta)]
 pub(crate) struct HandlerSpec {
     ///
-    #[darling(default, multiple, rename = "tag")]
-    tags: Vec<String>,
+    #[darling(default)]
+    tags: Vec<syn::LitStr>,
     ///
     #[darling(default)]
     summary: Option<String>,

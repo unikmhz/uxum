@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
     collections::{BTreeMap, HashSet},
+    convert::Infallible,
 };
 
 use axum::{
@@ -17,7 +18,7 @@ use axum::{
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
-use tower::{builder::ServiceBuilder, util::BoxCloneService, Service};
+use tower::{builder::ServiceBuilder, util::BoxCloneService};
 use tower_http::{
     request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
@@ -32,7 +33,7 @@ use crate::{
         AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
         NoOpAuthExtractor, NoOpAuthProvider,
     },
-    config::{AppConfig, HandlerConfig},
+    config::AppConfig,
     layers::{ext::HandlerName, rate::RateLimitError},
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
@@ -116,7 +117,7 @@ where
 
     ///
     #[must_use]
-    pub fn auth_layer<S>(&self) -> AuthLayer<S, AuthProv, AuthExt> {
+    pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
         AuthLayer::new(self.auth_provider.clone(), self.auth_extractor.clone())
     }
 
@@ -215,17 +216,40 @@ where
                         continue;
                     }
                 }
-                method_rtr = handler.register_method(method_rtr, self.config.handlers.get(name));
+                let service_cfg = self.config.handlers.get(name);
+                let service = ServiceBuilder::new()
+                    .boxed_clone()
+                    .layer(ResponseExtension(HandlerName::new(name)))
+                    .layer(self.auth_layer(handler.permissions()))
+                    .option_layer(
+                        service_cfg.and_then(|cfg| cfg.buffer.as_ref())
+                            .map(|lcfg| lcfg.make_layer()),
+                    )
+                    .option_layer(
+                        service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
+                            .map(|rcfg| rcfg.make_layer()),
+                    )
+                    // TODO: circuit_breaker
+                    // TODO: throttle
+                    // TODO: timeout
+                    // TODO: roles
+                    .service(handler.service());
+                method_rtr = match handler.method() {
+                    http::Method::GET => method_rtr.get_service(service),
+                    http::Method::HEAD => method_rtr.head_service(service),
+                    http::Method::POST => method_rtr.post_service(service),
+                    http::Method::PUT => method_rtr.put_service(service),
+                    http::Method::DELETE => method_rtr.delete_service(service),
+                    http::Method::OPTIONS => method_rtr.options_service(service),
+                    http::Method::TRACE => method_rtr.trace_service(service),
+                    http::Method::PATCH => method_rtr.patch_service(service),
+                    other => panic!("Unsupported HTTP method: {other}"),
+                };
                 has_some = true;
                 info!("handler registered");
             }
             if has_some {
-                rtr = rtr.route(
-                    path,
-                    method_rtr
-                        .layer(self.auth_layer())
-                        .layer(HandleErrorLayer::new(error_handler)),
-                );
+                rtr = rtr.route(path, method_rtr.layer(HandleErrorLayer::new(error_handler)));
             }
         }
 
@@ -292,47 +316,13 @@ async fn error_handler(err: BoxError) -> Response<Body> {
         .into_response()
 }
 
-/// Apply standard layer stack to provided handler function
-#[must_use]
-pub fn apply_layers<X, S>(
-    hext: &X,
-    handler: S,
-    conf: Option<&HandlerConfig>,
-) -> BoxCloneService<Request<Body>, Response<Body>, BoxError>
-where
-    X: HandlerExt,
-    S: Service<Request<Body>, Response = Response<Body>> + Send + Sync + Clone + 'static,
-    S::Future: Send,
-    S::Error: std::error::Error + Send + Sync,
-{
-    ServiceBuilder::new()
-        .boxed_clone()
-        .layer(ResponseExtension(HandlerName::new(hext.name())))
-        .option_layer(
-            conf.and_then(|cfg| cfg.buffer.as_ref())
-                .map(|lcfg| lcfg.make_layer()),
-        )
-        .option_layer(
-            conf.and_then(|cfg| cfg.rate_limit.as_ref())
-                .map(|rcfg| rcfg.make_layer()),
-        )
-        // TODO: circuit_breaker
-        // TODO: throttle
-        // TODO: timeout
-        // TODO: roles
-        .service(handler)
-}
-
 pub trait HandlerExt: Sync {
     fn name(&self) -> &'static str;
     fn path(&self) -> &'static str;
     fn spec_path(&self) -> &'static str;
     fn method(&self) -> http::Method;
-    fn register_method(
-        &self,
-        mrtr: MethodRouter<(), BoxError>,
-        cfg: Option<&HandlerConfig>,
-    ) -> MethodRouter<(), BoxError>;
+    fn permissions(&self) -> &'static [&'static str];
+    fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible>;
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 

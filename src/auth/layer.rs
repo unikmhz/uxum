@@ -94,7 +94,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
-        let _span = trace_span!("auth").entered();
+        let span = trace_span!("auth").entered();
         let (user, tokens) = match self.auth_extractor.extract_auth(&req) {
             Ok(pair) => pair,
             Err(error) => {
@@ -114,6 +114,7 @@ where
             };
         }
         req.extensions_mut().insert(user);
+        drop(span);
         AuthFuture::Positive {
             inner: self.inner.call(req),
         }

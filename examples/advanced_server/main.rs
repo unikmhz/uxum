@@ -54,11 +54,8 @@ async fn main() {
     name = "hello_world",
     path = "/",
     method = "GET",
-    spec(
-        docs(description = "Some link", url = "http://example.com/hello_world"),
-        tag = "tag1",
-        tag = "tag2"
-    )
+    docs(description = "Some link", url = "http://example.com/hello_world"),
+    tags = ["tag1", "tag2"]
 )]
 async fn root_handler() -> &'static str {
     tracing::info!("Said hello to the Axum world");
@@ -110,10 +107,8 @@ async fn name_from_binary_body(body: bytes::Bytes) -> String {
 /// Greet someone using a name from a URL path element
 #[handler(
     path = "/hello/:name",
-    spec(
-        docs(description = "Another link", url = "http://example.com/hello_name"),
-        path_params(name(description = "Name to greet", allow_empty = true))
-    )
+    docs(description = "Another link", url = "http://example.com/hello_name"),
+    path_params(name(description = "Name to greet", allow_empty = true))
 )]
 async fn name_from_path(args: Path<String>) -> String {
     format!("Hello {}!", args.0)
@@ -156,7 +151,7 @@ pub struct ComputeResponse {
 /// Gets an operator and two operands as input. Returns result of operation.
 /// This is an example of using automatically (de)serialized JSON as
 /// input and output of a method.
-#[handler(method = "POST", spec(tag = "calc"))]
+#[handler(method = "POST", tags = ["calc"])]
 async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
     let result = match req.op {
         ComputeOp::Add => req.arg1 + req.arg2,

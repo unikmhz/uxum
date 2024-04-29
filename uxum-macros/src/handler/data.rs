@@ -5,7 +5,8 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use crate::handler::spec::HandlerSpec;
 
 ///
-#[derive(Debug, FromMeta)]
+#[derive(Debug, Default, FromMeta)]
+#[darling(default)]
 pub(crate) struct HandlerData {
     ///
     #[darling(default)]
@@ -17,8 +18,11 @@ pub(crate) struct HandlerData {
     #[darling(default)]
     pub(crate) method: Option<HandlerMethod>,
     ///
-    #[darling(default)]
+    #[darling(default, flatten)]
     pub(crate) spec: HandlerSpec,
+    ///
+    #[darling(default)]
+    pub(crate) permissions: Vec<syn::LitStr>,
 }
 
 /// Supported HTTP methods

@@ -2,6 +2,7 @@
 
 pub use axum;
 pub use http;
+pub use hyper;
 pub use inventory;
 pub use mime;
 pub use okapi::{self, openapi3, schemars};
