@@ -2,7 +2,9 @@ use std::{
     borrow::Borrow,
     future::Future,
     marker::PhantomData,
+    ops::Deref,
     pin::Pin,
+    sync::Arc,
     task::{ready, Context, Poll},
 };
 
@@ -22,15 +24,16 @@ use crate::auth::{
 
 /// Authentication and authorization [`tower`] layer
 #[derive(Clone)]
-pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
-    /// Required permissions for service
-    permissions: &'static [&'static str],
-    /// Used auth provider (back-end)
-    auth_provider: AuthProv,
-    /// Used auth extractor (front-end)
-    auth_extractor: AuthExt,
-    /// Inner service type
-    _phantom_service: PhantomData<S>,
+pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor>(
+    Arc<AuthLayerInner<S, AuthProv, AuthExt>>,
+);
+
+impl<S, AuthProv, AuthExt> Deref for AuthLayer<S, AuthProv, AuthExt> {
+    type Target = AuthLayerInner<S, AuthProv, AuthExt>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl<S, AuthProv, AuthExt> AuthLayer<S, AuthProv, AuthExt>
@@ -44,19 +47,32 @@ where
         auth_provider: AuthProv,
         auth_extractor: AuthExt,
     ) -> Self {
-        Self {
+        Self(Arc::new(AuthLayerInner {
             permissions,
             auth_provider,
             auth_extractor,
             _phantom_service: PhantomData,
-        }
+        }))
     }
+}
+
+/// Inner struct for [`AuthLayer`]
+#[derive(Clone)]
+pub struct AuthLayerInner<S, AuthProv, AuthExt> {
+    /// Required permissions for service
+    permissions: &'static [&'static str],
+    /// Used auth provider (back-end)
+    auth_provider: AuthProv,
+    /// Used auth extractor (front-end)
+    auth_extractor: AuthExt,
+    /// Inner service type
+    _phantom_service: PhantomData<S>,
 }
 
 impl<S, AuthProv, AuthExt> Layer<S> for AuthLayer<S, AuthProv, AuthExt>
 where
-    AuthProv: AuthProvider,
-    AuthExt: AuthExtractor,
+    AuthProv: Clone,
+    AuthExt: Clone,
 {
     type Service = AuthService<S, AuthProv, AuthExt>;
 
@@ -89,7 +105,7 @@ where
     S::Error: Into<BoxError>,
     AuthProv: AuthProvider,
     AuthExt: AuthExtractor,
-    AuthExt::User: Borrow<AuthProv::User> + Clone + Send + Sync + 'static,
+    AuthExt::User: Borrow<AuthProv::User>,
     AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
 {
     type Response = S::Response;
