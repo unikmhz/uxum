@@ -295,7 +295,7 @@ impl MetricsBuilder {
     }
 }
 
-/// Metrics state object
+/// Metrics state [`tower`] layer
 #[derive(Clone)]
 pub struct MetricsState {
     /// Prometheus registry
@@ -344,10 +344,12 @@ impl MetricsState {
     }
 }
 
-///
+/// Metrics state [`tower`] service
 #[derive(Clone)]
 pub struct HttpMetrics<S> {
+    /// Shared state for all metered requests
     state: MetricsState,
+    /// Inner service
     inner: S,
 }
 
@@ -393,12 +395,18 @@ where
 /// Response future for [`HttpMetrics`] middleware
 #[pin_project]
 pub struct HttpMetricsFuture<F> {
+    /// Inner future
     #[pin]
     inner: F,
+    /// Shared state for all metered requests
     state: MetricsState,
+    /// Request processing beginning timestamp
     start: Instant,
+    /// HTTP request method
     method: Method,
+    /// Matched [`axum`] route
     path: Option<MatchedPath>,
+    /// HTTP request size, in bytes
     request_size: u64,
 }
 
@@ -462,7 +470,7 @@ where
     }
 }
 
-///
+/// Method handler to generate metrics
 // TODO: return Result
 async fn get_metrics(metrics: State<MetricsState>) -> impl IntoResponse {
     let encoder = TextEncoder::new();

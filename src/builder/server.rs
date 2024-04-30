@@ -209,7 +209,7 @@ impl ServerBuilder {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct IpConfig {
-    ///
+    /// IP TOS value, as a number
     #[serde(default)]
     pub tos: Option<u32>,
 }
@@ -221,13 +221,13 @@ pub struct TcpConfig {
     /// Set TCP_NODELAY socket options for accepted connections
     #[serde(default = "crate::util::default_true")]
     pub nodelay: bool,
-    ///
+    /// Size of TCP backlog queue
     #[serde(default = "TcpConfig::default_backlog")]
     pub backlog: NonZeroU32,
-    ///
+    /// Size of TCP MSS, in bytes
     #[serde(default)]
     pub mss: Option<NonZeroU32>,
-    /// TCP keepalive socket options
+    /// TCP keep-alive socket options
     #[serde(default)]
     pub keepalive: TcpKeepaliveConfig,
 }
@@ -300,7 +300,7 @@ pub struct Http1Config {
         with = "humantime_serde"
     )]
     pub header_read_timeout: Option<Duration>,
-    ///
+    /// Enable HTTP/1 keep-alive
     #[serde(default = "crate::util::default_true")]
     pub keepalive: bool,
     /// Set maximum per-connection buffer size
@@ -334,20 +334,23 @@ impl Default for Http1Config {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Http2Config {
-    ///
+    /// Enable HTTP/2 adaptive flow control
     #[serde(default)]
     pub adaptive_window: bool,
-    ///
+    /// Enable the [extended CONNECT protocol](https://datatracker.ietf.org/doc/html/rfc8441#section-4)
     #[serde(default)]
     pub connect_protocol: bool,
-    ///
+    /// Set the max connection-level flow control for HTTP/2
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_connection_window: Option<NonZeroU32>,
+    /// Set initial connection window for a stream
     ///
+    /// Sets the [SETTINGS_INITIAL_WINDOW_SIZE](https://http2.github.io/http2-spec/#SETTINGS_INITIAL_WINDOW_SIZE)
+    /// option for HTTP/2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_stream_window: Option<NonZeroU32>,
-    ///
+    /// HTTP/2 keep-alive configuration
     #[serde(default)]
     pub keepalive: Http2KeepaliveConfig,
     ///
@@ -355,18 +358,18 @@ pub struct Http2Config {
     pub max_concurrent_streams: Option<NonZeroU32>,
 }
 
-/// HTTP/2 keepalive configuration
+/// HTTP/2 keep-alive configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Http2KeepaliveConfig {
-    ///
+    /// HTTP/2 keep-alive interval
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
     pub interval: Option<Duration>,
-    ///
+    /// HTTP/2 keep-alive timeout
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

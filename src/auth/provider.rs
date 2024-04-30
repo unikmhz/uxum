@@ -3,19 +3,26 @@ use std::sync::Arc;
 use crate::auth::{config::AuthConfig, errors::AuthError, user::UserId};
 
 pub trait AuthProvider: Clone + Send {
+    /// User ID type
     ///
+    /// Acquired from auth extractor (front-end) for authentication and authorization.
+    /// On successful authentication it is injected into request as an extension.
     type User: Clone + Send + Sync + 'static;
-    ///
+    /// Authentication data type
     type AuthTokens;
 
+    /// Authenticate the request
     ///
+    /// This checks if user exists, and verifies that any passed auth tokens are valid.
     fn authenticate(&self, user: &Self::User, tokens: &Self::AuthTokens) -> Result<(), AuthError>;
 
+    /// Authorize the request
     ///
+    /// Checks if the user has specific permission.
     fn authorize(&self, user: &Self::User, permission: &'static str) -> Result<(), AuthError>;
 }
 
-///
+/// Authentication provider (back-end) which does nothing
 #[derive(Clone, Debug, Default)]
 pub struct NoOpAuthProvider;
 
@@ -36,10 +43,12 @@ impl AuthProvider for NoOpAuthProvider {
     }
 }
 
-///
+/// Authentication provider (back-end) that uses users and roles stored in app configuration
 #[derive(Clone, Debug)]
 pub struct ConfigAuthProvider {
+    /// Authentication database
     ///
+    /// Contains all user and role definitions.
     config: Arc<AuthConfig>,
 }
 

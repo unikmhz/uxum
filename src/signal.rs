@@ -4,6 +4,7 @@ use tracing::{info, warn};
 
 use crate::errors::IoError;
 
+/// Signal handling error
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum SignalError {
@@ -11,17 +12,24 @@ pub enum SignalError {
     Register(IoError),
 }
 
+/// Register signal handler
 fn register(kind: unix::SignalKind) -> Result<unix::Signal, SignalError> {
     unix::signal(kind).map_err(|err| SignalError::Register(err.into()))
 }
 
-///
+/// Unified listener for all handled signals
 pub struct SignalStream {
+    /// Signal listener for SIGTERM
     sig_term: unix::Signal,
+    /// Signal listener for SIGINT
     sig_int: unix::Signal,
+    /// Signal listener for SIGQUIT
     sig_quit: unix::Signal,
+    /// Signal listener for SIGHUP
     sig_hup: unix::Signal,
+    /// Signal listener for SIGUSR1
     sig_usr1: unix::Signal,
+    /// Signal listener for SIGUSR2
     sig_usr2: unix::Signal,
 }
 
@@ -44,7 +52,7 @@ pub enum Signal {
 }
 
 impl Signal {
-    ///
+    /// Name of a signal, as written in UNIX manual pages
     pub fn name(&self) -> &'static str {
         match self {
             Self::Terminate => "SIGTERM",
@@ -56,14 +64,16 @@ impl Signal {
         }
     }
 
-    ///
+    /// Whether a given signal should result in application shutting down
     pub fn is_shutdown(&self) -> bool {
         matches!(self, Self::Terminate | Self::Interrupt | Self::Quit)
     }
 }
 
 impl SignalStream {
+    /// Create new [`SignalStream`]
     ///
+    /// Automatically registers all signal handlers.
     pub fn new() -> Result<Self, SignalError> {
         // TODO: cancellation token?
         let sig_term = register(unix::SignalKind::terminate())?;
@@ -83,7 +93,7 @@ impl SignalStream {
         })
     }
 
-    ///
+    /// Wait for next received signal
     pub async fn next(&mut self) -> Result<Signal, SignalError> {
         macro_rules! sig_recv {
             ($name:literal, $value:ident) => {

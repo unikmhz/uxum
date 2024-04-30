@@ -126,7 +126,7 @@ enum RateLimitKey {
     SmartIp,
 }
 
-/// Rate-limiting [`tower`] layer factory
+/// Rate-limiting [`tower`] layer
 pub struct RateLimitLayer<S, T> {
     ///
     config: HandlerRateLimitConfig,
@@ -159,7 +159,7 @@ where
     }
 }
 
-/// Rate-limiting [`tower`] layer
+/// Rate-limiting [`tower`] service
 pub struct RateLimit<S, T> {
     ///
     inner: S,

@@ -57,9 +57,11 @@ pub enum AppBuilderError {
 /// Builder for application routes
 #[derive(Debug)]
 pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
-    ///
+    /// Authentication and authorization back-end
     auth_provider: AuthProv,
+    /// Authentication front-end
     ///
+    /// Handles protocol- and schema-specific message exchange.
     auth_extractor: AuthExt,
     /// Application configuration
     config: AppConfig,
@@ -105,17 +107,17 @@ where
     AuthExt::User: Borrow<AuthProv::User>,
     AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
 {
-    ///
+    /// Enable HTTP Basic authentication using built-in user and role databases
     #[must_use]
     pub fn with_basic_auth(self) -> AppBuilder<ConfigAuthProvider, BasicAuthExtractor> {
         AppBuilder {
             auth_provider: self.config.auth.clone().into(),
-            auth_extractor: BasicAuthExtractor,
+            auth_extractor: BasicAuthExtractor::default(),
             config: self.config,
         }
     }
 
-    ///
+    /// Create [`tower`] auth layer for use in a specific handler
     #[must_use]
     pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
         AuthLayer::new(
@@ -257,6 +259,7 @@ where
             }
         }
 
+        // Add RapiDoc and/or OpenAPI schema generator if enabled
         if let Some(ref mut api_doc) = self.config.api_doc {
             api_doc.set_app_defaults(
                 self.config.app_name.as_deref(),
@@ -265,6 +268,7 @@ where
             rtr = rtr.merge(api_doc.build_router()?);
         }
 
+        // [`tower`] layers that are executed for any request
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .sensitive_headers([header::AUTHORIZATION])
@@ -309,6 +313,20 @@ where
     }
 }
 
+impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor>
+where
+    AuthProv: AuthProvider + 'static,
+{
+    /// Set realm used for HTTP authentication challenge
+    ///
+    /// Default value is "auth".
+    #[must_use]
+    pub fn with_auth_realm(mut self, realm: impl AsRef<str>) -> Self {
+        self.auth_extractor.set_realm(realm);
+        self
+    }
+}
+
 // FIXME: write proper handler
 async fn error_handler(err: BoxError) -> Response<Body> {
     // TODO: generalize, remove all the downcasts
@@ -320,13 +338,28 @@ async fn error_handler(err: BoxError) -> Response<Body> {
         .into_response()
 }
 
+/// Application API method handler object trait
+///
+/// Using [`uxum::handler`] macro will generate a unique unit struct type implementing this trait,
+/// and register it using [`inventory::submit!`].
 pub trait HandlerExt: Sync {
+    /// Get handler name
+    ///
+    /// Must be unique, otherwise app initialization will panic.
     fn name(&self) -> &'static str;
+    /// Get URL path to run this handler
+    ///
+    /// Uses [`axum::extract::Path`] format for embedded path parameters.
     fn path(&self) -> &'static str;
+    /// Get URL path to run this handler, reformatted for OpenAPI spec
     fn spec_path(&self) -> &'static str;
+    /// Get HTTP method to run this handler
     fn method(&self) -> http::Method;
+    /// Get required permissions, if any
     fn permissions(&self) -> &'static [&'static str];
+    /// Return handler function packaged as a [`tower`] service
     fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible>;
+    /// Generate OpenAPI specification object for handler
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 
