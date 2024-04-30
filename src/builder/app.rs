@@ -238,7 +238,6 @@ where
                     // TODO: circuit_breaker
                     // TODO: throttle
                     // TODO: timeout
-                    // TODO: roles
                     .service(handler.service());
                 method_rtr = match handler.method() {
                     http::Method::GET => method_rtr.get_service(service),

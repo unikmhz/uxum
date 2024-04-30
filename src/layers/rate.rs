@@ -234,6 +234,7 @@ where
     }
 }
 
+/// Rate-limiting [`tower`] service future
 #[pin_project(project = ProjectedOutcome)]
 pub enum RateLimitFuture<F> {
     Positive {

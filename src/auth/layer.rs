@@ -20,16 +20,16 @@ use crate::auth::{
     provider::{AuthProvider, NoOpAuthProvider},
 };
 
-///
+/// Authentication and authorization [`tower`] layer
 #[derive(Clone)]
 pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
-    ///
+    /// Required permissions for service
     permissions: &'static [&'static str],
-    ///
+    /// Used auth provider (back-end)
     auth_provider: AuthProv,
-    ///
+    /// Used auth extractor (front-end)
     auth_extractor: AuthExt,
-    ///
+    /// Inner service type
     _phantom_service: PhantomData<S>,
 }
 
@@ -38,7 +38,7 @@ where
     AuthProv: AuthProvider,
     AuthExt: AuthExtractor,
 {
-    ///
+    /// Create new [`tower`] auth layer
     pub fn new(
         permissions: &'static [&'static str],
         auth_provider: AuthProv,
@@ -70,16 +70,16 @@ where
     }
 }
 
-/// Authenticating [`tower`] layer
+/// Authentication and authorization [`tower`] service
 #[derive(Clone)]
 pub struct AuthService<S, AuthProv, AuthExt> {
-    ///
+    /// Required permissions for service
     permissions: &'static [&'static str],
-    ///
+    /// Used auth provider (back-end)
     auth_provider: AuthProv,
-    ///
+    /// Used auth extractor (front-end)
     auth_extractor: AuthExt,
-    ///
+    /// Inner service
     inner: S,
 }
 
@@ -105,6 +105,7 @@ where
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
         let span = trace_span!("auth").entered();
+        // Extract user and/or auth tokens from request
         let (user, tokens) = match self.auth_extractor.extract_auth(&req) {
             Ok(pair) => pair,
             Err(error) => {
@@ -114,6 +115,7 @@ where
                 };
             }
         };
+        // Authenticate user
         if let Err(error) = self
             .auth_provider
             .authenticate(user.borrow(), tokens.borrow())
@@ -123,6 +125,7 @@ where
                 error_response: Some(self.auth_extractor.error_response(error)),
             };
         }
+        // Authorize request
         for perm in self.permissions {
             if let Err(error) = self.auth_provider.authorize(user.borrow(), perm) {
                 warn!(cause = %error, "authorization error");
@@ -131,6 +134,7 @@ where
                 };
             }
         }
+        // Add user ID as an extension into request
         req.extensions_mut().insert(user);
         drop(span);
         AuthFuture::Positive {
@@ -139,7 +143,7 @@ where
     }
 }
 
-///
+/// Authentication and authorization [`tower`] service future
 #[pin_project(project = ProjectedOutcome)]
 pub enum AuthFuture<F> {
     Positive {
