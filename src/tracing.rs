@@ -16,29 +16,30 @@ use url::Url;
 /// Error type used in tracing configuration
 #[derive(Debug, Error)]
 pub enum TracingError {
+    // OTel tracing error
     #[error("OTel tracing error: {0}")]
     OpenTelemetry(#[from] opentelemetry::trace::TraceError),
 }
 
-///
+/// OpenTelemetry tracing configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TracingConfig {
-    ///
+    /// Trace collector endpoint URL
     #[serde(default = "TracingConfig::default_endpoint")]
     endpoint: Url,
-    ///
-    #[serde(default)]
-    format: TracingFormat,
-    ///
+    /// Protocol to use when exporting data
+    #[serde(default, alias = "format")]
+    protocol: TracingProtocol,
+    /// OTLP collector timeout
     #[serde(default = "TracingConfig::default_timeout")]
     timeout: Duration,
-    ///
+    /// Sampling rule
     #[serde(default)]
     sample: TracingSampler,
-    ///
+    /// Limits configuration
     #[serde(default, flatten)]
     limits: TracingSpanLimits,
-    ///
+    /// Optional features configuration
     #[serde(default)]
     include: TracingIncludes,
 }
@@ -47,7 +48,7 @@ impl Default for TracingConfig {
     fn default() -> Self {
         Self {
             endpoint: Self::default_endpoint(),
-            format: TracingFormat::default(),
+            protocol: TracingProtocol::default(),
             timeout: Self::default_timeout(),
             sample: TracingSampler::default(),
             limits: TracingSpanLimits::default(),
@@ -73,18 +74,20 @@ impl TracingConfig {
         Duration::from_secs(opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT)
     }
 
+    /// Build internal protocol exporter
     fn build_exporter(&self) -> TonicExporterBuilder {
         // TODO: allow adding metadata
         opentelemetry_otlp::new_exporter()
             .tonic()
-            .with_protocol(self.format.as_protocol())
+            .with_protocol(self.protocol.into())
             .with_endpoint(self.endpoint.to_string())
             .with_timeout(self.timeout)
     }
 
+    /// Build OpenTelemetry SDK configuration
     fn build_config(&self, resource: Resource) -> Config {
         Config::default()
-            .with_sampler(self.sample.as_sampler())
+            .with_sampler::<Sampler>(self.sample.into())
             .with_id_generator(RandomIdGenerator::default())
             .with_max_events_per_span(self.limits.max_events_per_span)
             .with_max_attributes_per_span(self.limits.max_attributes_per_span)
@@ -94,6 +97,7 @@ impl TracingConfig {
             .with_resource(resource)
     }
 
+    /// Build OpenTelemetry tracing pipeline
     pub fn build_pipeline(&self, resource: Resource) -> Result<Tracer, TracingError> {
         let _span = debug_span!("build_tracing_pipeline").entered();
         opentelemetry_otlp::new_pipeline()
@@ -104,6 +108,7 @@ impl TracingConfig {
             .map_err(Into::into)
     }
 
+    /// Build OpenTelemetry layer for [`tracing`]
     pub fn build_layer<S>(&self, tracer: &Tracer) -> OpenTelemetryLayer<S, Tracer>
     where
         S: Subscriber + for<'span> LookupSpan<'span>,
@@ -121,46 +126,46 @@ impl TracingConfig {
     }
 }
 
-///
+/// Configuration of optional data to include in tracing objects
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 struct TracingIncludes {
-    ///
-    #[serde(default)]
+    /// Include file/module/line in span and event attributes
+    #[serde(default = "crate::util::default_true")]
     location: bool,
-    ///
-    #[serde(default)]
+    /// Convert [`std::error::Error`] values into `exception.*` fields
+    #[serde(default = "crate::util::default_true")]
     exception_from_error_fields: bool,
-    ///
-    #[serde(default)]
+    /// Convert events with `error` field into `exception.*` fields
+    #[serde(default = "crate::util::default_true")]
     exception_from_error_events: bool,
-    ///
-    #[serde(default)]
+    /// Set status error description from exception events
+    #[serde(default = "crate::util::default_true")]
     status_from_error_events: bool,
-    ///
+    /// Track both busy and inactive times for spans
     #[serde(default)]
     inactivity: bool,
-    ///
-    #[serde(default)]
+    /// Record thread name/ID in span attributes
+    #[serde(default = "crate::util::default_true")]
     thread_info: bool,
 }
 
-///
+/// Limits on number of properties in various tracing objects
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 struct TracingSpanLimits {
-    ///
+    /// The max events that can be added to a Span
     #[serde(default = "TracingSpanLimits::default_max")]
     max_events_per_span: u32,
-    ///
+    /// The max attributes that can be added to a Span
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_span: u32,
-    ///
+    /// The max links that can be added to a Span
     #[serde(default = "TracingSpanLimits::default_max")]
     max_links_per_span: u32,
-    ///
+    /// The max attributes that can be added into an Event
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_event: u32,
-    ///
+    /// The max attributes that can be added into a Link
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_link: u32,
 }
@@ -186,44 +191,43 @@ impl TracingSpanLimits {
     }
 }
 
-///
+/// Protocol to use for data export
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
 #[serde(rename_all = "snake_case")]
-enum TracingFormat {
-    ///
+enum TracingProtocol {
+    /// GRPC over HTTP
     #[default]
     OtlpGrpc,
-    ///
+    /// Protobuf over HTTP
     OtlpHttp,
 }
 
-impl TracingFormat {
-    ///
-    fn as_protocol(self) -> Protocol {
-        match self {
-            Self::OtlpGrpc => Protocol::Grpc,
-            Self::OtlpHttp => Protocol::HttpBinary,
+impl From<TracingProtocol> for Protocol {
+    fn from(value: TracingProtocol) -> Self {
+        match value {
+            TracingProtocol::OtlpGrpc => Self::Grpc,
+            TracingProtocol::OtlpHttp => Self::HttpBinary,
         }
     }
 }
 
-///
+/// Trace sampling configuration
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum TracingSampler {
-    ///
+    /// Always export data
     #[default]
     Always,
-    ///
+    /// Export a specified fraction of all data
     Fraction(f64),
 }
 
-impl TracingSampler {
-    ///
-    fn as_sampler(&self) -> Sampler {
-        match self {
-            Self::Always => Sampler::AlwaysOn,
-            Self::Fraction(frac) => Sampler::TraceIdRatioBased(*frac),
+impl From<TracingSampler> for Sampler {
+    fn from(value: TracingSampler) -> Self {
+        match value {
+            TracingSampler::Always => Self::AlwaysOn,
+            TracingSampler::Fraction(frac) => Self::TraceIdRatioBased(frac),
         }
     }
 }

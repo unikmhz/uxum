@@ -7,22 +7,22 @@ use argon2::{Argon2, PasswordVerifier};
 use password_hash::PasswordHashString;
 use serde::{Deserialize, Serialize};
 
-///
+/// User configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct UserConfig {
-    ///
+    /// User password value
     #[serde(flatten)]
     pub password: UserPassword,
-    ///
+    /// Roles that are granted to this user
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub roles: BTreeSet<String>,
 }
 
-///
+/// Various ways of storing client password
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum UserPassword {
-    ///
+    /// Cleartext password value
     #[serde(rename = "password")]
     Plaintext(String),
     /// Securely hashed password value
@@ -52,38 +52,38 @@ impl PartialEq<&str> for UserPassword {
     }
 }
 
-///
+/// Role configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct RoleConfig {
-    ///
+    /// Permissions that are granted to the role
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub permissions: BTreeSet<String>,
-    ///
+    /// Does this role allow skipping permission checks altogether
     #[serde(default, skip_serializing_if = "<&bool as std::ops::Not>::not")]
     pub super_user: bool,
 }
 
-///
+/// Authentication provider configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct AuthConfig {
-    ///
+    /// User dictionary
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub users: BTreeMap<String, UserConfig>,
-    ///
+    /// Role dictionary
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub roles: BTreeMap<String, RoleConfig>,
 }
 
 impl AuthConfig {
-    ///
+    /// Find and return user by name
     pub fn user(&self, name: &str) -> Option<&UserConfig> {
         self.users.get(name)
     }
 }
 
-/// Newtype for hashed password
+/// Newtype for hashed passwords
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct HashedPassword(PasswordHashString);

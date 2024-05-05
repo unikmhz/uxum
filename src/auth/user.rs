@@ -3,8 +3,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-///
-#[derive(Clone, Debug)]
+/// User ID
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct UserId(String);
 

@@ -8,17 +8,36 @@ use forwarded_header_value::{ForwardedHeaderValue, Identifier};
 use http::{header::FORWARDED, HeaderMap, Request};
 use thiserror::Error;
 
+use crate::auth::UserId;
+
 /// Error type returned by key extractors
 #[derive(Clone, Debug, Error)]
 #[error("Unable to extract rate-limiting key from request")]
 pub struct ExtractionError;
 
+/// Key extraction trait for use in various limiting layers
 pub(crate) trait KeyExtractor {
     type Key: Hash + Eq + Clone;
 
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, ExtractionError>;
 }
 
+/// Use user ID as key
+pub(crate) struct UserIdKeyExtractor;
+
+impl KeyExtractor for UserIdKeyExtractor {
+    // TODO: maybe avoid cloning key here?
+    type Key = UserId;
+
+    fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, ExtractionError> {
+        req.extensions()
+            .get::<Self::Key>()
+            .cloned()
+            .ok_or(ExtractionError)
+    }
+}
+
+/// Use client IP address as key
 pub(crate) struct PeerIpKeyExtractor;
 
 impl KeyExtractor for PeerIpKeyExtractor {
@@ -29,6 +48,7 @@ impl KeyExtractor for PeerIpKeyExtractor {
     }
 }
 
+/// Use original client IP address as key
 pub(crate) struct SmartIpKeyExtractor;
 
 impl KeyExtractor for SmartIpKeyExtractor {

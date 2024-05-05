@@ -26,14 +26,18 @@ use thiserror::Error;
 use tower::{BoxError, Layer, Service};
 use tracing::{trace_span, warn};
 
-use crate::layers::util::{ExtractionError, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor};
+use crate::layers::util::{
+    ExtractionError, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor, UserIdKeyExtractor,
+};
 
 /// Error type returned by rate-limiting layer
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum RateLimitError {
+    /// Extraction error
     #[error(transparent)]
     Extraction(#[from] ExtractionError),
+    /// Rate limit exceeded
     #[error("Rate limit reached: available after {remaining_seconds} seconds")]
     LimitReached {
         // NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
@@ -124,15 +128,17 @@ enum RateLimitKey {
     /// Same as [`RateLimitKey::PeerIp`], but accounts for addresses passed via
     /// `X-Forwarded-For` and similar headers.
     SmartIp,
+    /// Per-authenticated-user-ID rate limit
+    UserId,
 }
 
 /// Rate-limiting [`tower`] layer
 pub struct RateLimitLayer<S, T> {
-    ///
+    /// Rate limiter configuration
     config: HandlerRateLimitConfig,
-    ///
+    /// Inner service type
     _phantom_service: PhantomData<S>,
-    ///
+    /// Request body type
     _phantom_request: PhantomData<T>,
 }
 
@@ -161,9 +167,9 @@ where
 
 /// Rate-limiting [`tower`] service
 pub struct RateLimit<S, T> {
-    ///
+    /// Inner service
     inner: S,
-    ///
+    /// Rate limiter
     limiter: Arc<Box<dyn Limiter<T> + Send + Sync>>,
 }
 
@@ -220,12 +226,14 @@ where
     S: Service<Request<T>> + Send + 'static,
     T: Send + 'static,
 {
+    /// Create new rate limiting service
     #[must_use]
     pub fn new(inner: S, config: &HandlerRateLimitConfig) -> Self {
         let limiter: Box<dyn Limiter<T> + Send + Sync> = match config.key {
             RateLimitKey::Global => Box::new(GlobalLimiter::new(config)),
-            RateLimitKey::PeerIp => Box::new(IpLimiter::new(PeerIpKeyExtractor, config)),
-            RateLimitKey::SmartIp => Box::new(IpLimiter::new(SmartIpKeyExtractor, config)),
+            RateLimitKey::PeerIp => Box::new(KeyedLimiter::new(PeerIpKeyExtractor, config)),
+            RateLimitKey::SmartIp => Box::new(KeyedLimiter::new(SmartIpKeyExtractor, config)),
+            RateLimitKey::UserId => Box::new(KeyedLimiter::new(UserIdKeyExtractor, config)),
         };
         Self {
             inner,
@@ -237,11 +245,15 @@ where
 /// Rate-limiting [`tower`] service future
 #[pin_project(project = ProjectedOutcome)]
 pub enum RateLimitFuture<F> {
+    /// Happy path, calling inner service
     Positive {
+        /// Inner future
         #[pin]
         inner: F,
     },
+    /// Key extraction error or rate limit exceeded
     Negative {
+        /// Cause of negative response
         error: RateLimitError,
     },
 }
@@ -287,7 +299,7 @@ impl<T> Limiter<T> for GlobalLimiter {
 }
 
 impl GlobalLimiter {
-    ///
+    /// Create new global limiter
     #[must_use]
     fn new(config: &HandlerRateLimitConfig) -> Self {
         Self {
@@ -300,10 +312,10 @@ impl GlobalLimiter {
     }
 }
 
-/// Per-IP rate limiter
+/// Keyed rate limiter
 ///
 /// Extracts key data from requests using provided [`Self::extractor`].
-struct IpLimiter<K: KeyExtractor> {
+struct KeyedLimiter<K: KeyExtractor> {
     extractor: K,
     limiters: RateLimiter<
         K::Key,
@@ -313,8 +325,7 @@ struct IpLimiter<K: KeyExtractor> {
     >,
 }
 
-impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
-    ///
+impl<T, K: KeyExtractor> Limiter<T> for KeyedLimiter<K> {
     fn check_limit(&self, req: &Request<T>) -> Result<(), RateLimitError> {
         let key = self.extractor.extract(req)?;
         self.limiters.check_key(&key).map_err(|neg| {
@@ -324,8 +335,8 @@ impl<T, K: KeyExtractor> Limiter<T> for IpLimiter<K> {
     }
 }
 
-impl<K: KeyExtractor> IpLimiter<K> {
-    ///
+impl<K: KeyExtractor> KeyedLimiter<K> {
+    /// Create new keyed limiter
     #[must_use]
     fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
         Self {

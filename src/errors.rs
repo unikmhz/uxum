@@ -1,6 +1,6 @@
 use std::{fmt, io};
 
-///
+/// Wrapper for [`std::io::Error`]
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct IoError(io::Error);

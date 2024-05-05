@@ -49,7 +49,9 @@ impl OpenTelemetryConfig {
 /// panic.
 #[allow(dead_code)]
 pub struct TelemetryGuard {
+    /// Guards for [`tracing_appender::non_blocking::NonBlocking`]
     buf_guards: Vec<WorkerGuard>,
+    /// Tracing pipeline
     tracer: Option<Tracer>,
 }
 

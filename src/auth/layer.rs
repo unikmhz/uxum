@@ -162,11 +162,15 @@ where
 /// Authentication and authorization [`tower`] service future
 #[pin_project(project = ProjectedOutcome)]
 pub enum AuthFuture<F> {
+    /// Happy path, calling inner service
     Positive {
+        /// Inner future
         #[pin]
         inner: F,
     },
+    /// Authentication error or failure
     Negative {
+        /// Preformatted negative HTTP response
         error_response: Option<Response<Body>>,
     },
 }

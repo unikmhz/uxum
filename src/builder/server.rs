@@ -16,34 +16,49 @@ use crate::errors::IoError;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ServerBuilderError {
+    /// Unable to parse endpoint address
     #[error("Unable to parse endpoint address: {0}")]
     AddressParse(IoError),
+    /// Unable to resolve DNS name
     #[error("Unable to resolve DNS name: {0}")]
     Resolve(String),
+    /// Unable to create socket
     #[error("Unable to create socket: {0}")]
     SocketCreate(IoError),
+    /// Unable to bind socket to local address
     #[error("Unable to bind socket to local address {0}: {1}")]
     BindAddr(SocketAddr, IoError),
+    /// Unable to listen on socket
     #[error("Unable to listen on socket {0}: {1}")]
     Listen(SocketAddr, IoError),
+    /// Unable to perform conversion into std listener
     #[error("Unable to perform conversion into std listener: {0}")]
     ConvertListener(IoError),
+    /// Unable to extract local address
     #[error("Unable to extract local address: {0}")]
     ListenerLocalAddr(hyper::Error),
+    /// Unable to set SO_REUSEADDR
     #[error("Unable to set SO_REUSEADDR: {0}")]
     SetReuseAddr(IoError),
+    /// Unable to set SO_RCVBUF
     #[error("Unable to set SO_RCVBUF: {0}")]
     SetRecvBuffer(IoError),
+    /// Unable to set SO_SNDBUF
     #[error("Unable to set SO_SNDBUF: {0}")]
     SetSendBuffer(IoError),
+    /// Unable to set SO_KEEPALIVE
     #[error("Unable to set SO_KEEPALIVE: {0}")]
     SetKeepAlive(IoError),
+    /// Unable to set IP_TOS
     #[error("Unable to set IP_TOS: {0}")]
     SetIpTos(IoError),
+    /// Unable to set TCP_MAXSEG
     #[error("Unable to set TCP_MAXSEG: {0}")]
     SetTcpMss(IoError),
+    /// Unable to set TCP_NODELAY
     #[error("Unable to set TCP_NODELAY: {0}")]
     SetNoDelay(IoError),
+    /// Neither HTTP/1 nor HTTP/2 are enabled
     #[error("Neither HTTP/1 nor HTTP/2 are enabled")]
     NoProtocolsEnabled,
 }
@@ -347,13 +362,14 @@ pub struct Http2Config {
     /// Set initial connection window for a stream
     ///
     /// Sets the [SETTINGS_INITIAL_WINDOW_SIZE](https://http2.github.io/http2-spec/#SETTINGS_INITIAL_WINDOW_SIZE)
-    /// option for HTTP/2.
+    /// option for HTTP/2 connections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_stream_window: Option<NonZeroU32>,
     /// HTTP/2 keep-alive configuration
     #[serde(default)]
     pub keepalive: Http2KeepaliveConfig,
-    ///
+    /// Sets the [SETTINGS_MAX_CONCURRENT_STREAMS](https://httpwg.org/specs/rfc9113.html#n-stream-concurrency)
+    /// option for HTTP/2 connections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrent_streams: Option<NonZeroU32>,
 }

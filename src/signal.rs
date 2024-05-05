@@ -33,7 +33,7 @@ pub struct SignalStream {
     sig_usr2: unix::Signal,
 }
 
-///
+/// Signal type
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Signal {

@@ -11,4 +11,5 @@ pub use self::{
     extractor::{AuthExtractor, BasicAuthExtractor, NoOpAuthExtractor},
     layer::AuthLayer,
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
+    user::UserId,
 };
