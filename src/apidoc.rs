@@ -23,8 +23,10 @@ use crate::builder::app::HandlerExt;
 /// Error type used in API doc objects
 #[derive(Debug, Error)]
 pub enum ApiDocError {
+    /// OpenAPI spec JSON rendering errors
     #[error(transparent)]
     RenderSpec(#[from] serde_json::Error),
+    /// Unsupported method for OpenAPI spec
     #[error("Method {0} not supported in OpenAPI spec")]
     UnsupportedMethod(Method),
 }
@@ -412,12 +414,12 @@ impl ApiDocBuilder {
     }
 }
 
-///
+/// Newtype for pre-rendered OpenAPI spec
 #[derive(Clone)]
 #[repr(transparent)]
 pub struct OpenApiSpec(Vec<u8>);
 
-///
+/// Handler to serve OpenAPI spec as JSON
 async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/swagger+json")],
@@ -425,12 +427,12 @@ async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     )
 }
 
-///
+/// Handler to serve RapiDoc UI page
 async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
     api_doc.0.into_response()
 }
 
-///
+/// Handler to serve RapidDoc code as minified javascript
 async fn get_rapidoc_js() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, mime::APPLICATION_JAVASCRIPT.as_ref())],
@@ -438,7 +440,7 @@ async fn get_rapidoc_js() -> impl IntoResponse {
     )
 }
 
-///
+/// Handler to serve RapiDoc javascript map file
 async fn get_rapidoc_js_map() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())],
