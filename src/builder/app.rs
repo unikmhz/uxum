@@ -6,7 +6,6 @@ use std::{
 
 use axum::{
     body::Body,
-    error_handling::HandleErrorLayer,
     http::{
         header::{self, HeaderValue},
         StatusCode,
@@ -38,18 +37,23 @@ use crate::{
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
+    MetricsState,
 };
 
 /// Error type used in app builder
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AppBuilderError {
+    /// API doc error
     #[error(transparent)]
     ApiDoc(#[from] ApiDocError),
+    /// Metrics error
     #[error(transparent)]
     Metrics(#[from] MetricsError),
+    /// Tracing error
     #[error(transparent)]
     Tracing(#[from] TracingError),
+    /// Duplicate handler name
     #[error("Duplicate handler name: {0}")]
     DuplicateHandlerName(&'static str),
 }
@@ -94,6 +98,7 @@ impl AppBuilder {
         Self::default()
     }
 
+    /// Create new builder with provided configuration
     #[must_use]
     pub fn from_config(cfg: &AppConfig) -> Self {
         cfg.clone().into()
@@ -184,9 +189,9 @@ where
     /// conflicting handlers defined in application code.
     pub fn build(mut self) -> Result<Router, AppBuilderError> {
         let _build_span = debug_span!("build_app").entered();
-        let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         let mut rtr = Router::new();
 
+        // Build metrics subsystem
         let otel_res = self.config.otel_resource();
         // TODO: export metrics state for application-defined metrics
         let metrics_state = self.config.metrics.build_state(otel_res.clone())?;
@@ -196,6 +201,7 @@ where
 
         // A set to ensure uniqueness of handler names
         let mut handler_names = HashSet::new();
+        let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
             let name = handler.name();
             let _record_span = debug_span!("iter_handler", name).entered();
@@ -208,53 +214,11 @@ where
                 .or_insert_with(|| vec![*handler]);
             debug!("handler recorded");
         }
+
+        // Register handlers
         for (path, handlers) in grouped {
-            let _register_span = info_span!("register_path", path).entered();
-            let mut has_some = false;
-            let mut method_rtr = MethodRouter::<(), BoxError>::new();
-            for handler in handlers {
-                let name = handler.name();
-                let _span =
-                    info_span!("register_handler", name, method = ?handler.method()).entered();
-                if let Some(cfg) = self.config.handlers.get(name) {
-                    if cfg.disabled {
-                        info!("skipping disabled handler");
-                        continue;
-                    }
-                }
-                let service_cfg = self.config.handlers.get(name);
-                let service = ServiceBuilder::new()
-                    .boxed_clone()
-                    .layer(ResponseExtension(HandlerName::new(name)))
-                    .layer(self.auth_layer(handler.permissions()))
-                    .option_layer(
-                        service_cfg.and_then(|cfg| cfg.buffer.as_ref())
-                            .map(|lcfg| lcfg.make_layer()),
-                    )
-                    .option_layer(
-                        service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
-                            .map(|rcfg| rcfg.make_layer()),
-                    )
-                    // TODO: circuit_breaker
-                    // TODO: throttle
-                    // TODO: timeout
-                    .service(handler.service());
-                method_rtr = match handler.method() {
-                    http::Method::GET => method_rtr.get_service(service),
-                    http::Method::HEAD => method_rtr.head_service(service),
-                    http::Method::POST => method_rtr.post_service(service),
-                    http::Method::PUT => method_rtr.put_service(service),
-                    http::Method::DELETE => method_rtr.delete_service(service),
-                    http::Method::OPTIONS => method_rtr.options_service(service),
-                    http::Method::TRACE => method_rtr.trace_service(service),
-                    http::Method::PATCH => method_rtr.patch_service(service),
-                    other => panic!("Unsupported HTTP method: {other}"),
-                };
-                has_some = true;
-                info!("handler registered");
-            }
-            if has_some {
-                rtr = rtr.route(path, method_rtr.layer(HandleErrorLayer::new(error_handler)));
+            if let Some(method_rtr) = self.register_path(path, handlers) {
+                rtr = rtr.route(path, method_rtr.handle_error(error_handler));
             }
         }
 
@@ -267,6 +231,14 @@ where
             rtr = rtr.merge(api_doc.build_router()?);
         }
 
+        // Wrap router in global layers
+        let final_rtr = self.wrap_global_layers(rtr, metrics_state);
+        info!("finished building application");
+        Ok(final_rtr)
+    }
+
+    /// Wrap router in global [`tower`] layers
+    fn wrap_global_layers(&self, rtr: Router, metrics: MetricsState) -> Router {
         // [`tower`] layers that are executed for any request
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
@@ -282,16 +254,88 @@ where
                             .latency_unit(LatencyUnit::Micros),
                     ),
             )
-            .layer(metrics_state)
+            .layer(metrics)
             .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
                 self.server_header(),
             ));
         // TODO: DefaultBodyLimit (configurable)
-        let final_rtr = rtr.layer(global_layers);
-        info!("finished building application");
-        Ok(final_rtr)
+        rtr.layer(global_layers)
+    }
+
+    /// Register all handlers for a given path in [`MethodRouter`]
+    ///
+    /// Returns [`None`] if all handlers for a path are disabled.
+    fn register_path(
+        &self,
+        path: &str,
+        handlers: Vec<&dyn HandlerExt>,
+    ) -> Option<MethodRouter<(), BoxError>> {
+        let _register_span = info_span!("register_path", path).entered();
+        let mut has_some = false;
+        let mut method_rtr = MethodRouter::new();
+        for handler in handlers {
+            let name = handler.name();
+            let _span = info_span!("register_handler", name, method = ?handler.method()).entered();
+            if let Some(cfg) = self.config.handlers.get(name) {
+                if cfg.disabled {
+                    info!("skipping disabled handler");
+                    continue;
+                }
+            }
+            method_rtr = self.register_handler(method_rtr, handler);
+            has_some = true;
+            info!("handler registered");
+        }
+        has_some.then_some(method_rtr)
+    }
+
+    /// Register a handler in [`MethodRouter`]
+    fn register_handler(
+        &self,
+        method_rtr: MethodRouter<(), BoxError>,
+        handler: &dyn HandlerExt,
+    ) -> MethodRouter<(), BoxError> {
+        let service = self.handler_service(handler);
+        match handler.method() {
+            http::Method::GET => method_rtr.get_service(service),
+            http::Method::HEAD => method_rtr.head_service(service),
+            http::Method::POST => method_rtr.post_service(service),
+            http::Method::PUT => method_rtr.put_service(service),
+            http::Method::DELETE => method_rtr.delete_service(service),
+            http::Method::OPTIONS => method_rtr.options_service(service),
+            http::Method::TRACE => method_rtr.trace_service(service),
+            http::Method::PATCH => method_rtr.patch_service(service),
+            other => panic!("Unsupported HTTP method: {other}"),
+        }
+    }
+
+    /// Convert a [`HandlerExt`] structure into a [`tower`] layered service
+    #[must_use]
+    fn handler_service(
+        &self,
+        handler: &dyn HandlerExt,
+    ) -> BoxCloneService<Request<Body>, Response<Body>, BoxError> {
+        let name = handler.name();
+        let _span = info_span!("handler_service", name, method = ?handler.method()).entered();
+        let service_cfg = self.config.handlers.get(name);
+        ServiceBuilder::new()
+            .boxed_clone()
+            .layer(ResponseExtension(HandlerName::new(name)))
+            .layer(self.auth_layer(handler.permissions()))
+            .option_layer(
+                service_cfg.and_then(|cfg| cfg.buffer.as_ref())
+                    .map(|lcfg| lcfg.make_layer()),
+            )
+            .option_layer(
+                service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
+                    .map(|rcfg| rcfg.make_layer()),
+            )
+            // TODO: circuit_breaker
+            // TODO: throttle
+            // TODO: timeout
+            .service(handler.service())
     }
 
     /// Generate a value to be used in HTTP Server header
