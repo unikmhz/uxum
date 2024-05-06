@@ -8,6 +8,7 @@ use crate::errors::IoError;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum SignalError {
+    /// Unable to register signal handler
     #[error("Unable to register signal handler: {0}")]
     Register(IoError),
 }

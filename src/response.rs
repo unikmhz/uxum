@@ -2,17 +2,23 @@ use axum::http::StatusCode;
 use okapi::openapi3;
 use schemars::gen::SchemaGenerator;
 
+/// Object for documenting handler responses as OpenAPI schema
 pub struct ResponseSchema {
+    /// HTTP status code
     pub status: StatusCode,
+    /// OpenAPI response spec
     pub response: openapi3::Response,
 }
 
 pub trait GetResponseSchemas {
+    /// Iterator over all available responses
     type ResponseIter: IntoIterator<Item = ResponseSchema>;
 
+    /// Get all available responses
     #[must_use]
     fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter;
 
+    /// Convert responses into [`openapi3`] object
     #[must_use]
     fn get_responses(gen: &mut schemars::gen::SchemaGenerator) -> openapi3::Responses {
         openapi3::Responses {

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::auth::{config::AuthConfig, errors::AuthError, user::UserId};
 
+/// Authentication provider (back-end) trait
 pub trait AuthProvider: Clone + Send {
     /// User ID type
     ///

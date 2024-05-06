@@ -55,6 +55,18 @@ pub struct TelemetryGuard {
     tracer: Option<Tracer>,
 }
 
+impl Drop for TelemetryGuard {
+    fn drop(&mut self) {
+        if let Some(provider) = self.tracer.as_ref().and_then(|t| t.provider()) {
+            for res in provider.force_flush() {
+                if let Err(err) = res {
+                    eprintln!("Error flushing spans: {err}");
+                }
+            }
+        }
+    }
+}
+
 /// Error type returned on telemetry initialization
 #[derive(Debug, Error)]
 #[non_exhaustive]

@@ -383,7 +383,7 @@ async fn error_handler(err: BoxError) -> Response<Body> {
 
 /// Application API method handler object trait
 ///
-/// Using [`uxum::handler`] macro will generate a unique unit struct type implementing this trait,
+/// Using [`crate::handler`] macro will generate a unique unit struct type implementing this trait,
 /// and register it using [`inventory::submit!`].
 pub trait HandlerExt: Sync {
     /// Get handler name

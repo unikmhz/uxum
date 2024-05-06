@@ -10,6 +10,7 @@ pub use crate::{
             response::{IntoResponse, IntoResponseParts},
             Json,
         },
+        axum_server::Handle,
         mime, okapi, openapi3,
         schemars::{self, JsonSchema},
         tracing,

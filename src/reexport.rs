@@ -1,6 +1,7 @@
 //! Centralized place to re-export dependency crates
 
 pub use axum;
+pub use axum_server;
 pub use http;
 pub use hyper;
 pub use inventory;

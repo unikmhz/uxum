@@ -4,13 +4,20 @@ use std::{
     time::Duration,
 };
 
+use axum_server::Handle;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
-use tokio::net::{lookup_host, TcpSocket, ToSocketAddrs};
+use tokio::{
+    net::{lookup_host, TcpSocket, ToSocketAddrs},
+    task::JoinHandle,
+};
 use tracing::{debug, debug_span, error, info, Instrument};
 
-use crate::errors::IoError;
+use crate::{
+    errors::IoError,
+    signal::{SignalError, SignalStream},
+};
 
 /// Error type returned by server builder
 #[derive(Debug, Error)]
@@ -61,6 +68,9 @@ pub enum ServerBuilderError {
     /// Neither HTTP/1 nor HTTP/2 are enabled
     #[error("Neither HTTP/1 nor HTTP/2 are enabled")]
     NoProtocolsEnabled,
+    /// Signal handler error
+    #[error(transparent)]
+    SignalHandler(#[from] SignalError),
 }
 
 /// Builder for HTTP server
@@ -212,11 +222,41 @@ impl ServerBuilder {
                     http2.keep_alive_timeout(timeout);
                 }
             }
+
             info!("finished building server");
             Ok(server)
         }
         .instrument(span)
         .await
+    }
+
+    pub fn spawn_signal_handler(
+        &self,
+        handle: Handle,
+    ) -> Result<JoinHandle<()>, ServerBuilderError> {
+        let span = debug_span!("signal_handler");
+        let mut sig = SignalStream::new()?;
+        Ok(tokio::spawn(
+            async move {
+                loop {
+                    match sig.next().await {
+                        Ok(sig) if sig.is_shutdown() => {
+                            info!("Received {}, shutting down server", sig.name());
+                            // FIXME: configure duration
+                            handle.graceful_shutdown(Some(Duration::from_secs(5)));
+                            break;
+                        }
+                        Ok(sig) => {
+                            debug!("Don't know what to do with signal {}, ignoring", sig.name());
+                        }
+                        Err(err) => {
+                            error!("Error in signal handler: {err}");
+                        }
+                    }
+                }
+            }
+            .instrument(span),
+        ))
     }
 }
 

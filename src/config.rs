@@ -30,7 +30,7 @@ pub struct AppConfig {
     /// Common OpenTelemetry configuration
     #[serde(default)]
     pub otel: OpenTelemetryConfig,
-    ///
+    /// Authentication and authorization back-end configuration
     #[serde(default)]
     pub auth: AuthConfig,
     /// Short application name
