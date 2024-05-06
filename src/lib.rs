@@ -47,7 +47,12 @@ pub use self::{
         },
     },
     config::*,
-    layers::{ext::HandlerName, rate::RateLimitError},
+    layers::{
+        buffer::HandlerBufferConfig,
+        ext::{Deadline, HandlerName},
+        rate::RateLimitError,
+        timeout::HandlerTimeoutsConfig,
+    },
     logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsError, MetricsState},
     notify::ServiceNotifier,

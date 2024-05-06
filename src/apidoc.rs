@@ -309,6 +309,7 @@ impl ApiDocBuilder {
     }
 
     /// Check if builder has any data for [`openapi3::Contact`]
+    #[must_use]
     fn has_contact_data(&self) -> bool {
         self.contact_name.is_some() || self.contact_email.is_some() || self.contact_url.is_some()
     }

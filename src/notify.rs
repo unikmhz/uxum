@@ -20,6 +20,7 @@ impl Default for ServiceNotifier {
 
 impl ServiceNotifier {
     /// Create new service notifier
+    #[must_use]
     pub fn new() -> Self {
         Self {
             has_systemd: daemon::booted(),
@@ -29,6 +30,7 @@ impl ServiceNotifier {
     /// Get requested watchdog interval
     ///
     /// Returns [`None`] if watchdog is not enabled or not running under `systemd`.
+    #[must_use]
     fn watchdog_interval(&self) -> Option<Duration> {
         match self.has_systemd {
             true => daemon::watchdog_enabled(true).map(|dur| dur / 2),

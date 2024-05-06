@@ -10,6 +10,7 @@ pub struct ResponseSchema {
     pub response: openapi3::Response,
 }
 
+/// Trait used to generate OpenAPI schemas from handler response types
 pub trait GetResponseSchemas {
     /// Iterator over all available responses
     type ResponseIter: IntoIterator<Item = ResponseSchema>;
@@ -45,6 +46,8 @@ mod impls {
 
     impl GetResponseSchemas for String {
         type ResponseIter = [ResponseSchema; 1];
+
+        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
@@ -64,6 +67,8 @@ mod impls {
 
     impl GetResponseSchemas for str {
         type ResponseIter = [ResponseSchema; 1];
+
+        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             <String as GetResponseSchemas>::get_response_schemas(gen)
         }
@@ -84,6 +89,8 @@ mod impls {
         T: GetResponseSchemas,
     {
         type ResponseIter = T::ResponseIter;
+
+        #[must_use]
         fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
             T::get_response_schemas(gen)
         }
@@ -94,6 +101,8 @@ mod impls {
         T: JsonSchema,
     {
         type ResponseIter = [ResponseSchema; 1];
+
+        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
@@ -117,6 +126,8 @@ mod impls {
         E: GetResponseSchemas,
     {
         type ResponseIter = Vec<ResponseSchema>;
+
+        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             T::get_response_schemas(gen)
                 .into_iter()

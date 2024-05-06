@@ -1,11 +1,19 @@
-use std::{collections::HashMap, time::Duration};
+//! Application configuration structures
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    apidoc::ApiDocBuilder, auth::AuthConfig, layers::buffer::HandlerBufferConfig,
-    layers::rate::HandlerRateLimitConfig, logging::LoggingConfig, metrics::MetricsBuilder,
-    telemetry::OpenTelemetryConfig, tracing::TracingConfig,
+    apidoc::ApiDocBuilder,
+    auth::AuthConfig,
+    layers::{
+        buffer::HandlerBufferConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutsConfig,
+    },
+    logging::LoggingConfig,
+    metrics::MetricsBuilder,
+    telemetry::OpenTelemetryConfig,
+    tracing::TracingConfig,
 };
 
 /// Top-level application configuration
@@ -92,62 +100,4 @@ pub struct HandlerConfig {
     /// Required RBAC permissions
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
-}
-
-/// Handler request timeout configuration
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[non_exhaustive]
-pub struct HandlerTimeoutsConfig {
-    /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header
-    #[serde(default = "crate::util::default_true")]
-    pub use_x_timeout: bool,
-    /// Default timeout for a handler
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "humantime_serde"
-    )]
-    pub default_timeout: Option<Duration>,
-    /// Minimum allowed timeout for a method
-    ///
-    /// Timeout durations less than this value will automatically be responded
-    /// with a 504 HTTP status code.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "humantime_serde"
-    )]
-    pub min_timeout: Option<Duration>,
-    /// Maximum allowed timeout for a method
-    ///
-    /// Timeout durations over this value will automatically be responded
-    /// with a 504 HTTP status code.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "humantime_serde"
-    )]
-    pub max_timeout: Option<Duration>,
-}
-
-impl Default for HandlerTimeoutsConfig {
-    fn default() -> Self {
-        Self {
-            use_x_timeout: true,
-            default_timeout: None,
-            min_timeout: None,
-            max_timeout: None,
-        }
-    }
-}
-
-impl HandlerTimeoutsConfig {
-    /// Predicate to skip serializing timeout for [`serde`]
-    fn is_default(this: &Option<Self>) -> bool {
-        match this {
-            None => true,
-            Some(cfg) if *cfg == Self::default() => true,
-            _ => false,
-        }
-    }
 }

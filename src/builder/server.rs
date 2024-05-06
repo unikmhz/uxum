@@ -230,6 +230,9 @@ impl ServerBuilder {
         .await
     }
 
+    /// Launch a task that captures common UNIX signals
+    ///
+    /// This will gracefully shut down the server if signal type is appropriate.
     pub fn spawn_signal_handler(
         &self,
         handle: Handle,
@@ -241,16 +244,16 @@ impl ServerBuilder {
                 loop {
                     match sig.next().await {
                         Ok(sig) if sig.is_shutdown() => {
-                            info!("Received {}, shutting down server", sig.name());
+                            info!("received {}, shutting down server", sig.name());
                             // FIXME: configure duration
                             handle.graceful_shutdown(Some(Duration::from_secs(5)));
                             break;
                         }
                         Ok(sig) => {
-                            debug!("Don't know what to do with signal {}, ignoring", sig.name());
+                            debug!("don't know what to do with signal {}, ignoring", sig.name());
                         }
                         Err(err) => {
-                            error!("Error in signal handler: {err}");
+                            error!("error in signal handler: {err}");
                         }
                     }
                 }

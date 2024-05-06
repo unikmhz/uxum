@@ -54,6 +54,7 @@ pub enum Signal {
 
 impl Signal {
     /// Name of a signal, as written in UNIX manual pages
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Self::Terminate => "SIGTERM",
@@ -66,6 +67,7 @@ impl Signal {
     }
 
     /// Whether a given signal should result in application shutting down
+    #[must_use]
     pub fn is_shutdown(&self) -> bool {
         matches!(self, Self::Terminate | Self::Interrupt | Self::Quit)
     }

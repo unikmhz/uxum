@@ -45,6 +45,7 @@ pub enum MetricsError {
     OpenTelemetry(#[from] opentelemetry::metrics::MetricsError),
 }
 
+/// Configuration and builder for metrics subsystem
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MetricsBuilder {
     /// Whether HTTP metrics gathering is enabled
@@ -136,6 +137,7 @@ impl MetricsBuilder {
 
     /// Whether HTTP metrics gathering is enabled
     #[must_use]
+    #[inline]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }

@@ -32,6 +32,7 @@ pub trait AuthExtractor: Clone + Send {
     /// Format error response from [`AuthError`]
     ///
     /// Passed to auth provider (back-end) for authentication and authorization.
+    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body>;
 }
 
@@ -50,6 +51,7 @@ impl AuthExtractor for NoOpAuthExtractor {
         Ok(((), ()))
     }
 
+    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         // This shuld never get executed for a NoOp extractor
         error!("tried to generated auth error response for NoOpAuthExtractor");
@@ -90,6 +92,7 @@ impl AuthExtractor for BasicAuthExtractor {
         }
     }
 
+    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         let status = match err {
             AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed => {

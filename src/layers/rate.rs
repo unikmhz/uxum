@@ -40,7 +40,9 @@ pub enum RateLimitError {
     /// Rate limit exceeded
     #[error("Rate limit reached: available after {remaining_seconds} seconds")]
     LimitReached {
-        // NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
+        /// Remaining seconds until method becomes available again
+        ///
+        /// NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
         remaining_seconds: u64,
     },
 }
