@@ -33,7 +33,7 @@ use crate::{
         NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
-    layers::{ext::HandlerName, rate::RateLimitError},
+    layers::{ext::HandlerName, rate::RateLimitError, timeout::TimeoutError},
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
@@ -334,7 +334,7 @@ where
             )
             // TODO: circuit_breaker
             // TODO: throttle
-            // TODO: timeout
+            .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
             .service(handler.service())
     }
 
@@ -375,6 +375,9 @@ async fn error_handler(err: BoxError) -> Response<Body> {
     // TODO: generalize, remove all the downcasts
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();
+    }
+    if let Some(timeo_err) = err.downcast_ref::<TimeoutError>().cloned() {
+        return timeo_err.into_response();
     }
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
         .with_title(err.to_string())

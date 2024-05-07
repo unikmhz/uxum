@@ -1,3 +1,5 @@
+//! Authentication and authorization [`tower`] layer and service
+
 use std::{
     borrow::Borrow,
     future::Future,

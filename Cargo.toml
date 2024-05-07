@@ -34,6 +34,7 @@ http = "1.1"
 hyper = {version = "1.2", features = ["http2", "server"]}
 hyper-util = {version = "0.1", features = ["http2", "server"]}
 inventory = "0.3"
+iso8601-duration = "0.2"
 libsystemd = "0.7"
 maplit = "1.0"
 mime = "0.3"

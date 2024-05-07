@@ -48,6 +48,7 @@ pub enum RateLimitError {
 }
 
 impl RateLimitError {
+    /// HTTP status code for used for this error
     fn http_status(&self) -> StatusCode {
         match self {
             Self::LimitReached { .. } => StatusCode::TOO_MANY_REQUESTS,

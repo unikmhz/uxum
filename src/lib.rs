@@ -50,8 +50,8 @@ pub use self::{
     layers::{
         buffer::HandlerBufferConfig,
         ext::{Deadline, HandlerName},
-        rate::RateLimitError,
-        timeout::HandlerTimeoutsConfig,
+        rate::{HandlerRateLimitConfig, RateLimitError},
+        timeout::{HandlerTimeoutConfig, TimeoutError},
     },
     logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsError, MetricsState},

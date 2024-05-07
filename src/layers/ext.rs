@@ -8,6 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use tokio::time::Instant as TokioInstant;
+
 /// Static handler name
 ///
 /// This gets attached as an extension to requests and responses for use mainly in middleware
@@ -92,6 +94,18 @@ impl Default for Deadline {
 impl From<Duration> for Deadline {
     fn from(value: Duration) -> Self {
         Self(Instant::now() + value)
+    }
+}
+
+impl From<Instant> for Deadline {
+    fn from(value: Instant) -> Self {
+        Self(value)
+    }
+}
+
+impl From<TokioInstant> for Deadline {
+    fn from(value: TokioInstant) -> Self {
+        Self(value.into_std())
     }
 }
 

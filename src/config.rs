@@ -8,7 +8,7 @@ use crate::{
     apidoc::ApiDocBuilder,
     auth::AuthConfig,
     layers::{
-        buffer::HandlerBufferConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutsConfig,
+        buffer::HandlerBufferConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutConfig,
     },
     logging::LoggingConfig,
     metrics::MetricsBuilder,
@@ -95,8 +95,8 @@ pub struct HandlerConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub throttle: Option<u8>,
     /// Request timeout configuration
-    #[serde(default, skip_serializing_if = "HandlerTimeoutsConfig::is_default")]
-    pub timeout: Option<HandlerTimeoutsConfig>,
+    #[serde(default, skip_serializing_if = "HandlerTimeoutConfig::is_default")]
+    pub timeout: HandlerTimeoutConfig,
     /// Required RBAC permissions
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
