@@ -8,10 +8,16 @@ use opentelemetry_sdk::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug_span, Subscriber};
+use tracing::{debug_span, Level, Subscriber};
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{
+    filter::{Filtered, Targets},
+    registry::LookupSpan,
+    Layer,
+};
 use url::Url;
+
+use crate::logging::LoggingLevel;
 
 /// Error type used in tracing configuration
 #[derive(Debug, Error)]
@@ -36,6 +42,9 @@ pub struct TracingConfig {
     /// Sampling rule
     #[serde(default)]
     sample: TracingSampler,
+    /// Minimum severity level to export
+    #[serde(default)]
+    level: LoggingLevel,
     /// Limits configuration
     #[serde(default, flatten)]
     limits: TracingSpanLimits,
@@ -51,6 +60,7 @@ impl Default for TracingConfig {
             protocol: TracingProtocol::default(),
             timeout: Self::default_timeout(),
             sample: TracingSampler::default(),
+            level: LoggingLevel::default(),
             limits: TracingSpanLimits::default(),
             include: TracingIncludes::default(),
         }
@@ -109,7 +119,10 @@ impl TracingConfig {
     }
 
     /// Build OpenTelemetry layer for [`tracing`]
-    pub fn build_layer<S>(&self, tracer: &Tracer) -> OpenTelemetryLayer<S, Tracer>
+    pub fn build_layer<S>(
+        &self,
+        tracer: &Tracer,
+    ) -> Filtered<OpenTelemetryLayer<S, Tracer>, Targets, S>
     where
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
@@ -123,6 +136,13 @@ impl TracingConfig {
             .with_tracked_inactivity(self.include.inactivity)
             .with_threads(self.include.thread_info)
             .with_error_events_to_status(self.include.status_from_error_events)
+            .with_filter(
+                Targets::new()
+                // Filter out internal HTTP/2 tracing, otherwise OTel tracing itself
+                // produces more sent traces.
+                .with_target("h2", Level::WARN)
+                .with_default(self.level),
+            )
     }
 }
 

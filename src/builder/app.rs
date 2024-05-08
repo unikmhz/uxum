@@ -244,6 +244,8 @@ where
             .set_x_request_id(MakeRequestUuid)
             .sensitive_headers([header::AUTHORIZATION])
             .layer(
+                // TODO: make own types that set otel.kind = "server" and conform to opentelemetry
+                // conventions.
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
                     .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
@@ -267,6 +269,7 @@ where
     /// Register all handlers for a given path in [`MethodRouter`]
     ///
     /// Returns [`None`] if all handlers for a path are disabled.
+    #[must_use]
     fn register_path(
         &self,
         path: &str,

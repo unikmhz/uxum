@@ -84,8 +84,8 @@ pub struct LoggingSubscriberConfig {
 impl Default for LoggingSubscriberConfig {
     fn default() -> Self {
         Self {
-            format: LoggingFormat::Full,
-            level: LoggingLevel::Debug,
+            format: LoggingFormat::default(),
+            level: LoggingLevel::default(),
             color: false,
             internal_errors: true,
             print: LoggingPrintingConfig::default(),
@@ -205,27 +205,33 @@ pub enum LoggingLevel {
     /// Disables logging altogether
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::OFF`].
+    #[serde(alias = "off", alias = "disabled", alias = "DISABLED")]
     Off,
     /// Write "error" level only
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::ERROR`].
+    #[serde(alias = "error", alias = "err", alias = "ERR")]
     Error,
     /// Write "warn" and more severe levels
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::WARN`].
+    #[serde(alias = "warn", alias = "warning", alias = "WARNING")]
     Warn,
     /// Write "info" and more severe levels
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::INFO`].
+    #[serde(alias = "info")]
     Info,
     /// Write "debug" and more severe levels
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::DEBUG`].
+    #[serde(alias = "debug")]
     #[default]
     Debug,
     /// Write everything
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::TRACE`].
+    #[serde(alias = "trace")]
     Trace,
 }
 
