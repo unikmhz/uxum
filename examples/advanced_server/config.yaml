@@ -2,12 +2,28 @@ logging:
   subscribers:
     - format: pretty
       level: TRACE
+      targets:
+        h2: INFO
+        hyper: INFO
+        tonic: INFO
+        tower: INFO
       color: true
     - format: compact
       level: DEBUG
       output:
         type: file
         path: advanced_server.log
+    - format: json
+      level: DEBUG
+      output:
+        type: file
+        path: advanced_server.json.log
+      flatten_metadata: true
+      current_span: true
+      static_fields:
+        env: dev
+        something: something
+        other: 42
 handlers:
   hello_world:
     disabled: false

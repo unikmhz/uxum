@@ -1,4 +1,6 @@
-use std::{fs, io};
+pub(crate) mod json;
+
+use std::{collections::BTreeMap, fs, io};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -7,11 +9,13 @@ use tracing_appender::{
     rolling::{RollingFileAppender, Rotation},
 };
 use tracing_subscriber::{
-    filter::LevelFilter,
+    filter::{LevelFilter, Targets},
     fmt::{self, writer::BoxMakeWriter},
     layer::{Layer, Layered, SubscriberExt},
     registry::Registry,
 };
+
+use crate::logging::json::{ExtensibleJsonFormat, JsonKeyNames};
 
 type LoggingRegistry = Layered<Vec<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
 
@@ -64,6 +68,9 @@ pub struct LoggingSubscriberConfig {
     /// Minimum severity level to include in output
     #[serde(default)]
     pub level: LoggingLevel,
+    /// Custom minimum severity levels for span targets
+    #[serde(default)]
+    pub targets: BTreeMap<String, LoggingLevel>,
     /// Use ANSI escape sequences for output colors and formatting
     #[serde(default)]
     pub color: bool,
@@ -86,6 +93,7 @@ impl Default for LoggingSubscriberConfig {
         Self {
             format: LoggingFormat::default(),
             level: LoggingLevel::default(),
+            targets: BTreeMap::new(),
             color: false,
             internal_errors: true,
             print: LoggingPrintingConfig::default(),
@@ -102,6 +110,7 @@ impl LoggingSubscriberConfig {
         Self {
             format: LoggingFormat::Pretty,
             level: LoggingLevel::Trace,
+            targets: BTreeMap::new(),
             color: true,
             internal_errors: true,
             print: LoggingPrintingConfig {
@@ -143,16 +152,36 @@ impl LoggingSubscriberConfig {
             LoggingFormat::Json {
                 flatten_metadata,
                 current_span,
-                span_list,
-            } => layer
-                .json()
-                .flatten_event(flatten_metadata)
-                .with_current_span(current_span)
-                .with_span_list(span_list)
-                .boxed(),
-        }
-        .with_filter(LevelFilter::from(self.level))
-        .boxed();
+                ref static_fields,
+                ref key_names,
+            } => {
+                let json_fmt = ExtensibleJsonFormat::new()
+                    .with_target(self.print.target)
+                    .with_file(self.print.file)
+                    .with_line_number(self.print.line_number)
+                    .with_level(self.print.level)
+                    .with_thread_names(self.print.thread_name)
+                    .with_thread_ids(self.print.thread_id)
+                    .flatten_event(flatten_metadata)
+                    .with_current_span(current_span)
+                    .with_static_fields(static_fields.clone())
+                    .with_key_names(*key_names.clone());
+                layer.json().event_format(json_fmt).boxed()
+            }
+        };
+        let boxed_layer = if self.targets.is_empty() {
+            boxed_layer
+                .with_filter(LevelFilter::from(self.level))
+                .boxed()
+        } else {
+            boxed_layer
+                .with_filter(
+                    Targets::new()
+                        .with_targets(self.targets.clone())
+                        .with_default(LevelFilter::from(self.level)),
+                )
+                .boxed()
+        };
         Ok((boxed_layer, buf_guard))
     }
 }
@@ -190,11 +219,12 @@ pub enum LoggingFormat {
         /// See [`tracing_subscriber::fmt::format::Json::with_current_span`].
         #[serde(default)]
         current_span: bool,
-        /// Add list of current span stack to object
-        ///
-        /// See [`tracing_subscriber::fmt::format::Json::with_span_list`].
+        /// Static fields to add to object
         #[serde(default)]
-        span_list: bool,
+        static_fields: BTreeMap<String, serde_json::Value>,
+        /// Custom names for JSON keys
+        #[serde(default)]
+        key_names: Box<JsonKeyNames>,
     },
 }
 
