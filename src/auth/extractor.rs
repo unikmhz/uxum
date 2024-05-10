@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use axum::{
     body::Body,
@@ -9,6 +9,7 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use okapi::{openapi3, Map};
 use tracing::error;
 
 use crate::auth::{errors::AuthError, user::UserId};
@@ -34,6 +35,12 @@ pub trait AuthExtractor: Clone + Send {
     /// Passed to auth provider (back-end) for authentication and authorization.
     #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body>;
+
+    /// Get schema objects corresponding to authentication methods
+    #[must_use]
+    fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
+        BTreeMap::new()
+    }
 }
 
 /// Authentication extractor (front-end) which does nothing
@@ -117,6 +124,20 @@ impl AuthExtractor for BasicAuthExtractor {
             let _ = resp.headers_mut().insert(WWW_AUTHENTICATE, header_value);
         }
         resp
+    }
+
+    #[must_use]
+    fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
+        maplit::btreemap! {
+            "basic".into() => openapi3::SecurityScheme {
+                description: Some("HTTP Basic authentication".into()),
+                data: openapi3::SecuritySchemeData::Http {
+                    scheme: "basic".into(),
+                    bearer_format: None,
+                },
+                extensions: Map::default(),
+            },
+        }
     }
 }
 

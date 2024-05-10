@@ -137,11 +137,11 @@ impl TracingConfig {
             .with_threads(self.include.thread_info)
             .with_error_events_to_status(self.include.status_from_error_events)
             .with_filter(
-                Targets::new()
                 // Filter out internal HTTP/2 tracing, otherwise OTel tracing itself
                 // produces more sent traces.
-                .with_target("h2", Level::WARN)
-                .with_default(self.level),
+                Targets::new()
+                    .with_target("h2", Level::WARN)
+                    .with_default(self.level),
             )
     }
 }

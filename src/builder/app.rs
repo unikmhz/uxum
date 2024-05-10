@@ -228,7 +228,8 @@ where
                 self.config.app_name.as_deref(),
                 self.config.app_version.as_deref(),
             );
-            rtr = rtr.merge(api_doc.build_router()?);
+            let auth = self.auth_extractor.security_schemes();
+            rtr = rtr.merge(api_doc.build_router(auth)?);
         }
 
         // Wrap router in global layers

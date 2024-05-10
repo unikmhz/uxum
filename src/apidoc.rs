@@ -10,7 +10,7 @@ use axum::{
 };
 use http::Method;
 use okapi::{
-    openapi3,
+    map, openapi3,
     schemars::gen::{SchemaGenerator, SchemaSettings},
     Map,
 };
@@ -315,9 +315,12 @@ impl ApiDocBuilder {
     }
 
     /// Build Axum router containing all OpenAPI methods
-    pub fn build_router(&self) -> Result<Router, ApiDocError> {
+    pub fn build_router(
+        &self,
+        auth: BTreeMap<String, openapi3::SecurityScheme>,
+    ) -> Result<Router, ApiDocError> {
         let _span = debug_span!("build_apidoc").entered();
-        let spec = self.render_spec()?;
+        let spec = self.render_spec(auth)?;
         let mut rtr: Router = Router::new().route(
             &self.spec_path,
             routing::get(get_spec).layer(Extension(spec)),
@@ -339,7 +342,10 @@ impl ApiDocBuilder {
     }
 
     /// Build OpenAPI spec object hierarchy
-    pub fn build_spec(&self) -> Result<openapi3::OpenApi, ApiDocError> {
+    pub fn build_spec(
+        &self,
+        auth: BTreeMap<String, openapi3::SecurityScheme>,
+    ) -> Result<openapi3::OpenApi, ApiDocError> {
         let _span = debug_span!("build_spec").entered();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
@@ -379,6 +385,7 @@ impl ApiDocBuilder {
         } else {
             None
         };
+        let security = auth.keys().cloned().map(|k| map! {k => vec![]}).collect();
         Ok(openapi3::OpenApi {
             openapi: Self::OPENAPI_VERSION.into(),
             info: openapi3::Info {
@@ -398,9 +405,10 @@ impl ApiDocBuilder {
                     .iter()
                     .map(|(key, schema)| (key.clone(), schema.clone().into_object()))
                     .collect(),
+                security_schemes: auth.into_iter().map(|(k, v)| (k, v.into())).collect(),
                 ..Default::default()
             }),
-            security: vec![],
+            security,
             tags: self.tags.clone(),
             external_docs: None,
             extensions: Map::default(),
@@ -408,8 +416,11 @@ impl ApiDocBuilder {
     }
 
     /// Build and serialize OpenAPI spec
-    pub fn render_spec(&self) -> Result<OpenApiSpec, ApiDocError> {
-        serde_json::to_vec_pretty(&self.build_spec()?)
+    pub fn render_spec(
+        &self,
+        auth: BTreeMap<String, openapi3::SecurityScheme>,
+    ) -> Result<OpenApiSpec, ApiDocError> {
+        serde_json::to_vec_pretty(&self.build_spec(auth)?)
             .map(OpenApiSpec)
             .map_err(Into::into)
     }
