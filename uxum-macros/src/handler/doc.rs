@@ -2,15 +2,16 @@ use std::collections::VecDeque;
 
 use syn::{Attribute, Expr, ExprLit, Lit, Meta};
 
+/// Specialized structure for storing docstring text
 #[derive(Default)]
 pub(crate) struct DocData {
-    ///
+    /// Docstring title
     pub(crate) title: Option<String>,
-    ///
+    /// Rest of docstring text
     pub(crate) description: Option<String>,
 }
 
-///
+/// Extract text from a docstring into a specialized structure
 #[must_use]
 pub(crate) fn extract_docstring(attrs: &[Attribute]) -> DocData {
     let mut literals: VecDeque<_> = attrs

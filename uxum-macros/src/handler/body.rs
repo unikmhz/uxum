@@ -5,15 +5,15 @@ use syn::{
     TypePath,
 };
 
-///
+/// Type of detected request body
 pub(crate) enum RequestBody {
-    ///
+    /// UTF-8 string
     String,
-    ///
+    /// Binary data
     Bytes,
-    ///
+    /// HTTP form input
     Form,
-    ///
+    /// Some type serialized as JSON
     Json(Path),
 }
 
@@ -46,6 +46,8 @@ impl ToTokens for RequestBody {
 }
 
 impl RequestBody {
+    /// Get MIME type based on request body type
+    #[must_use]
     fn media_type(&self) -> &'static str {
         match self {
             Self::String => mime::TEXT_PLAIN_UTF_8.as_ref(),

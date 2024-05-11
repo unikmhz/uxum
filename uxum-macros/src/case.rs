@@ -14,8 +14,12 @@ pub(crate) fn camel_case(input: impl AsRef<str>) -> String {
         .collect()
 }
 
+/// String conversion to camel case
 pub(crate) trait ToCamelCase {
+    /// Resulting type
     type CamelCased;
+
+    /// Convert string-like type to camel case
     fn to_camel_case(&self) -> Self::CamelCased;
 }
 

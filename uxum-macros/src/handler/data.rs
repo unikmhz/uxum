@@ -17,7 +17,7 @@ pub(crate) struct HandlerData {
     /// HTTP method for handler
     #[darling(default)]
     pub(crate) method: Option<HandlerMethod>,
-    /// Additional parameters for OpenAPI spec
+    /// Additional parameters for OpenAPI specification
     #[darling(default, flatten)]
     pub(crate) spec: HandlerSpec,
     /// RBAC permissions required to call this handler

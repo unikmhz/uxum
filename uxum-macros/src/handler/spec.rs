@@ -14,33 +14,37 @@ use crate::{
     util::quote_option,
 };
 
-///
+/// Handler attributes related to OpenAPI specification
 #[derive(Debug, Default, FromMeta)]
 pub(crate) struct HandlerSpec {
-    ///
+    /// Tags assigned to this handler
     #[darling(default)]
     tags: Vec<syn::LitStr>,
+    /// Handler summary
     ///
+    /// Taken from first line of docstring if not explicitly specified.
     #[darling(default)]
     summary: Option<String>,
+    /// Handler description
     ///
+    /// Taken from the docstring lines after the first, if not explicitly specified.
     #[darling(default)]
     description: Option<String>,
-    ///
+    /// Documentation links
     #[darling(default)]
     docs: Option<OpenApiExternalDoc>,
-    ///
+    /// Schema for path parameters
     #[darling(default)]
     path_params: HashMap<String, OpenApiPathParameter>,
-    ///
+    /// Deprecation flag
     #[darling(default)]
     deprecated: bool,
 }
 
 impl HandlerSpec {
-    ///
+    /// Generate OpenAPI operation schema code
     #[must_use]
-    pub(crate) fn generate_spec(
+    pub(crate) fn generate_schema(
         &self,
         name: &str,
         path: &str,
@@ -107,7 +111,7 @@ impl HandlerSpec {
                                     name: key.into(),
                                     location: "query".into(),
                                     description: meta.and_then(|m| m.description.clone()),
-                                    required: true, // FIXME
+                                    required: true, // FIXME: not always required
                                     deprecated: meta.map(|m| m.deprecated).unwrap_or_default(),
                                     allow_empty_value: false,
                                     value: openapi3::ParameterValue::Schema {

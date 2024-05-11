@@ -23,11 +23,11 @@ use crate::builder::app::HandlerExt;
 /// Error type used in API doc objects
 #[derive(Debug, Error)]
 pub enum ApiDocError {
-    /// OpenAPI spec JSON rendering errors
+    /// OpenAPI specification JSON rendering errors
     #[error(transparent)]
     RenderSpec(#[from] serde_json::Error),
-    /// Unsupported method for OpenAPI spec
-    #[error("Method {0} not supported in OpenAPI spec")]
+    /// Unsupported method for OpenAPI specification
+    #[error("Method {0} not supported in OpenAPI specification")]
     UnsupportedMethod(Method),
 }
 
@@ -66,7 +66,7 @@ pub struct ApiDocBuilder {
     /// Contact email
     #[serde(default)]
     contact_email: Option<String>,
-    /// Schema tag metadata
+    /// OpenAPI spec tag metadata
     #[serde(default)]
     tags: Vec<openapi3::Tag>,
     /// Whether to install RapiDoc UI endpoints
@@ -163,7 +163,7 @@ impl ApiDocBuilder {
         self
     }
 
-    /// Set URL path for generated OpenAPI spec
+    /// Set URL path for generated OpenAPI specification
     #[must_use]
     pub fn with_spec_path(mut self, path: impl ToString) -> Self {
         self.spec_path = path.to_string();
@@ -254,7 +254,7 @@ impl ApiDocBuilder {
         self
     }
 
-    /// Discourage use of references in generated OpenAPI schema
+    /// Discourage use of references in generated OpenAPI specification
     #[must_use]
     pub fn with_inline_subschemas(mut self) -> Self {
         self.inline_subschemas = true;
@@ -350,7 +350,7 @@ impl ApiDocBuilder {
         Ok(rtr)
     }
 
-    /// Build OpenAPI spec object hierarchy
+    /// Build OpenAPI specification object hierarchy
     pub fn build_spec(
         &self,
         auth: BTreeMap<String, openapi3::SecurityScheme>,
@@ -431,7 +431,7 @@ impl ApiDocBuilder {
         })
     }
 
-    /// Build and serialize OpenAPI spec
+    /// Build and serialize OpenAPI specification
     pub fn render_spec(
         &self,
         auth: BTreeMap<String, openapi3::SecurityScheme>,
@@ -442,12 +442,12 @@ impl ApiDocBuilder {
     }
 }
 
-/// Newtype for pre-rendered OpenAPI spec
+/// Newtype for pre-rendered OpenAPI specification
 #[derive(Clone)]
 #[repr(transparent)]
 pub struct OpenApiSpec(Vec<u8>);
 
-/// Handler to serve OpenAPI spec as JSON
+/// Handler to serve OpenAPI specification as JSON
 async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/swagger+json")],

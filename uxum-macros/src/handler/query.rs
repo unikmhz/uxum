@@ -5,7 +5,7 @@ use syn::{
     TypePath,
 };
 
-///
+/// Type for detected query string extractor
 #[derive(Debug)]
 pub(crate) struct QueryType(Path);
 

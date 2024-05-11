@@ -2,9 +2,11 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{ItemFn, ReturnType, Type};
 
-///
+/// Detected response type
 pub(crate) enum ResponseTemplate {
+    /// No response in function
     Default,
+    /// Some response type in function
     Typed(Type),
 }
 
@@ -30,7 +32,7 @@ impl ToTokens for ResponseTemplate {
     }
 }
 
-///
+/// Detect response type
 #[must_use]
 pub(crate) fn detect_responses(handler: &ItemFn) -> ResponseTemplate {
     match &handler.sig.output {

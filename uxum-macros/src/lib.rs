@@ -1,3 +1,4 @@
+#![doc = include_str!("../../README.md")]
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
 
@@ -61,7 +62,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
         true => Vec::new(),
         false => data.permissions,
     };
-    let handler_spec = data.spec.generate_spec(
+    let handler_spec = data.spec.generate_schema(
         &handler_name,
         &handler_path,
         &handler_method,

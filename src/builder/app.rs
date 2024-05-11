@@ -255,7 +255,7 @@ where
             }
         }
 
-        // Add RapiDoc and/or OpenAPI schema generator if enabled
+        // Add RapiDoc and/or OpenAPI specification generator if enabled
         if let Some(ref mut api_doc) = self.config.api_doc {
             let disabled = self
                 .config
@@ -461,7 +461,7 @@ pub trait HandlerExt: Sync {
     ///
     /// Uses [`axum::extract::Path`] format for embedded path parameters.
     fn path(&self) -> &'static str;
-    /// Get URL path to run this handler, reformatted for OpenAPI spec
+    /// Get URL path to run this handler, reformatted for OpenAPI specification
     fn spec_path(&self) -> &'static str;
     /// Get HTTP method to run this handler
     fn method(&self) -> http::Method;
