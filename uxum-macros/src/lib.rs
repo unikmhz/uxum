@@ -57,6 +57,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
     let permissions = data.permissions;
+    let no_auth = data.no_auth;
     let handler_spec = data.spec.generate_spec(
         &handler_name,
         &handler_path,
@@ -126,6 +127,12 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                 #[must_use]
                 fn permissions(&self) -> &'static [&'static str] {
                     &[#(#permissions),*]
+                }
+
+                #[inline]
+                #[must_use]
+                fn no_auth(&self) -> bool {
+                    #no_auth
                 }
 
                 #[inline]

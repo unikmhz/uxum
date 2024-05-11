@@ -92,7 +92,8 @@ async fn sleep(ConnectInfo(client): ConnectInfo<SocketAddr>) -> String {
     format!("Hello {client}! Woken up after 3 seconds!")
 }
 
-#[handler]
+/// Authentication is disabled for this handler
+#[handler(no_auth)]
 async fn no_op() {}
 
 /// Query parameters

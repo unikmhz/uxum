@@ -327,7 +327,10 @@ where
         ServiceBuilder::new()
             .boxed_clone()
             .layer(ResponseExtension(HandlerName::new(name)))
-            .layer(self.auth_layer(handler.permissions()))
+            .option_layer(match handler.no_auth() {
+                true => None,
+                false => Some(self.auth_layer(handler.permissions())),
+            })
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.buffer.as_ref())
                     .map(|lcfg| lcfg.make_layer()),
@@ -407,6 +410,8 @@ pub trait HandlerExt: Sync {
     fn method(&self) -> http::Method;
     /// Get required permissions, if any
     fn permissions(&self) -> &'static [&'static str];
+    /// Skip authentication for this handler
+    fn no_auth(&self) -> bool;
     /// Return handler function packaged as a [`tower`] service
     fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible>;
     /// Generate OpenAPI specification object for handler

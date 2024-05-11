@@ -4,25 +4,28 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::handler::spec::HandlerSpec;
 
-///
+/// Top-level handler parameters object
 #[derive(Debug, Default, FromMeta)]
 #[darling(default)]
 pub(crate) struct HandlerData {
-    ///
+    /// Unique handler name
     #[darling(default)]
     pub(crate) name: Option<String>,
-    ///
+    /// HTTP URL path for handler
     #[darling(default)]
     pub(crate) path: Option<String>,
-    ///
+    /// HTTP method for handler
     #[darling(default)]
     pub(crate) method: Option<HandlerMethod>,
-    ///
+    /// Additional parameters for OpenAPI spec
     #[darling(default, flatten)]
     pub(crate) spec: HandlerSpec,
-    ///
+    /// RBAC permissions required to call this handler
     #[darling(default)]
     pub(crate) permissions: Vec<syn::LitStr>,
+    /// Skip authentication for this method
+    #[darling(default)]
+    pub(crate) no_auth: bool,
 }
 
 /// Supported HTTP methods
