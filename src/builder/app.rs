@@ -257,6 +257,13 @@ where
 
         // Add RapiDoc and/or OpenAPI schema generator if enabled
         if let Some(ref mut api_doc) = self.config.api_doc {
+            let disabled = self
+                .config
+                .handlers
+                .iter()
+                .filter(|(_, v)| v.disabled)
+                .map(|(k, _)| k.clone());
+            api_doc.set_disabled_handlers(disabled);
             api_doc.set_app_defaults(
                 self.config.app_name.as_deref(),
                 self.config.app_version.as_deref(),
@@ -310,7 +317,7 @@ where
         handlers: Vec<&dyn HandlerExt>,
     ) -> Option<MethodRouter<(), BoxError>> {
         let _register_span = info_span!("register_path", path).entered();
-        let mut has_some = false;
+        let mut path_has_handlers = false;
         let mut method_rtr = MethodRouter::new();
         for handler in handlers {
             let name = handler.name();
@@ -322,10 +329,10 @@ where
                 }
             }
             method_rtr = self.register_handler(method_rtr, handler);
-            has_some = true;
+            path_has_handlers = true;
             info!("handler registered");
         }
-        has_some.then_some(method_rtr)
+        path_has_handlers.then_some(method_rtr)
     }
 
     /// Register a handler in [`MethodRouter`]

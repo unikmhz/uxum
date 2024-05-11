@@ -56,8 +56,11 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
     };
-    let permissions = data.permissions;
     let no_auth = data.no_auth;
+    let permissions = match no_auth {
+        true => Vec::new(),
+        false => data.permissions,
+    };
     let handler_spec = data.spec.generate_spec(
         &handler_name,
         &handler_path,

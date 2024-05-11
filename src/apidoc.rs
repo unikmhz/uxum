@@ -80,6 +80,9 @@ pub struct ApiDocBuilder {
     /// Attributes passed to RapiDoc component
     #[serde(default = "ApiDocBuilder::default_rapidoc_attributes")]
     rapidoc_attributes: HashMap<String, String>,
+    /// List of handlers that have been disabled in configuration
+    #[serde(skip)]
+    disabled_handlers: Vec<String>,
 }
 
 impl Default for ApiDocBuilder {
@@ -99,6 +102,7 @@ impl Default for ApiDocBuilder {
             enable_ui: true,
             inline_subschemas: false,
             rapidoc_attributes: Self::default_rapidoc_attributes(),
+            disabled_handlers: Vec::new(),
         }
     }
 }
@@ -298,6 +302,11 @@ impl ApiDocBuilder {
         }
     }
 
+    /// Set disabled handler names
+    pub fn set_disabled_handlers(&mut self, handlers: impl IntoIterator<Item = String>) {
+        self.disabled_handlers = handlers.into_iter().collect();
+    }
+
     /// Create schema generator for custom types
     #[must_use]
     fn build_generator(&self) -> SchemaGenerator {
@@ -356,10 +365,14 @@ impl ApiDocBuilder {
         }
         let mut gen = self.build_generator();
         let mut paths = Map::new();
+        let mut path_has_handlers;
         for (path, handlers) in grouped {
-            // TODO: skip disabled handlers
+            path_has_handlers = false;
             let mut path_item = openapi3::PathItem::default();
             for handler in handlers {
+                if self.disabled_handlers.contains(&handler.name().to_string()) {
+                    continue;
+                }
                 let spec = handler.openapi_spec(&mut gen);
                 match handler.method() {
                     Method::GET => path_item.get = Some(spec),
@@ -371,9 +384,12 @@ impl ApiDocBuilder {
                     Method::PATCH => path_item.patch = Some(spec),
                     Method::TRACE => path_item.trace = Some(spec),
                     other => return Err(ApiDocError::UnsupportedMethod(other)),
-                }
+                };
+                path_has_handlers = true;
             }
-            paths.insert(path.to_owned(), path_item);
+            if path_has_handlers {
+                paths.insert(path.to_owned(), path_item);
+            }
         }
         let contact = if self.has_contact_data() {
             Some(openapi3::Contact {
