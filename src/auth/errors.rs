@@ -23,9 +23,15 @@ pub enum AuthError {
     #[error("Invalid authentication payload")]
     InvalidAuthPayload,
     /// User not recognized
-    #[error("User not recognized")]
+    ///
+    /// [`AuthError::UserNotFound`] and [`AuthError::AuthFailed`] must produce exactly the same
+    /// response to not divulge sensitive information.
+    #[error("Authentication failed")]
     UserNotFound,
     /// Authentication failed
+    ///
+    /// [`AuthError::UserNotFound`] and [`AuthError::AuthFailed`] must produce exactly the same
+    /// response to not divulge sensitive information.
     #[error("Authentication failed")]
     AuthFailed,
     /// User does not have permission

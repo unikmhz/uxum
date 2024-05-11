@@ -182,3 +182,100 @@ impl BasicAuthExtractor {
         self.www_auth = Cow::Owned(self.format_www_authenticate(realm));
     }
 }
+
+/// Authentication extractor (front-end) that gets user and password from HTTP headers
+#[derive(Clone, Debug)]
+pub struct HeaderAuthExtractor {
+    /// Header name for user identifier
+    ///
+    /// Default is "X-API-Name".
+    user_header: Cow<'static, str>,
+    /// Header name for user authentication info
+    ///
+    /// Default is "X-API-Key".
+    tokens_header: Cow<'static, str>,
+}
+
+impl Default for HeaderAuthExtractor {
+    fn default() -> Self {
+        Self {
+            user_header: Cow::Borrowed("X-API-Name"),
+            tokens_header: Cow::Borrowed("X-API-Key"),
+        }
+    }
+}
+
+impl AuthExtractor for HeaderAuthExtractor {
+    type User = UserId;
+    type AuthTokens = String;
+
+    fn extract_auth(
+        &self,
+        req: &Request<Body>,
+    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
+        let headers = req.headers();
+        let user = match headers.get(self.user_header.as_ref()) {
+            Some(header) => match header.to_str() {
+                Ok(user) => user.into(),
+                Err(_) => return Err(AuthError::InvalidAuthPayload),
+            },
+            None => return Err(AuthError::NoAuthProvided),
+        };
+        let tokens = match headers.get(self.tokens_header.as_ref()) {
+            Some(header) => match header.to_str() {
+                Ok(user) => user.to_string(),
+                Err(_) => return Err(AuthError::InvalidAuthPayload),
+            },
+            None => return Err(AuthError::NoAuthProvided),
+        };
+        Ok((user, tokens))
+    }
+
+    #[must_use]
+    fn error_response(&self, err: AuthError) -> Response<Body> {
+        let status = match err {
+            AuthError::NoAuthProvided
+            | AuthError::UserNotFound
+            | AuthError::AuthFailed
+            | AuthError::NoPermission(_) => StatusCode::FORBIDDEN,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        problemdetails::new(status)
+            .with_title(err.to_string())
+            .into_response()
+    }
+
+    #[must_use]
+    fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
+        maplit::btreemap! {
+            "api-name".into() => openapi3::SecurityScheme {
+                description: Some("API user name".into()),
+                data: openapi3::SecuritySchemeData::ApiKey {
+                    name: self.user_header.to_string(),
+                    location: "header".into(),
+                },
+                extensions: Map::default(),
+            },
+            "api-key".into() => openapi3::SecurityScheme {
+                description: Some("API key".into()),
+                data: openapi3::SecuritySchemeData::ApiKey {
+                    name: self.tokens_header.to_string(),
+                    location: "header".into(),
+                },
+                extensions: Map::default(),
+            },
+        }
+    }
+}
+
+impl HeaderAuthExtractor {
+    /// Set user ID header name
+    pub fn set_user_header(&mut self, name: impl AsRef<str>) {
+        self.user_header = Cow::Owned(name.as_ref().into());
+    }
+
+    /// Set authenticating token header name
+    pub fn set_tokens_header(&mut self, name: impl AsRef<str>) {
+        self.tokens_header = Cow::Owned(name.as_ref().into());
+    }
+}

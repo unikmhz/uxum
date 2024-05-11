@@ -5,7 +5,10 @@ use std::{
     time::Duration,
 };
 
-use axum_server::{tls_rustls::{RustlsAcceptor, RustlsConfig}, Handle};
+use axum_server::{
+    tls_rustls::{RustlsAcceptor, RustlsConfig},
+    Handle,
+};
 use hyper_util::server::conn::auto::Builder;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
@@ -172,14 +175,18 @@ impl ServerBuilder {
     ///
     /// Returns `Err` if builder encounters an error while setting up a listening socket
     /// or configuring TLS parameters.
-    pub async fn build_tls(self) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
+    pub async fn build_tls(
+        self,
+    ) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
         let span = debug_span!("build_tls_server");
         async move {
             let listener = self.create_listener().await?;
-            let tls_config = self.tls
+            let tls_config = self
+                .tls
                 .as_ref()
                 .ok_or(ServerBuilderError::NoTlsConfig)?
-                .rustls_config().await?;
+                .rustls_config()
+                .await?;
             let mut server = axum_server::from_tcp_rustls(listener, tls_config);
 
             let builder = server.http_builder();
@@ -231,8 +238,7 @@ impl ServerBuilder {
             .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
         sock.set_nodelay(self.tcp.nodelay)
             .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
-        sock
-            .listen(self.tcp.backlog.get())
+        sock.listen(self.tcp.backlog.get())
             .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
             .into_std()
             .map_err(|err| ServerBuilderError::ConvertListener(err.into()))
@@ -265,9 +271,7 @@ impl ServerBuilder {
             .initial_connection_window_size(
                 self.http2.initial_connection_window.map(NonZeroU32::get),
             )
-            .initial_stream_window_size(
-                self.http2.initial_stream_window.map(NonZeroU32::get),
-            )
+            .initial_stream_window_size(self.http2.initial_stream_window.map(NonZeroU32::get))
             .keep_alive_interval(self.http2.keepalive.interval)
             .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
         if self.http2.connect_protocol {

@@ -37,7 +37,7 @@ use crate::{
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
-    MetricsState,
+    HeaderAuthExtractor, MetricsState,
 };
 
 /// Error type used in app builder
@@ -118,6 +118,39 @@ where
         AppBuilder {
             auth_provider: self.config.auth.clone().into(),
             auth_extractor: BasicAuthExtractor::default(),
+            config: self.config,
+        }
+    }
+
+    /// Enable header authentication using built-in user and role databases
+    #[must_use]
+    pub fn with_header_auth(self) -> AppBuilder<ConfigAuthProvider, HeaderAuthExtractor> {
+        AppBuilder {
+            auth_provider: self.config.auth.clone().into(),
+            auth_extractor: HeaderAuthExtractor::default(),
+            config: self.config,
+        }
+    }
+
+    /// Set custom authentication extractor (front-end)
+    #[must_use]
+    pub fn with_auth_extractor<E: AuthExtractor>(
+        self,
+        auth_extractor: E,
+    ) -> AppBuilder<AuthProv, E> {
+        AppBuilder {
+            auth_provider: self.auth_provider,
+            auth_extractor,
+            config: self.config,
+        }
+    }
+
+    /// Set custom authentication provider (back-end)
+    #[must_use]
+    pub fn with_auth_provider<P: AuthProvider>(self, auth_provider: P) -> AppBuilder<P, AuthExt> {
+        AppBuilder {
+            auth_provider,
+            auth_extractor: self.auth_extractor,
             config: self.config,
         }
     }
@@ -363,16 +396,33 @@ where
     }
 }
 
-impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor>
-where
-    AuthProv: AuthProvider + 'static,
-{
+impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor> {
     /// Set realm used for HTTP authentication challenge
     ///
     /// Default value is "auth".
     #[must_use]
     pub fn with_auth_realm(mut self, realm: impl AsRef<str>) -> Self {
         self.auth_extractor.set_realm(realm);
+        self
+    }
+}
+
+impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
+    /// Set user ID header name for use in authentication
+    ///
+    /// Default value is "X-API-Name".
+    #[must_use]
+    pub fn with_user_header(mut self, name: impl AsRef<str>) -> Self {
+        self.auth_extractor.set_user_header(name);
+        self
+    }
+
+    /// Set authenticating token header name for use in authentication
+    ///
+    /// Default value is "X-API-Key".
+    #[must_use]
+    pub fn with_tokens_header(mut self, name: impl AsRef<str>) -> Self {
+        self.auth_extractor.set_tokens_header(name);
         self
     }
 }

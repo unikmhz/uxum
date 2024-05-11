@@ -8,7 +8,7 @@ mod user;
 pub use self::{
     config::{AuthConfig, RoleConfig, UserConfig, UserPassword},
     errors::AuthError,
-    extractor::{AuthExtractor, BasicAuthExtractor, NoOpAuthExtractor},
+    extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
     layer::AuthLayer,
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
     user::UserId,
