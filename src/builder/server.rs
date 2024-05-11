@@ -1,10 +1,12 @@
 use std::{
-    net::SocketAddr,
+    net::{SocketAddr, TcpListener},
     num::{NonZeroU32, NonZeroUsize},
+    path::Path,
     time::Duration,
 };
 
-use axum_server::Handle;
+use axum_server::{tls_rustls::{RustlsAcceptor, RustlsConfig}, Handle};
+use hyper_util::server::conn::auto::Builder;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
@@ -71,6 +73,12 @@ pub enum ServerBuilderError {
     /// Signal handler error
     #[error(transparent)]
     SignalHandler(#[from] SignalError),
+    /// TLS configuration error
+    #[error("TLS configuration error: {0}")]
+    TlsConfig(IoError),
+    /// No TLS configuration was provided
+    #[error("No TLS configuration was provided")]
+    NoTlsConfig,
 }
 
 /// Builder for HTTP server
@@ -101,7 +109,9 @@ pub struct ServerBuilder {
     /// Configuration specific to HTTP/2 protocol
     #[serde(default)]
     pub http2: Http2Config,
-    // TODO: TLS
+    /// TLS configuration
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
 }
 
 impl Default for ServerBuilder {
@@ -115,6 +125,7 @@ impl Default for ServerBuilder {
             tcp: TcpConfig::default(),
             http1: Http1Config::default(),
             http2: Http2Config::default(),
+            tls: None,
         }
     }
 }
@@ -133,7 +144,7 @@ impl ServerBuilder {
         Self::default()
     }
 
-    /// Build network server
+    /// Build TCP network server
     ///
     /// # Errors
     ///
@@ -141,93 +152,130 @@ impl ServerBuilder {
     pub async fn build(self) -> Result<axum_server::Server, ServerBuilderError> {
         let span = debug_span!("build_server");
         async move {
-            let (sock, addr) = socket(&self.listen).await?;
-            let sref = SockRef::from(&sock);
-            if let Some(sz) = self.recv_buffer {
-                sref.set_recv_buffer_size(sz.get())
-                    .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
-            }
-            if let Some(sz) = self.send_buffer {
-                sref.set_send_buffer_size(sz.get())
-                    .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
-            }
-            if let Some(tos) = self.ip.tos {
-                sref.set_tos(tos)
-                    .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
-            }
-            if let Some(mss) = self.tcp.mss {
-                sref.set_mss(mss.get())
-                    .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
-            }
-            if let Some(idle) = self.tcp.keepalive.idle {
-                let mut tcp_keepalive = socket2::TcpKeepalive::new().with_time(idle);
-                if let Some(interval) = self.tcp.keepalive.interval {
-                    tcp_keepalive = tcp_keepalive.with_interval(interval);
-                }
-                if let Some(retries) = self.tcp.keepalive.retries {
-                    tcp_keepalive = tcp_keepalive.with_retries(retries.get());
-                }
-                sref.set_tcp_keepalive(&tcp_keepalive)
-                    .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
-            } else {
-                sref.set_keepalive(false)
-                    .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
-            }
-            sock.bind(addr)
-                .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
-            sock.set_nodelay(self.tcp.nodelay)
-                .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
-            let listener = sock
-                .listen(self.tcp.backlog.get())
-                .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
-                .into_std()
-                .map_err(|err| ServerBuilderError::ConvertListener(err.into()))?;
-            // TODO: from_tcp_rustls for TLS
+            let listener = self.create_listener().await?;
             let mut server = axum_server::from_tcp(listener);
-            let builder = server.http_builder();
 
-            {
-                debug!("setting up HTTP/1");
-                let mut http1 = builder.http1();
-                http1
-                    .half_close(self.http1.half_close)
-                    .keep_alive(self.http1.keepalive);
-                if let Some(timeout) = self.http1.header_read_timeout {
-                    http1.header_read_timeout(timeout);
-                }
-                if let Some(bufsz) = self.http1.max_buf_size {
-                    http1.max_buf_size(bufsz.get());
-                }
-                if let Some(writev) = self.http1.writev {
-                    http1.writev(writev);
-                }
-            }
-            {
-                debug!("setting up HTTP/2");
-                let mut http2 = builder.http2();
-                http2
-                    .adaptive_window(self.http2.adaptive_window)
-                    .initial_connection_window_size(
-                        self.http2.initial_connection_window.map(NonZeroU32::get),
-                    )
-                    .initial_stream_window_size(
-                        self.http2.initial_stream_window.map(NonZeroU32::get),
-                    )
-                    .keep_alive_interval(self.http2.keepalive.interval)
-                    .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
-                if self.http2.connect_protocol {
-                    http2.enable_connect_protocol();
-                }
-                if let Some(timeout) = self.http2.keepalive.timeout {
-                    http2.keep_alive_timeout(timeout);
-                }
-            }
+            let builder = server.http_builder();
+            self.configure_http1(builder);
+            self.configure_http2(builder);
 
             info!("finished building server");
             Ok(server)
         }
         .instrument(span)
         .await
+    }
+
+    /// Build TLS network server
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if builder encounters an error while setting up a listening socket
+    /// or configuring TLS parameters.
+    pub async fn build_tls(self) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
+        let span = debug_span!("build_tls_server");
+        async move {
+            let listener = self.create_listener().await?;
+            let tls_config = self.tls
+                .as_ref()
+                .ok_or(ServerBuilderError::NoTlsConfig)?
+                .rustls_config().await?;
+            let mut server = axum_server::from_tcp_rustls(listener, tls_config);
+
+            let builder = server.http_builder();
+            self.configure_http1(builder);
+            self.configure_http2(builder);
+
+            info!("finished building server");
+            Ok(server)
+        }
+        .instrument(span)
+        .await
+    }
+
+    /// Create and configure TCP listener
+    pub async fn create_listener(&self) -> Result<TcpListener, ServerBuilderError> {
+        let (sock, addr) = socket(&self.listen).await?;
+        let sref = SockRef::from(&sock);
+        if let Some(sz) = self.recv_buffer {
+            sref.set_recv_buffer_size(sz.get())
+                .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
+        }
+        if let Some(sz) = self.send_buffer {
+            sref.set_send_buffer_size(sz.get())
+                .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
+        }
+        if let Some(tos) = self.ip.tos {
+            sref.set_tos(tos)
+                .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
+        }
+        if let Some(mss) = self.tcp.mss {
+            sref.set_mss(mss.get())
+                .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
+        }
+        if let Some(idle) = self.tcp.keepalive.idle {
+            let mut tcp_keepalive = socket2::TcpKeepalive::new().with_time(idle);
+            if let Some(interval) = self.tcp.keepalive.interval {
+                tcp_keepalive = tcp_keepalive.with_interval(interval);
+            }
+            if let Some(retries) = self.tcp.keepalive.retries {
+                tcp_keepalive = tcp_keepalive.with_retries(retries.get());
+            }
+            sref.set_tcp_keepalive(&tcp_keepalive)
+                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+        } else {
+            sref.set_keepalive(false)
+                .map_err(|err| ServerBuilderError::SetKeepAlive(err.into()))?;
+        }
+        sock.bind(addr)
+            .map_err(|err| ServerBuilderError::BindAddr(addr, err.into()))?;
+        sock.set_nodelay(self.tcp.nodelay)
+            .map_err(|err| ServerBuilderError::SetNoDelay(err.into()))?;
+        sock
+            .listen(self.tcp.backlog.get())
+            .map_err(|err| ServerBuilderError::Listen(addr, err.into()))?
+            .into_std()
+            .map_err(|err| ServerBuilderError::ConvertListener(err.into()))
+    }
+
+    /// Configure HTTP/1 protocol
+    pub fn configure_http1<E>(&self, builder: &mut Builder<E>) {
+        debug!("setting up HTTP/1");
+        let mut http1 = builder.http1();
+        http1
+            .half_close(self.http1.half_close)
+            .keep_alive(self.http1.keepalive);
+        if let Some(timeout) = self.http1.header_read_timeout {
+            http1.header_read_timeout(timeout);
+        }
+        if let Some(bufsz) = self.http1.max_buf_size {
+            http1.max_buf_size(bufsz.get());
+        }
+        if let Some(writev) = self.http1.writev {
+            http1.writev(writev);
+        }
+    }
+
+    /// Configure HTTP/2 protocol
+    pub fn configure_http2<E>(&self, builder: &mut Builder<E>) {
+        debug!("setting up HTTP/2");
+        let mut http2 = builder.http2();
+        http2
+            .adaptive_window(self.http2.adaptive_window)
+            .initial_connection_window_size(
+                self.http2.initial_connection_window.map(NonZeroU32::get),
+            )
+            .initial_stream_window_size(
+                self.http2.initial_stream_window.map(NonZeroU32::get),
+            )
+            .keep_alive_interval(self.http2.keepalive.interval)
+            .max_concurrent_streams(self.http2.max_concurrent_streams.map(NonZeroU32::get));
+        if self.http2.connect_protocol {
+            http2.enable_connect_protocol();
+        }
+        if let Some(timeout) = self.http2.keepalive.timeout {
+            http2.keep_alive_timeout(timeout);
+        }
     }
 
     /// Launch a task that captures common UNIX signals
@@ -435,6 +483,26 @@ pub struct Http2KeepaliveConfig {
         with = "humantime_serde"
     )]
     pub timeout: Option<Duration>,
+}
+
+/// TLS configuration
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct TlsConfig {
+    /// Path to certificate or certificate chain in PEM format
+    #[serde(alias = "cert", alias = "chain")]
+    certificate: Box<Path>,
+    /// Path to private key file in PEM format
+    #[serde(alias = "key")]
+    private_key: Box<Path>,
+}
+
+impl TlsConfig {
+    pub async fn rustls_config(&self) -> Result<RustlsConfig, ServerBuilderError> {
+        RustlsConfig::from_pem_chain_file(&self.certificate, &self.private_key)
+            .await
+            .map_err(|err| ServerBuilderError::TlsConfig(err.into()))
+    }
 }
 
 /// Turn DNS name or address into a socket
