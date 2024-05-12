@@ -10,11 +10,11 @@ use std::{
 use axum::{
     body::HttpBody,
     extract::{MatchedPath, State},
-    http::header,
-    response::IntoResponse,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     routing::{self, Router},
 };
-use hyper::{Method, Request, Response};
+use hyper::{Method, Request};
 use opentelemetry::{
     global,
     metrics::{Counter, Histogram, MeterProvider, Unit, UpDownCounter},
@@ -43,6 +43,14 @@ pub enum MetricsError {
     /// OpenTelemetry metrics error
     #[error("OTel metrics error: {0}")]
     OpenTelemetry(#[from] opentelemetry::metrics::MetricsError),
+}
+
+impl IntoResponse for MetricsError {
+    fn into_response(self) -> Response {
+        problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_title(self.to_string())
+            .into_response()
+    }
 }
 
 /// Configuration and builder for metrics subsystem
@@ -373,14 +381,17 @@ where
         let start = Instant::now();
         let ext = req.extensions();
         let method = req.method().clone();
+        let scheme = match req.uri().scheme() {
+            Some(sch) => sch.to_string(),
+            None => String::new(),
+        };
         let path = ext.get::<MatchedPath>().cloned();
         let request_size = req.size_hint().upper().unwrap_or(0);
-        // FIXME: get scheme from request
         self.state.http_server.requests_active.add(
             1,
             &[
                 KeyValue::new("http.request.method", method.to_string()),
-                KeyValue::new("url.scheme", "http"),
+                KeyValue::new("url.scheme", scheme.clone()),
             ],
         );
         HttpMetricsFuture {
@@ -388,6 +399,7 @@ where
             state: self.state.clone(),
             start,
             method,
+            scheme,
             path,
             request_size,
         }
@@ -406,6 +418,8 @@ pub struct HttpMetricsFuture<F> {
     start: Instant,
     /// HTTP request method
     method: Method,
+    /// HTTP URI scheme
+    scheme: String,
     /// Matched [`axum`] route
     path: Option<MatchedPath>,
     /// HTTP request size, in bytes
@@ -424,8 +438,7 @@ where
         let resp_result = ready!(this.inner.poll(cx));
 
         let kv_method = KeyValue::new("http.request.method", this.method.to_string());
-        // FIXME: get scheme from request
-        let kv_scheme = KeyValue::new("url.scheme", "http");
+        let kv_scheme = KeyValue::new("url.scheme", this.scheme.clone());
         this.state
             .http_server
             .requests_active
@@ -473,12 +486,9 @@ where
 }
 
 /// Method handler to generate metrics
-// TODO: return Result
-async fn get_metrics(metrics: State<MetricsState>) -> impl IntoResponse {
+async fn get_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
     let encoder = TextEncoder::new();
     let mut buf = Vec::new();
-    encoder
-        .encode(&metrics.registry.gather(), &mut buf)
-        .unwrap();
-    ([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf)
+    encoder.encode(&metrics.registry.gather(), &mut buf)?;
+    Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf))
 }
