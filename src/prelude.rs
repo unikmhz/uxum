@@ -5,7 +5,7 @@ pub use crate::{
     reexport::{
         axum::{
             self,
-            extract::{ConnectInfo, Path, Query},
+            extract::{ConnectInfo, Path, Query, State},
             http::{self, HeaderValue, StatusCode},
             response::{IntoResponse, IntoResponseParts},
             Json,

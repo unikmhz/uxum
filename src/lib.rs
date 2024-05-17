@@ -30,11 +30,12 @@ pub mod prelude;
 pub mod reexport;
 mod response;
 mod signal;
+pub mod state;
 mod telemetry;
 mod tracing;
 mod util;
 
-pub use uxum_macros::handler;
+pub use uxum_macros::{handler, AutoState};
 
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
@@ -58,6 +59,7 @@ pub use self::{
     notify::ServiceNotifier,
     response::{GetResponseSchemas, ResponseSchema},
     signal::{SignalError, SignalStream},
+    state::AutoState,
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
     util::ResponseExtension,

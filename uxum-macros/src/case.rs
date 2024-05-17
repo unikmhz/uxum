@@ -1,18 +1,5 @@
+use convert_case::{Case, Casing};
 use syn::Ident;
-
-pub(crate) fn camel_case(input: impl AsRef<str>) -> String {
-    input
-        .as_ref()
-        .split(&['_', '-', ' '])
-        .map(|word| {
-            let mut ch = word.chars();
-            match ch.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(ch).collect(),
-            }
-        })
-        .collect()
-}
 
 /// String conversion to camel case
 pub(crate) trait ToCamelCase {
@@ -23,11 +10,29 @@ pub(crate) trait ToCamelCase {
     fn to_camel_case(&self) -> Self::CamelCased;
 }
 
+/// String conversion to snake case
+pub(crate) trait ToSnakeCase {
+    /// Resulting type
+    type SnakeCased;
+
+    /// Convert string-like type to snake case
+    fn to_snake_case(&self) -> Self::SnakeCased;
+}
+
 impl ToCamelCase for Ident {
     type CamelCased = Ident;
 
     fn to_camel_case(&self) -> Self::CamelCased {
-        let camel_cased = camel_case(self.to_string());
+        let camel_cased = self.to_string().to_case(Case::UpperCamel);
         Ident::new(&camel_cased, self.span())
+    }
+}
+
+impl ToSnakeCase for Ident {
+    type SnakeCased = Ident;
+
+    fn to_snake_case(&self) -> Self::SnakeCased {
+        let snake_cased = self.to_string().to_case(Case::Snake);
+        Ident::new(&snake_cased, self.span())
     }
 }

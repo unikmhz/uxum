@@ -8,3 +8,4 @@ pub(crate) mod query;
 pub(crate) mod response;
 pub(crate) mod server;
 pub(crate) mod spec;
+pub(crate) mod state;

@@ -279,3 +279,71 @@ async fn get_random_number(
         Ok(Json(GetRandomResponse { value }))
     }
 }
+
+/// More complex example for using a shared app state object
+mod counter_state {
+    use std::{
+        ops::Deref,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+    };
+
+    use uxum::AutoState;
+
+    use super::*;
+
+    /// App state used in [`inc_state`] and [`dec_state`] handlers
+    #[derive(AutoState, Clone)]
+    struct CounterState(Arc<CounterStateInner>);
+
+    impl Deref for CounterState {
+        type Target = CounterStateInner;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    /// Internal shared struct
+    struct CounterStateInner {
+        /// Stored atomic counter value
+        counter: AtomicUsize,
+    }
+
+    impl Default for CounterState {
+        fn default() -> Self {
+            Self(Arc::new(CounterStateInner {
+                counter: AtomicUsize::new(0),
+            }))
+        }
+    }
+
+    /// State methods
+    impl CounterState {
+        /// Add 1 to counter
+        pub fn inc(&self) -> usize {
+            self.counter.fetch_add(1, Ordering::Relaxed)
+        }
+
+        /// Subtract 1 from counter
+        pub fn dec(&self) -> usize {
+            self.counter.fetch_sub(1, Ordering::Relaxed)
+        }
+    }
+
+    /// Increase persistent counter
+    #[handler(tags = ["counter"])]
+    async fn inc_state(state: State<CounterState>) -> String {
+        let old = state.inc();
+        format!("Old counter value was {old}")
+    }
+
+    /// Decrease persistent counter
+    #[handler(tags = ["counter"])]
+    async fn dec_state(state: State<CounterState>) -> String {
+        let old = state.dec();
+        format!("Old counter value was {old}")
+    }
+}

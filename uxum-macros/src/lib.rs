@@ -10,14 +10,15 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, ItemFn};
+use syn::{parse_macro_input, DeriveInput, ItemFn};
 
 use crate::{
-    case::ToCamelCase,
+    case::{ToCamelCase, ToSnakeCase},
     handler::{
         body::detect_request_body,
         data::{HandlerData, HandlerMethod},
         path::format_path_for_spec,
+        state::detect_state,
     },
 };
 
@@ -32,7 +33,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
     let fn_ident = &input.sig.ident;
     let handler_ident = format_ident!("{}HandlerMeta", fn_ident.to_camel_case());
-    let mod_ident = format_ident!("_uxum_private_{}", fn_ident);
+    let mod_ident = format_ident!("_uxum_private_hdl_{}", fn_ident.to_snake_case());
 
     let data = match HandlerData::from_list(&attr_args) {
         Ok(val) => val,
@@ -70,6 +71,12 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
         &request_body,
     );
 
+    let state = detect_state(&input);
+    let into_service = match state {
+        Some(s) => quote! { super::#fn_ident.with_state(::uxum::state::get::<#s>()) },
+        None => quote! { super::#fn_ident.into_service() },
+    };
+
     quote! {
         #[::uxum::reexport::tracing::instrument(name = "handler", skip_all, fields(name = #handler_name))]
         #[::uxum::reexport::axum::debug_handler]
@@ -84,7 +91,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                 reexport::{
                     axum::{
                         body::Body,
-                        handler::HandlerWithoutStateExt,
+                        handler::{Handler, HandlerWithoutStateExt},
                     },
                     http,
                     hyper::{Request, Response},
@@ -142,7 +149,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                 #[inline]
                 #[must_use]
                 fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible> {
-                    BoxCloneService::new(super::#fn_ident.into_service())
+                    BoxCloneService::new(#into_service)
                 }
 
                 #[inline]
@@ -155,4 +162,27 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             inventory::submit! { &#handler_ident as &dyn HandlerExt }
         }
     }.into()
+}
+
+/// Derive macro for application state types
+#[proc_macro_error]
+#[proc_macro_derive(AutoState)]
+pub fn derive_auto_state(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let state_ident = &input.ident;
+    let mod_ident = format_ident!("_uxum_private_st_{}", state_ident.to_snake_case());
+
+    quote! {
+        #[doc(hidden)]
+        #[allow(missing_docs)]
+        mod #mod_ident {
+            use ::uxum::AutoState;
+
+            use super::*;
+
+            impl AutoState for #state_ident {}
+        }
+    }
+    .into()
 }
