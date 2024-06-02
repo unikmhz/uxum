@@ -17,6 +17,7 @@ struct ServiceConfig {
 /// Application entry point
 #[tokio::main]
 async fn main() {
+    // Load configuration from file
     let mut config: ServiceConfig = Config::builder()
         .add_source(File::with_name("examples/advanced_server/config.yaml"))
         .build()

@@ -123,6 +123,7 @@ impl AppConfig {
             ],
         );
         // TODO: res::SERVICE_NAMESPACE
+        // TODO: res::DEPLOYMENT_ENVIRONMENT
         let mut static_resources = Vec::new();
         if let Some(val) = &self.app_name {
             static_resources.push(KeyValue::new(res::SERVICE_NAME, val.clone()));

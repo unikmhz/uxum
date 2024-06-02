@@ -1,4 +1,5 @@
 pub(crate) mod json;
+pub(crate) mod span;
 
 use std::{collections::BTreeMap, fs, io};
 

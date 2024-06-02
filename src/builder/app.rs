@@ -21,7 +21,7 @@ use tower::{builder::ServiceBuilder, util::BoxCloneService};
 use tower_http::{
     request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
-    trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
+    trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit, ServiceBuilderExt,
 };
 use tracing::{debug, debug_span, info, info_span};
@@ -34,6 +34,7 @@ use crate::{
     },
     config::AppConfig,
     layers::{ext::HandlerName, rate::RateLimitError, timeout::TimeoutError},
+    logging::span::CustomMakeSpan,
     metrics::{MetricsBuilder, MetricsError},
     tracing::TracingError,
     util::ResponseExtension,
@@ -285,10 +286,9 @@ where
             .set_x_request_id(MakeRequestUuid)
             .sensitive_headers([header::AUTHORIZATION])
             .layer(
-                // TODO: make own types that set otel.kind = "server" and conform to opentelemetry
-                // conventions.
                 TraceLayer::new_for_http()
-                    .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                    // TODO: allow customizing level() / include_headers()
+                    .make_span_with(CustomMakeSpan::new().include_headers(true))
                     .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
                     .on_response(
                         DefaultOnResponse::new()
@@ -298,6 +298,7 @@ where
                     ),
             )
             .layer(metrics)
+            .map_request(crate::logging::span::register_request)
             .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
