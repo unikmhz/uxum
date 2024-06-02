@@ -22,6 +22,7 @@ mod auth;
 mod builder;
 mod config;
 mod errors;
+mod http_client;
 mod layers;
 mod logging;
 mod metrics;
@@ -35,7 +36,7 @@ mod telemetry;
 mod tracing;
 mod util;
 
-pub use uxum_macros::{handler, AutoState};
+pub use uxum_macros::handler;
 
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
@@ -48,6 +49,7 @@ pub use self::{
         },
     },
     config::*,
+    http_client::*,
     layers::{
         buffer::HandlerBufferConfig,
         ext::{Deadline, HandlerName},
@@ -59,7 +61,6 @@ pub use self::{
     notify::ServiceNotifier,
     response::{GetResponseSchemas, ResponseSchema},
     signal::{SignalError, SignalStream},
-    state::AutoState,
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
     util::ResponseExtension,

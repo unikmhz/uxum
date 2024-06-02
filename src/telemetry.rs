@@ -95,6 +95,9 @@ impl AppConfig {
             let tracer = tcfg.build_pipeline(otel_res)?;
             let layer = tcfg.build_layer(&tracer);
             registry.with(layer).init();
+            opentelemetry::global::set_text_map_propagator(
+                opentelemetry_sdk::propagation::TraceContextPropagator::default(),
+            );
             Some(tracer)
         } else {
             registry.init();

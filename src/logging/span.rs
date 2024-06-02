@@ -55,6 +55,7 @@ impl MakeSpan<Body> for CustomMakeSpan {
         // This ugly macro is needed, unfortunately, because `tracing::span!`
         // required the level argument to be static. Meaning we can't just pass
         // `self.level`.
+        // TODO: don't send trace/span IDs as redundant attributes in otel traces
         macro_rules! make_span {
             ($level:expr) => {
                 if self.include_headers {
@@ -62,6 +63,8 @@ impl MakeSpan<Body> for CustomMakeSpan {
                         $level,
                         "request",
                         "otel.kind" = "server",
+                        "trace_id" = Empty,
+                        "span_id" = Empty,
                         "http.request.method" = %request.method(),
                         "url.full" = %request.uri(),
                         "http.version" = ?request.version(),
@@ -121,6 +124,11 @@ pub(crate) fn register_request(req: Request<Body>) -> Request<Body> {
     let parent_context = opentelemetry::global::get_text_map_propagator(|prop| {
         prop.extract(&HeaderExtractor(req.headers()))
     });
-    Span::current().set_parent(parent_context);
+    let span = Span::current();
+    span.set_parent(parent_context);
+    let trace_id = span.context().span().span_context().trace_id();
+    let span_id = span.context().span().span_context().span_id();
+    span.record("trace_id", trace_id.to_string());
+    span.record("span_id", span_id.to_string());
     req
 }

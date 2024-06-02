@@ -458,6 +458,7 @@ pub struct Http2Config {
     ///
     /// Sets the [SETTINGS_INITIAL_WINDOW_SIZE](https://http2.github.io/http2-spec/#SETTINGS_INITIAL_WINDOW_SIZE)
     /// option for HTTP/2 connections.
+    // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_stream_window: Option<NonZeroU32>,
     /// HTTP/2 keep-alive configuration

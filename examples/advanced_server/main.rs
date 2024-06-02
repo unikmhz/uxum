@@ -51,6 +51,13 @@ async fn main() {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
+    // Initialize required states
+    let tracing_client = app_builder
+        .http_client_or_default("tracing")
+        .await
+        .expect("No tracing HTTP client");
+    app_builder.with_state(distributed_tracing::TracingState::from(tracing_client));
+    app_builder.with_state(counter_state::CounterState::default());
     // Build main application router
     let app = app_builder.build().expect("Unable to build app");
     // Create server handle
@@ -291,13 +298,11 @@ mod counter_state {
         },
     };
 
-    use uxum::AutoState;
-
     use super::*;
 
     /// App state used in [`inc_state`] and [`dec_state`] handlers
-    #[derive(AutoState, Clone)]
-    struct CounterState(Arc<CounterStateInner>);
+    #[derive(Clone)]
+    pub struct CounterState(Arc<CounterStateInner>);
 
     impl Deref for CounterState {
         type Target = CounterStateInner;
@@ -308,7 +313,7 @@ mod counter_state {
     }
 
     /// Internal shared struct
-    struct CounterStateInner {
+    pub struct CounterStateInner {
         /// Stored atomic counter value
         counter: AtomicUsize,
     }
@@ -346,5 +351,85 @@ mod counter_state {
     async fn dec_state(state: State<CounterState>) -> String {
         let old = state.dec();
         format!("Old counter value was {old}")
+    }
+}
+
+/// This is used to test distributed tracing
+mod distributed_tracing {
+    use std::{ops::Deref, sync::Arc};
+
+    use super::*;
+
+    /// Error message used in [`call_inner`]
+    #[derive(Debug, thiserror::Error)]
+    enum CallInnerError {
+        /// Error produced by [`reqwest`] crate
+        #[error(transparent)]
+        Reqwest(#[from] reqwest::Error),
+        /// Error produced by [`reqwest_middleware`] crate
+        #[error(transparent)]
+        ReqwestMiddleware(#[from] reqwest_middleware::Error),
+    }
+
+    impl IntoResponse for CallInnerError {
+        fn into_response(self) -> axum::response::Response {
+            problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+                .with_title(self.to_string())
+                .into_response()
+        }
+    }
+
+    // I didn't bother to provide correct schema here
+    impl GetResponseSchemas for CallInnerError {
+        type ResponseIter = [ResponseSchema; 1];
+        fn get_response_schemas(_gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
+            [ResponseSchema {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                response: openapi3::Response {
+                    description: "Error response".into(),
+                    content: okapi::map! {
+                        mime::APPLICATION_JSON.to_string() => openapi3::MediaType {
+                            ..Default::default()
+                        },
+                    },
+                    ..Default::default()
+                },
+            }]
+        }
+    }
+
+    /// App state used in [`call_inner`] handler
+    #[derive(Clone)]
+    pub struct TracingState(Arc<TracingStateInner>);
+
+    impl Deref for TracingState {
+        type Target = TracingStateInner;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl From<reqwest_middleware::ClientWithMiddleware> for TracingState {
+        fn from(client: reqwest_middleware::ClientWithMiddleware) -> Self {
+            Self(Arc::new(TracingStateInner { client }))
+        }
+    }
+
+    /// Internal shared struct
+    pub struct TracingStateInner {
+        client: reqwest_middleware::ClientWithMiddleware,
+    }
+
+    /// Call inner service and return its response
+    #[handler]
+    async fn call_inner(state: State<TracingState>) -> Result<String, CallInnerError> {
+        Ok(state
+            .client
+            .get("http://127.0.0.1:8081/inner")
+            .send()
+            .await?
+            .text()
+            .await?)
     }
 }

@@ -1,0 +1,41 @@
+logging:
+  subscribers:
+    - format: pretty
+      level: TRACE
+      targets:
+        h2: INFO
+        hyper: INFO
+        tonic: INFO
+        tower: INFO
+      color: true
+    - format: compact
+      level: DEBUG
+      output:
+        type: file
+        path: inner_service.log
+    - format: json
+      level: DEBUG
+      output:
+        type: file
+        path: inner_service.json.log
+      flatten_metadata: true
+      current_span: true
+      static_fields:
+        env: dev
+        something: something
+        other: 42
+metrics:
+  labels:
+    env: example
+tracing:
+  endpoint: http://localhost:4317
+  include:
+    location: true
+    exception_from_error_fields: true
+    exception_from_error_events: true
+    status_from_error_events: true
+    inactivity: true
+    thread_info: true
+  level: TRACE
+server:
+  listen: 127.0.0.1:8081

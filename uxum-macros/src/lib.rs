@@ -10,7 +10,7 @@ use darling::{ast::NestedMeta, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, ItemFn};
+use syn::{parse_macro_input, ItemFn};
 
 use crate::{
     case::{ToCamelCase, ToSnakeCase},
@@ -162,27 +162,4 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
             inventory::submit! { &#handler_ident as &dyn HandlerExt }
         }
     }.into()
-}
-
-/// Derive macro for application state types
-#[proc_macro_error]
-#[proc_macro_derive(AutoState)]
-pub fn derive_auto_state(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    let state_ident = &input.ident;
-    let mod_ident = format_ident!("_uxum_private_st_{}", state_ident.to_snake_case());
-
-    quote! {
-        #[doc(hidden)]
-        #[allow(missing_docs)]
-        mod #mod_ident {
-            use ::uxum::AutoState;
-
-            use super::*;
-
-            impl AutoState for #state_ident {}
-        }
-    }
-    .into()
 }

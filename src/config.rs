@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     apidoc::ApiDocBuilder,
     auth::AuthConfig,
+    http_client::HttpClientConfig,
     layers::{
         buffer::HandlerBufferConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutConfig,
     },
@@ -41,6 +42,9 @@ pub struct AppConfig {
     /// Authentication and authorization back-end configuration
     #[serde(default)]
     pub auth: AuthConfig,
+    /// [`reqwest`] HTTP client configuration
+    #[serde(default)]
+    pub http_clients: HashMap<String, HttpClientConfig>,
     /// Short application name
     #[serde(skip)]
     pub app_name: Option<String>,
@@ -57,9 +61,8 @@ impl AppConfig {
     ///
     /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
     /// things.
-    #[must_use]
     pub fn with_app_name(&mut self, app_name: impl ToString) -> &mut Self {
-        // TODO: mybe check for value correctness?
+        // TODO: maybe check for value correctness?
         self.app_name = Some(app_name.to_string());
         self
     }
@@ -68,8 +71,8 @@ impl AppConfig {
     ///
     /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
     /// HTTP header, among other things.
-    #[must_use]
     pub fn with_app_version(&mut self, app_version: impl ToString) -> &mut Self {
+        // TODO: maybe check for value correctness?
         self.app_version = Some(app_version.to_string());
         self
     }

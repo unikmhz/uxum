@@ -1,3 +1,5 @@
+pub(crate) mod reqwest;
+
 use std::{num::NonZeroUsize, time::Duration};
 
 use opentelemetry_otlp::{Protocol, TonicExporterBuilder, WithExportConfig};

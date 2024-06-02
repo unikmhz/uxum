@@ -33,9 +33,11 @@ use crate::{
         NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
+    http_client::{HttpClientConfig, HttpClientError},
     layers::{ext::HandlerName, rate::RateLimitError, timeout::TimeoutError},
     logging::span::CustomMakeSpan,
     metrics::{MetricsBuilder, MetricsError},
+    state,
     tracing::TracingError,
     util::ResponseExtension,
     HeaderAuthExtractor, MetricsState,
@@ -57,10 +59,17 @@ pub enum AppBuilderError {
     /// Duplicate handler name
     #[error("Duplicate handler name: {0}")]
     DuplicateHandlerName(&'static str),
+    /// HTTP client error
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[from] HttpClientError),
+    /// HTTP client is absent from configuration
+    #[error("HTTP client is absent from configuration: {0}")]
+    HttpClientAbsent(String),
 }
 
 /// Builder for application routes
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
     /// Authentication and authorization back-end
     auth_provider: AuthProv,
@@ -172,9 +181,18 @@ where
     /// spec generation, and an (optional) RapiDoc UI.
     ///
     /// Alternatively, you can include API doc configuration in [`AppConfig::api_doc`] section.
-    #[must_use]
-    pub fn with_api_doc(mut self, api_doc: ApiDocBuilder) -> Self {
+    pub fn with_api_doc(&mut self, api_doc: ApiDocBuilder) -> &mut Self {
         self.config.api_doc = Some(api_doc);
+        self
+    }
+
+    /// Add state to be used in handlers using [`axum::extract::State`]
+    pub fn with_state<S>(&mut self, state: S) -> &mut Self
+    where
+        S: Clone + Send + 'static,
+    {
+        // TODO: maybe make state registry non-global? dubious
+        state::put(state);
         self
     }
 
@@ -184,8 +202,7 @@ where
     /// of handler execution metrics, as well as an exporter HTTP endpoint.
     ///
     /// Alternatively, you can include metrics configuration in [`AppConfig::metrics`] section.
-    #[must_use]
-    pub fn with_metrics(mut self, metrics: MetricsBuilder) -> Self {
+    pub fn with_metrics(&mut self, metrics: MetricsBuilder) -> &mut Self {
         self.config.metrics = metrics;
         self
     }
@@ -277,6 +294,47 @@ where
         let final_rtr = self.wrap_global_layers(rtr, metrics_state);
         info!("finished building application");
         Ok(final_rtr)
+    }
+
+    /// Build and return configured [`reqwest`] HTTP client with distributed tracing support
+    pub async fn http_client(
+        &mut self,
+        name: impl AsRef<str>,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
+        match self.config.http_clients.get_mut(name.as_ref()) {
+            Some(cfg) => {
+                if let Some(app_name) = &self.config.app_name {
+                    cfg.with_app_name(app_name);
+                }
+                if let Some(app_version) = &self.config.app_version {
+                    cfg.with_app_version(app_version);
+                }
+                cfg.to_client().await.map_err(Into::into)
+            }
+            None => Err(AppBuilderError::HttpClientAbsent(name.as_ref().to_string())),
+        }
+    }
+
+    /// Same as [`Self::http_client`], but returns default client if there is no configuration
+    /// available.
+    pub async fn http_client_or_default(
+        &mut self,
+        name: impl AsRef<str>,
+    ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
+        match self.http_client(name).await {
+            Ok(client) => Ok(client),
+            Err(AppBuilderError::HttpClientAbsent(_)) => {
+                let mut cfg = HttpClientConfig::default();
+                if let Some(app_name) = &self.config.app_name {
+                    cfg.with_app_name(app_name);
+                }
+                if let Some(app_version) = &self.config.app_version {
+                    cfg.with_app_version(app_version);
+                }
+                cfg.to_client().await.map_err(Into::into)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Wrap router in global [`tower`] layers

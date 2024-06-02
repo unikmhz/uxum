@@ -1,10 +1,11 @@
+//! State extractor support for method handlers
+
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
     hash::{BuildHasherDefault, Hasher},
 };
 
-use axum::BoxError;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
@@ -34,55 +35,49 @@ impl Hasher for IdHasher {
     }
 }
 
+/// Get a clone of previously registered state object
 ///
+/// # Panics
+///
+/// This call will panic if no previously registered object of type S has been found.
 pub fn get<S>() -> S
 where
-    S: AutoState + StateClone + Clone + Default + Send,
+    S: StateClone + Clone + Send,
 {
     let type_id = TypeId::of::<S>();
-
-    // SAFETY: It is reasonable to assume that entry keyed as type ID of S
-    // will have type S. So unwrap() cannot panic here.
-    STATES
-        .lock()
-        .entry(type_id)
-        .or_insert_with(|| Box::new(S::new_default()))
-        .as_any()
-        .downcast_ref::<S>()
-        .unwrap()
-        .clone()
-}
-
-///
-pub trait AutoState: StateClone {
-    ///
-    fn new_default() -> Self
-    where
-        Self: Sized + Default,
-    {
-        // FIXME: remove requirement for state types to implement Default
-        Self::default()
-    }
-
-    ///
-    fn init(&mut self) -> Result<(), BoxError> {
-        Ok(())
+    match STATES.lock().get(&type_id) {
+        // SAFETY: It is reasonable to assume that entry keyed as type ID of S
+        // will have type S. So unwrap() cannot panic here.
+        Some(state) => (**state).as_any().downcast_ref::<S>().unwrap().clone(),
+        None => panic!("State is missing from state registry"),
     }
 }
 
-///
+/// Register state object for use in handlers
+pub fn put<S>(state: S)
+where
+    S: StateClone + Clone + Send,
+{
+    let type_id = TypeId::of::<S>();
+    STATES.lock().insert(type_id, Box::new(state));
+}
+
+/// Trait that is required to be implemented for types of state objects
 pub trait StateClone: Any {
-    ///
+    /// Auto-boxing clone helper method
     fn clone_box(&self) -> Box<dyn StateClone + Send>;
-    ///
+    /// Convert to `&dyn Any`
     fn as_any(&self) -> &dyn Any;
-    ///
+    /// Convert to `&mut dyn Any`
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    ///
+    /// Convert to `Box<dyn Any>`
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
-impl<T: Clone + Send + Sync + 'static> StateClone for T {
+impl<T> StateClone for T
+where
+    T: Clone + Send + 'static,
+{
     fn clone_box(&self) -> Box<dyn StateClone + Send> {
         Box::new(self.clone())
     }
