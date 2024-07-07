@@ -8,7 +8,7 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::OpenOptions, io::AsyncReadExt};
 
-use crate::{http_client::errors::HttpClientError, tracing::reqwest::wrap_client};
+use crate::http_client::{errors::HttpClientError, middleware::wrap_client};
 
 /// HTTP client configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -237,8 +237,6 @@ impl HttpClientConfig {
         &self,
         builder: ClientBuilder,
     ) -> Result<ClientWithMiddleware, HttpClientError> {
-        // TODO: forward X-Request-Id
-        // TODO: forward X-Timeout
         Ok(wrap_client(builder.build()?))
     }
 
@@ -338,11 +336,11 @@ pub struct HttpClientHttp2KeepaliveConfig {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum HttpClientRedirectPolicy {
-    ///
+    /// No redirects will be followed
     None,
-    ///
+    /// Redirects will be followed up to a preconfigured limit
     Limited {
-        ///
+        /// Max number of redirects to follow
         #[serde(flatten, default = "HttpClientRedirectPolicy::default_redirect_limit")]
         redirect_limit: usize,
     },
@@ -374,7 +372,7 @@ impl HttpClientRedirectPolicy {
     }
 }
 
-///
+/// Load client X.509 identity from a local file
 async fn load_identity(pem_file: &Path) -> Result<Identity, HttpClientError> {
     let mut pem_buf = Vec::new();
     OpenOptions::new()

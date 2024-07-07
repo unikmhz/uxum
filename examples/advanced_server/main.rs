@@ -15,8 +15,7 @@ struct ServiceConfig {
 }
 
 /// Application entry point
-#[tokio::main]
-async fn main() {
+fn main() {
     // Load configuration from file
     let mut config: ServiceConfig = Config::builder()
         .add_source(File::with_name("examples/advanced_server/config.yaml"))
@@ -29,17 +28,25 @@ async fn main() {
         .app
         .with_app_name("advanced_server")
         .with_app_version("1.2.3");
-    // Initialize logging and tracing
+    // Build and start Tokio runtime
+    app_cfg
+        .runtime
+        .build()
+        .expect("Error creating Tokio runtime")
+        .block_on(run(config));
+}
+
+/// Tokio runtime entry point
+async fn run(mut config: ServiceConfig) {
+    // Initialize uxum handle, including logging and tracing
     //
     // Logging will start working right after this call, and until the returned
     // guard is dropped.
-    let _tele_guard = app_cfg
-        .init_telemetry()
-        .expect("Error initializing telemetry");
+    let mut handle = config.app.handle().expect("Error initializing handle");
     // Create app builder from app config
     //
     // Also enable the auth subsystem.
-    let mut app_builder = AppBuilder::from_config(app_cfg).with_basic_auth();
+    let mut app_builder = AppBuilder::from_config(&config.app).with_basic_auth();
     // Some hard-coded parameters for built-in API documentation
     app_builder.configure_api_doc(|api_doc| {
         api_doc
@@ -56,25 +63,14 @@ async fn main() {
         .http_client_or_default("tracing")
         .await
         .expect("No tracing HTTP client");
-    app_builder.with_state(distributed_tracing::TracingState::from(tracing_client));
-    app_builder.with_state(counter_state::CounterState::default());
+    app_builder
+        .with_state(distributed_tracing::TracingState::from(tracing_client))
+        .with_state(counter_state::CounterState::default());
     // Build main application router
     let app = app_builder.build().expect("Unable to build app");
-    // Create server handle
-    let handle = Handle::new();
-    // Spawn signal handler
-    config
-        .server
-        .spawn_signal_handler(handle.clone())
-        .expect("Unable to spawn signal handler");
-    // Build server, link the handle and run the app
-    config
-        .server
-        .build()
-        .await
-        .expect("Unable to build server")
-        .handle(handle)
-        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+    // Start the service
+    handle
+        .start(config.server, app)
         .await
         .expect("Server error");
 }

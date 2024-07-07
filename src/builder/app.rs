@@ -34,7 +34,10 @@ use crate::{
     },
     config::AppConfig,
     http_client::{HttpClientConfig, HttpClientError},
-    layers::{ext::HandlerName, rate::RateLimitError, timeout::TimeoutError},
+    layers::{
+        ext::HandlerName, rate::RateLimitError, request_id::RecordRequestIdLayer,
+        timeout::TimeoutError,
+    },
     logging::span::CustomMakeSpan,
     metrics::{MetricsBuilder, MetricsError},
     state,
@@ -117,8 +120,8 @@ impl AppBuilder {
 
 impl<AuthProv, AuthExt> AppBuilder<AuthProv, AuthExt>
 where
-    AuthProv: AuthProvider + 'static,
-    AuthExt: AuthExtractor + 'static,
+    AuthProv: AuthProvider + Sync + 'static,
+    AuthExt: AuthExtractor + Sync + 'static,
     AuthExt::User: Borrow<AuthProv::User>,
     AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
 {
@@ -250,6 +253,13 @@ where
             rtr = rtr.merge(metrics_state.build_router());
         }
 
+        // Add probes and management mode API
+        rtr = rtr.merge(
+            self.config
+                .probes
+                .build_router(self.auth_provider.clone(), self.auth_extractor.clone()),
+        );
+
         // A set to ensure uniqueness of handler names
         let mut handler_names = HashSet::new();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
@@ -342,6 +352,7 @@ where
         // [`tower`] layers that are executed for any request
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
+            .layer(RecordRequestIdLayer::new())
             .sensitive_headers([header::AUTHORIZATION])
             .layer(
                 TraceLayer::new_for_http()
@@ -438,7 +449,6 @@ where
                 service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
                     .map(|rcfg| rcfg.make_layer()),
             )
-            // TODO: circuit_breaker
             // TODO: throttle
             .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
             .service(handler.service())
@@ -494,7 +504,7 @@ impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
 }
 
 // FIXME: write proper handler
-async fn error_handler(err: BoxError) -> Response<Body> {
+pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
     // TODO: generalize, remove all the downcasts
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();

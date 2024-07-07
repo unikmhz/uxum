@@ -1,6 +1,6 @@
 use axum::{body::Body, http::Request};
 use opentelemetry::{propagation::Extractor, trace::TraceContextExt};
-use tower_http::trace::MakeSpan;
+use tower_http::{request_id::RequestId, trace::MakeSpan};
 use tracing::{field::Empty, Level, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -52,10 +52,14 @@ impl CustomMakeSpan {
 
 impl MakeSpan<Body> for CustomMakeSpan {
     fn make_span(&mut self, request: &Request<Body>) -> Span {
+        // TODO: don't send trace/span IDs as redundant attributes in otel traces
+        let x_request_id = request
+            .extensions()
+            .get::<RequestId>()
+            .and_then(|id| id.header_value().to_str().ok());
         // This ugly macro is needed, unfortunately, because `tracing::span!`
         // required the level argument to be static. Meaning we can't just pass
         // `self.level`.
-        // TODO: don't send trace/span IDs as redundant attributes in otel traces
         macro_rules! make_span {
             ($level:expr) => {
                 if self.include_headers {
@@ -65,6 +69,7 @@ impl MakeSpan<Body> for CustomMakeSpan {
                         "otel.kind" = "server",
                         "trace_id" = Empty,
                         "span_id" = Empty,
+                        "x_request_id" = x_request_id,
                         "http.request.method" = %request.method(),
                         "url.full" = %request.uri(),
                         "http.version" = ?request.version(),
@@ -75,6 +80,9 @@ impl MakeSpan<Body> for CustomMakeSpan {
                         $level,
                         "request",
                         "otel.kind" = "server",
+                        "trace_id" = Empty,
+                        "span_id" = Empty,
+                        "x_request_id" = x_request_id,
                         "http.request.method" = %request.method(),
                         "url.full" = %request.uri(),
                         "http.version" = ?request.version(),

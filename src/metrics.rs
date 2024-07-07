@@ -17,7 +17,7 @@ use axum::{
 use hyper::{Method, Request};
 use opentelemetry::{
     global,
-    metrics::{Counter, Histogram, MeterProvider, Unit, UpDownCounter},
+    metrics::{Counter, Histogram, MeterProvider, ObservableGauge, Unit, UpDownCounter},
     KeyValue,
 };
 use opentelemetry_sdk::{
@@ -265,6 +265,7 @@ impl MetricsBuilder {
         global::set_meter_provider(provider.clone());
         let meter = provider.meter("axum-app");
 
+        // TODO: try_init() and handle errors
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
             .with_unit(Unit::new("s"))
@@ -290,6 +291,10 @@ impl MetricsBuilder {
             .with_unit(Unit::new("By"))
             .with_description("The HTTP reponse body sizes in bytes.")
             .init();
+        let num_workers = meter
+            .u64_observable_gauge("runtime.workers")
+            .with_description("The number of worker threads used by the runtime.")
+            .init();
 
         Ok(MetricsState {
             registry,
@@ -300,6 +305,7 @@ impl MetricsBuilder {
                 request_body_size,
                 response_body_size,
             },
+            runtime: RuntimeMetrics { num_workers },
             metrics_path: self.metrics_path.clone(),
         })
     }
@@ -314,6 +320,8 @@ pub struct MetricsState {
     registry: Registry,
     /// HTTP server metrics
     http_server: HttpServerMetrics,
+    /// Tokio runtime metrics
+    runtime: RuntimeMetrics,
     /// URL path for metrics prometheus exporter
     metrics_path: String,
 }
@@ -331,6 +339,13 @@ pub(crate) struct HttpServerMetrics {
     request_body_size: Histogram<u64>,
     /// Distribution of response body sizes
     response_body_size: Histogram<u64>,
+}
+
+/// Container for Tokio runtime metrics
+#[derive(Clone)]
+pub(crate) struct RuntimeMetrics {
+    /// Number of workers inside the runtime
+    num_workers: ObservableGauge<u64>,
 }
 
 impl<S> Layer<S> for MetricsState {
@@ -487,6 +502,14 @@ where
 
 /// Method handler to generate metrics
 async fn get_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
+    // Record runtime metrics just-in-time
+    let rt_metrics = tokio::runtime::Handle::current().metrics();
+    metrics
+        .runtime
+        .num_workers
+        .observe(rt_metrics.num_workers() as u64, &[]);
+
+    // Serialize metrics
     let encoder = TextEncoder::new();
     let mut buf = Vec::new();
     encoder.encode(&metrics.registry.gather(), &mut buf)?;

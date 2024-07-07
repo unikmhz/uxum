@@ -16,11 +16,19 @@ use iso8601_duration::Duration as IsoDuration;
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::time::{sleep_until, Instant, Sleep};
+use tokio::{
+    task::futures::TaskLocalFuture,
+    time::{sleep_until, Instant, Sleep},
+};
 use tower::{BoxError, Layer, Service};
 use tracing::warn;
 
 use crate::layers::ext::Deadline;
+
+tokio::task_local! {
+    /// Deadline of currently executing request, if any
+    pub static CURRENT_DEADLINE: Option<Deadline>;
+}
 
 /// Error type returned by timeout layer
 #[derive(Clone, Debug, Error)]
@@ -184,7 +192,7 @@ pub struct TimeoutService<S> {
     inner: S,
 }
 
-const X_TIMEOUT: &str = "X-Timeout";
+pub(crate) const X_TIMEOUT: &str = "x-timeout";
 
 impl<S> Service<Request<Body>> for TimeoutService<S>
 where
@@ -204,11 +212,11 @@ where
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
         let deadline = self.config.get_deadline(req.headers().get(X_TIMEOUT));
-        if let Some(d) = deadline {
-            req.extensions_mut().insert(Deadline::from(d));
+        let deadline_obj = deadline.map(Deadline::from);
+        if let Some(d) = deadline_obj {
+            req.extensions_mut().insert(d);
         }
-        let inner = self.inner.call(req);
-
+        let inner = CURRENT_DEADLINE.scope(deadline_obj, self.inner.call(req));
         TimeoutFuture::new(inner, deadline)
     }
 }
@@ -232,7 +240,7 @@ pub enum TimeoutFuture<F> {
     Bounded {
         /// Inner future
         #[pin]
-        inner: F,
+        inner: TaskLocalFuture<Option<Deadline>, F>,
         /// Sleep future
         #[pin]
         sleep: Sleep,
@@ -241,7 +249,7 @@ pub enum TimeoutFuture<F> {
     Unbounded {
         /// Inner future
         #[pin]
-        inner: F,
+        inner: TaskLocalFuture<Option<Deadline>, F>,
     },
 }
 
@@ -278,7 +286,7 @@ where
 impl<F> TimeoutFuture<F> {
     /// Create new timeout service future
     #[must_use]
-    pub fn new(inner: F, deadline: Option<Instant>) -> Self {
+    pub fn new(inner: TaskLocalFuture<Option<Deadline>, F>, deadline: Option<Instant>) -> Self {
         match deadline {
             Some(d) => Self::Bounded {
                 inner,

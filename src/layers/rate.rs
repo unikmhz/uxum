@@ -120,6 +120,7 @@ impl HandlerRateLimitConfig {
 /// Method of key extraction for rate limiting
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 enum RateLimitKey {
     /// Global rate limit
     #[default]

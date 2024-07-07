@@ -22,14 +22,17 @@ mod auth;
 mod builder;
 mod config;
 mod errors;
+mod handle;
 mod http_client;
 mod layers;
 mod logging;
 mod metrics;
 mod notify;
 pub mod prelude;
+mod probes;
 pub mod reexport;
 mod response;
+mod runtime;
 mod signal;
 pub mod state;
 mod telemetry;
@@ -54,12 +57,15 @@ pub use self::{
         buffer::HandlerBufferConfig,
         ext::{Deadline, HandlerName},
         rate::{HandlerRateLimitConfig, RateLimitError},
-        timeout::{HandlerTimeoutConfig, TimeoutError},
+        request_id::CURRENT_REQUEST_ID,
+        timeout::{HandlerTimeoutConfig, TimeoutError, CURRENT_DEADLINE},
     },
     logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsError, MetricsState},
     notify::ServiceNotifier,
+    probes::{ProbeConfig, ProbeState},
     response::{GetResponseSchemas, ResponseSchema},
+    runtime::RuntimeConfig,
     signal::{SignalError, SignalStream},
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,

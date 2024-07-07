@@ -29,13 +29,11 @@ async fn main() {
         .app
         .with_app_name("inner_service")
         .with_app_version("2.3.4");
-    // Initialize logging and tracing
+    // Initialize uxum handle, including logging and tracing
     //
     // Logging will start working right after this call, and until the returned
     // guard is dropped.
-    let _tele_guard = app_cfg
-        .init_telemetry()
-        .expect("Error initializing telemetry");
+    let _uxum_handle = app_cfg.handle().expect("Error initializing handle");
     // Create app builder from app config
     //
     // Also enable the auth subsystem.

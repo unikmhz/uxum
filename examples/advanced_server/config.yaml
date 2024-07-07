@@ -66,5 +66,6 @@ auth:
       permissions:
         - perm3
         - perm4
+        - maintenance
 server:
   listen: 127.0.0.1:8080

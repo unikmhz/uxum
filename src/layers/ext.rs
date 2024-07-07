@@ -59,7 +59,7 @@ impl fmt::Display for HandlerName {
 }
 
 /// Cutoff time after which the request must be timed out
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Deadline(Instant);
 

@@ -6,14 +6,10 @@ use opentelemetry_sdk::{
         EnvResourceDetector, OsResourceDetector, ProcessResourceDetector,
         SdkProvidedResourceDetector, TelemetryResourceDetector,
     },
-    trace::Tracer,
     Resource,
 };
 use opentelemetry_semantic_conventions::resource as res;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::AppConfig;
 
@@ -43,69 +39,7 @@ impl OpenTelemetryConfig {
     }
 }
 
-/// Guard for logging and tracing subsystems
-///
-/// Unwritten logs will be flushed when dropping this object. This might help even in case of a
-/// panic.
-#[allow(dead_code)]
-pub struct TelemetryGuard {
-    /// Guards for [`tracing_appender::non_blocking::NonBlocking`]
-    buf_guards: Vec<WorkerGuard>,
-    /// Tracing pipeline
-    tracer: Option<Tracer>,
-}
-
-impl Drop for TelemetryGuard {
-    fn drop(&mut self) {
-        if let Some(provider) = self.tracer.as_ref().and_then(|t| t.provider()) {
-            for res in provider.force_flush() {
-                if let Err(err) = res {
-                    eprintln!("Error flushing spans: {err}");
-                }
-            }
-        }
-    }
-}
-
-/// Error type returned on telemetry initialization
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum TelemetryError {
-    /// Error while setting up logging
-    #[error(transparent)]
-    Logging(#[from] crate::logging::LoggingError),
-    /// Error while setting up trace collection and propagation
-    #[error(transparent)]
-    Tracing(#[from] crate::tracing::TracingError),
-}
-
 impl AppConfig {
-    /// Initialize logging and tracing subsystems
-    ///
-    /// Returns a guard that shouldn't be dropped as long as there is a need for these subsystems.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if any part of initializing of tracing or logging subsystems ends with and
-    /// error.
-    pub fn init_telemetry(&mut self) -> Result<TelemetryGuard, TelemetryError> {
-        let (registry, buf_guards) = self.logging.make_registry()?;
-        let otel_res = self.otel_resource();
-        let tracer = if let Some(tcfg) = self.tracing.as_mut() {
-            let tracer = tcfg.build_pipeline(otel_res)?;
-            let layer = tcfg.build_layer(&tracer);
-            registry.with(layer).init();
-            opentelemetry::global::set_text_map_propagator(
-                opentelemetry_sdk::propagation::TraceContextPropagator::default(),
-            );
-            Some(tracer)
-        } else {
-            registry.init();
-            None
-        };
-        Ok(TelemetryGuard { buf_guards, tracer })
-    }
-
     /// Get OpenTelemetry resource
     ///
     /// Creates new resource object on first call. On subsequent calls returns previously created

@@ -13,6 +13,8 @@ use crate::{
     },
     logging::LoggingConfig,
     metrics::MetricsBuilder,
+    probes::ProbeConfig,
+    runtime::RuntimeConfig,
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
 };
@@ -21,6 +23,9 @@ use crate::{
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct AppConfig {
+    /// Tokio runtime configuration
+    #[serde(default)]
+    pub runtime: RuntimeConfig,
     /// Logging configuration
     #[serde(default)]
     pub logging: LoggingConfig,
@@ -36,6 +41,9 @@ pub struct AppConfig {
     /// Metrics configuration
     #[serde(default)]
     pub metrics: MetricsBuilder,
+    /// Probes and maintenance mode configuration
+    #[serde(default)]
+    pub probes: ProbeConfig,
     /// Common OpenTelemetry configuration
     #[serde(default)]
     pub otel: OpenTelemetryConfig,
