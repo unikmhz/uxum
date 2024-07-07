@@ -8,20 +8,20 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
 use tracing::trace;
 
-///
+/// Runtime scheduler to use
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RuntimeType {
-    ///
+    /// Use current-thread scheduler
     CurrentThread,
-    ///
+    /// Use multi-thread scheduler
     #[default]
     MultiThread,
 }
 
 impl RuntimeType {
-    ///
+    /// Create new runtime builder with an appropriate scheduler type selected
     pub fn builder(&self) -> Builder {
         match self {
             Self::CurrentThread => Builder::new_current_thread(),
@@ -30,20 +30,20 @@ impl RuntimeType {
     }
 }
 
-///
+/// Tokio runtime configuration
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct RuntimeConfig {
     /// Type of runtime to use
     #[serde(default)]
     pub r#type: RuntimeType,
-    ///
+    /// Number of ticks after which the scheduler will poll for external events (timers, I/O, and so on).
     ///
     /// Measured in runtime scheduler ticks.
     /// Current Tokio default is 61.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_interval: Option<NonZeroU32>,
-    ///
+    /// Number of ticks after which the scheduler will poll the global task queue.
     ///
     /// Measured in runtime scheduler ticks.
     /// Current Tokio default is 31 for current-thread scheduler, and computed dynamically for
@@ -52,17 +52,17 @@ pub struct RuntimeConfig {
     /// [Tokio documentation]: tokio::runtime#multi-threaded-runtime-behavior-at-the-time-of-writing
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub global_unique_interval: Option<NonZeroU32>,
-    ///
+    /// Limit for additional threads spawned by the Runtime.
     ///
     /// Current Tokio default is 512.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_blocking_threads: Option<NonZeroUsize>,
-    ///
+    /// Enables the I/O driver and configures the max number of events to be processed per tick.
     ///
     /// Current Tokio default is 1024.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_io_events_per_tick: Option<NonZeroUsize>,
-    ///
+    /// Sets a custom timeout for a thread in the blocking pool.
     ///
     /// Current Tokio default is 10 seconds.
     #[serde(
@@ -71,15 +71,21 @@ pub struct RuntimeConfig {
         with = "humantime_serde"
     )]
     pub thread_keep_alive: Option<Duration>,
+    /// Prefix for thread names created by the runtime.
     ///
+    /// Internal sequential thread ID will be appended to each thread name.
+    /// Default is "uxum-worker".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_name: Option<String>,
+    /// Sets the stack size (in bytes) for worker threads.
     ///
-    ///
+    /// The actual stack size may be greater than this value if the platform specifies minimal
+    /// stack size.
     /// Measured in bytes.
     /// Current Tokio default is 2 MiB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_stack_size: Option<NonZeroUsize>,
+    /// Number of worker threads the runtime will use.
     ///
     /// Default is number of cores available at runtime.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,7 +93,7 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    ///
+    /// Create and configure new runtime builder
     pub fn builder(&self) -> Builder {
         let mut rb = self.r#type.builder();
         rb.enable_all();
@@ -124,11 +130,10 @@ impl RuntimeConfig {
         .on_thread_stop(|| {
             trace!(thread_id = gettid::gettid(), "stopping runtime thread");
         });
-        // TODO: on_thread_stop
         rb
     }
 
-    ///
+    /// Create and configure new runtime
     pub fn build(&self) -> Result<Runtime, std::io::Error> {
         self.builder().build()
     }
