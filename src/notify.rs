@@ -84,12 +84,12 @@ impl ServiceNotifier {
             match interval_time {
                 None => futures::pending!(),
                 Some(int) => {
-                    let mut interval = tokio::time::interval(int);
-                    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+                    let mut timer = tokio::time::interval(int);
+                    timer.set_missed_tick_behavior(MissedTickBehavior::Delay);
                     loop {
                         // TODO: cancellation token?
                         tokio::select! {
-                            _ = interval.tick() => match daemon::notify(false, &[NotifyState::Watchdog]) {
+                            _ = timer.tick() => match daemon::notify(false, &[NotifyState::Watchdog]) {
                                 Ok(true) => trace!("supervisor notified: watchdog tick"),
                                 Ok(false) => warn!("supervisor unavailable: watchdog tick"),
                                 Err(err) => error!(%err, "watchdog notification error"),

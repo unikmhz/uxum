@@ -21,10 +21,12 @@ use tracing::{debug_span, info};
 use crate::{
     auth::{AuthExtractor, AuthLayer, AuthProvider},
     builder::app::error_handler,
+    watchdog::{Watchdog, WatchdogConfig},
 };
 
 /// Configuration for service probes and management mode API
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct ProbeConfig {
     /// URL path for readiness probe
     #[serde(default = "ProbeConfig::default_readiness_path")]
@@ -38,6 +40,9 @@ pub struct ProbeConfig {
     /// URL path to disable maintenance mode
     #[serde(default = "ProbeConfig::default_maintenance_off_path")]
     maintenance_off_path: String,
+    /// Runtime watchdog configuration
+    #[serde(default)]
+    watchdog: Option<WatchdogConfig>,
 }
 
 impl Default for ProbeConfig {
@@ -47,6 +52,7 @@ impl Default for ProbeConfig {
             liveness_path: Self::default_liveness_path(),
             maintenance_on_path: Self::default_maintenance_on_path(),
             maintenance_off_path: Self::default_maintenance_off_path(),
+            watchdog: Some(WatchdogConfig::default()),
         }
     }
 }
@@ -94,6 +100,7 @@ impl ProbeConfig {
     {
         // TODO: add toggle for probes, and possibly for maintenance mode
         let _span = debug_span!("build_probes").entered();
+        let state = ProbeState::new(self.watchdog.as_ref());
         Router::new()
             .route(&self.readiness_path, routing::get(readiness_probe))
             .route(&self.liveness_path, routing::get(liveness_probe))
@@ -111,10 +118,11 @@ impl ProbeConfig {
                             )),
                     ),
             )
-            .with_state(ProbeState::default())
+            .with_state(state)
     }
 }
 
+/// Shared state for probes and maintenance mode API
 #[derive(Clone)]
 pub struct ProbeState(Arc<ProbeStateInner>);
 
@@ -130,12 +138,28 @@ impl Default for ProbeState {
     fn default() -> Self {
         Self(Arc::new(ProbeStateInner {
             in_maintenance: AtomicBool::new(true),
+            watchdog: None,
         }))
     }
 }
 
+impl ProbeState {
+    pub fn new(watchdog: Option<&WatchdogConfig>) -> Self {
+        Self(Arc::new(ProbeStateInner {
+            in_maintenance: AtomicBool::new(true),
+            watchdog: watchdog.map(|wc| {
+                let mut watchdog: Watchdog = wc.clone().into();
+                watchdog.start();
+                watchdog
+            }),
+        }))
+    }
+}
+
+/// Inner struct for probes/maintenance shared state
 pub struct ProbeStateInner {
     in_maintenance: AtomicBool,
+    watchdog: Option<Watchdog>,
 }
 
 /// Readiness probe handler
@@ -151,9 +175,14 @@ async fn readiness_probe(state: State<ProbeState>) -> impl IntoResponse {
 /// Liveness probe handler
 ///
 /// For use in k8s-like deployments.
-async fn liveness_probe(_state: State<ProbeState>) -> impl IntoResponse {
-    // FIXME: write this
-    StatusCode::OK
+async fn liveness_probe(state: State<ProbeState>) -> impl IntoResponse {
+    match &state.watchdog {
+        Some(watchdog) => match watchdog.is_alive() {
+            true => StatusCode::OK,
+            false => StatusCode::SERVICE_UNAVAILABLE,
+        },
+        None => StatusCode::OK,
+    }
 }
 
 /// Enable maintenance mode

@@ -22,10 +22,10 @@ pub enum HandleError {
     /// Error while setting up trace collection and propagation
     #[error(transparent)]
     Tracing(#[from] crate::tracing::TracingError),
-    ///
+    /// Error while building HTTP server
     #[error(transparent)]
     ServerBuilder(#[from] crate::builder::server::ServerBuilderError),
-    ///
+    /// Error running HTTP server
     #[error("Server error: {0}")]
     Server(IoError),
 }
@@ -40,13 +40,13 @@ pub struct Handle {
     buf_guards: Vec<WorkerGuard>,
     /// Tracing pipeline
     tracer: Option<Tracer>,
-    ///
+    /// Internal [`axum_server`] control handle
     handle: AxumHandle,
     /// Service supervisor notification
     notify: ServiceNotifier,
-    ///
+    /// Service supervisor notification task
     service_watchdog: Option<JoinHandle<()>>,
-    ///
+    /// UNIX signal handler task
     signal_handler: Option<JoinHandle<()>>,
 }
 
@@ -71,7 +71,6 @@ impl Handle {
         if self.service_watchdog.is_none() {
             self.service_watchdog = Some(tokio::spawn(self.notify.watchdog_task()));
         }
-        // TODO: start watchdog task
         // TODO: spawn server as distinct task and return Ok(())
         server
             .build()

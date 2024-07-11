@@ -38,6 +38,7 @@ pub mod state;
 mod telemetry;
 mod tracing;
 mod util;
+mod watchdog;
 
 pub use uxum_macros::handler;
 
@@ -70,4 +71,5 @@ pub use self::{
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
     util::ResponseExtension,
+    watchdog::WatchdogConfig,
 };

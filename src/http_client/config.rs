@@ -137,7 +137,7 @@ impl HttpClientConfig {
     #[must_use]
     #[inline]
     fn default_pool_max_idle_per_host() -> usize {
-        std::usize::MAX
+        usize::MAX
     }
 
     /// Build a value for `User-Agent` header
@@ -255,7 +255,9 @@ pub struct HttpClientTcpConfig {
     /// Default is `true`.
     #[serde(default = "crate::util::default_true")]
     pub nodelay: bool,
+    /// Set `SO_KEEPALIVE` option for all sockets with the supplied duration
     ///
+    /// If `None`, the option will not be set.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -312,26 +314,38 @@ pub struct HttpClientHttp2Config {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HttpClientHttp2KeepaliveConfig {
+    /// Sets an interval for HTTP2 Ping frames should be sent to keep a connection alive
     ///
+    /// Pass `None` to disable HTTP2 keep-alive.
+    /// Default is currently disabled.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
     pub interval: Option<Duration>,
+    /// Sets a timeout for receiving an acknowledgement of the keep-alive ping
     ///
+    /// If the ping is not acknowledged within the timeout, the connection will be closed.
+    /// Does nothing if [`Self::interval`] is disabled.
+    /// Default is currently disabled.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
     pub timeout: Option<Duration>,
+    /// Sets whether HTTP2 keep-alive should apply while the connection is idle
     ///
+    /// If disabled, keep-alive pings are only sent while there are open request/responses streams.
+    /// If enabled, pings are also sent when no streams are active.
+    /// Does nothing if [`Self::interval`] is disabled.
+    /// Default is `false`.
     #[serde(default)]
     pub while_idle: bool,
 }
 
-///
+/// HTTP redirect policy
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
