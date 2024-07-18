@@ -24,7 +24,7 @@ use tower_http::{
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit, ServiceBuilderExt,
 };
-use tracing::{debug, debug_span, info, info_span};
+use tracing::{debug, debug_span, info, info_span, warn};
 
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
@@ -434,21 +434,36 @@ where
         let name = handler.name();
         let _span = info_span!("handler_service", name, method = ?handler.method()).entered();
         let service_cfg = self.config.handlers.get(name);
+        // TODO: default catch-all CORS config?
+        let cors_layer =
+            service_cfg.and_then(|cfg| match cfg.cors.as_ref().map(|c| c.make_layer()) {
+                None => None,
+                Some(Ok(layer)) => Some(layer.allow_methods(handler.method())),
+                Some(Err(err)) => {
+                    warn!(error = %err, "Unable to build CORS layer");
+                    None
+                }
+            });
         ServiceBuilder::new()
             .boxed_clone()
             .layer(ResponseExtension(HandlerName::new(name)))
+            // Authentication layer
             .option_layer(match handler.no_auth() {
                 true => None,
                 false => Some(self.auth_layer(handler.permissions())),
             })
+            // Buffer layer
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.buffer.as_ref())
                     .map(|lcfg| lcfg.make_layer()),
             )
+            // Rate limiting layer
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
                     .map(|rcfg| rcfg.make_layer()),
             )
+            // CORS layer
+            .option_layer(cors_layer)
             // TODO: throttle
             .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
             .service(handler.service())

@@ -111,7 +111,7 @@ impl HandlerRateLimitConfig {
         Duration::from_secs(1) / self.rps.get()
     }
 
-    /// Create layer for use in tower services
+    /// Create layer for use in [`tower`] services
     pub fn make_layer<S, T>(&self) -> RateLimitLayer<S, T> {
         self.into()
     }

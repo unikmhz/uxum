@@ -9,7 +9,8 @@ use crate::{
     auth::AuthConfig,
     http_client::HttpClientConfig,
     layers::{
-        buffer::HandlerBufferConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutConfig,
+        buffer::HandlerBufferConfig, cors::CorsConfig, rate::HandlerRateLimitConfig,
+        timeout::HandlerTimeoutConfig,
     },
     logging::LoggingConfig,
     metrics::MetricsBuilder,
@@ -99,6 +100,9 @@ pub struct HandlerConfig {
     /// Request buffering configuration
     #[serde(default)]
     pub buffer: Option<HandlerBufferConfig>,
+    /// CORS configuration
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cors: Option<CorsConfig>,
     /// Rate limiter configuration
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<HandlerRateLimitConfig>,

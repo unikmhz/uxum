@@ -29,6 +29,10 @@ handlers:
     disabled: false
     rate_limit:
       rps: 1
+  call_inner:
+    cors:
+      origins: any
+      max_age: 60s
 metrics:
   labels:
     env: example

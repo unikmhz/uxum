@@ -56,6 +56,7 @@ pub use self::{
     http_client::*,
     layers::{
         buffer::HandlerBufferConfig,
+        cors::CorsConfig,
         ext::{Deadline, HandlerName},
         rate::{HandlerRateLimitConfig, RateLimitError},
         request_id::CURRENT_REQUEST_ID,
