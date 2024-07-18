@@ -1,3 +1,4 @@
+mod cb;
 mod config;
 mod errors;
 mod middleware;

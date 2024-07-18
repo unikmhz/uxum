@@ -1,8 +1,9 @@
 use std::time::Instant;
 
 use http::{Extensions, HeaderValue};
+use recloser::AsyncRecloser;
 use reqwest::{Client, Request, Response};
-use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Middleware, Next, Result};
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware, Error, Middleware, Next, Result};
 use reqwest_tracing::{
     default_on_request_end, reqwest_otel_span, ReqwestOtelSpanBackend, TracingMiddleware,
 };
@@ -13,7 +14,7 @@ use crate::layers::{
     timeout::{CURRENT_DEADLINE, X_TIMEOUT},
 };
 
-/// Custom delegate to create OpenTelemetry spans for distributed tracing
+/// Custom delegate to create OpenTelemetry spans for distributed tracing.
 struct ReqwestSpanBackend;
 
 impl ReqwestOtelSpanBackend for ReqwestSpanBackend {
@@ -31,7 +32,7 @@ impl ReqwestOtelSpanBackend for ReqwestSpanBackend {
     }
 }
 
-/// Middleware to propagate useful headers to chained requests
+/// Middleware to propagate useful headers to chained requests.
 struct HeaderPropagationMiddleware;
 
 #[async_trait::async_trait]
@@ -65,10 +66,37 @@ impl Middleware for HeaderPropagationMiddleware {
     }
 }
 
-/// Wrap [`reqwest::Client`] with our custom middleware stack
-pub(crate) fn wrap_client(client: Client) -> ClientWithMiddleware {
-    ClientBuilder::new(client)
+/// Circuit breaker middleware.
+struct CircuitBreakerMiddleware(AsyncRecloser);
+
+/// Circuit breaker rejection error.
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("Request rejected, circuit breaker is open")]
+struct CircuitBreakerRejection;
+
+#[async_trait::async_trait]
+impl Middleware for CircuitBreakerMiddleware {
+    async fn handle(
+        &self,
+        req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> Result<Response> {
+        match self.0.call(next.run(req, extensions)).await {
+            Ok(resp) => Ok(resp),
+            Err(recloser::Error::Rejected) => Err(Error::middleware(CircuitBreakerRejection)),
+            Err(recloser::Error::Inner(err)) => Err(err),
+        }
+    }
+}
+
+/// Wrap [`reqwest::Client`] with our custom middleware stack.
+pub(crate) fn wrap_client(client: Client, cb: Option<AsyncRecloser>) -> ClientWithMiddleware {
+    let mut builder = ClientBuilder::new(client)
         .with(HeaderPropagationMiddleware)
-        .with(TracingMiddleware::<ReqwestSpanBackend>::new())
-        .build()
+        .with(TracingMiddleware::<ReqwestSpanBackend>::new());
+    if let Some(cb) = cb {
+        builder = builder.with(CircuitBreakerMiddleware(cb));
+    }
+    builder.build()
 }

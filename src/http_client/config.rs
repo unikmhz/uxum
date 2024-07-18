@@ -8,7 +8,9 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::OpenOptions, io::AsyncReadExt};
 
-use crate::http_client::{errors::HttpClientError, middleware::wrap_client};
+use crate::http_client::{
+    cb::HttpClientCircuitBreakerConfig, errors::HttpClientError, middleware::wrap_client,
+};
 
 /// HTTP client configuration
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -52,6 +54,7 @@ pub struct HttpClientConfig {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
+        alias = "timeout",
         with = "humantime_serde"
     )]
     pub request_timeout: Option<Duration>,
@@ -63,6 +66,7 @@ pub struct HttpClientConfig {
     #[serde(
         default = "HttpClientConfig::default_pool_idle_timeout",
         skip_serializing_if = "Option::is_none",
+        alias = "idle_timeout",
         with = "humantime_serde"
     )]
     pub pool_idle_timeout: Option<Duration>,
@@ -78,7 +82,7 @@ pub struct HttpClientConfig {
     #[serde(default)]
     pub verbose: bool,
     /// Sets the default headers for every request
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty", alias = "headers")]
     pub extra_headers: BTreeMap<String, String>,
     /// Set a redirect policy for this client
     ///
@@ -88,7 +92,7 @@ pub struct HttpClientConfig {
     /// Enable or disable automatic setting of the `Referer` header
     ///
     /// Default is `true`.
-    #[serde(default = "crate::util::default_true")]
+    #[serde(default = "crate::util::default_true", alias = "referrer")]
     pub referer: bool,
     /// TCP-level configuration
     #[serde(default)]
@@ -96,6 +100,9 @@ pub struct HttpClientConfig {
     /// HTTP/2 protocol configuration
     #[serde(default)]
     pub http2: HttpClientHttp2Config,
+    /// Circuit breaker configuration
+    #[serde(default, alias = "breaker", alias = "circuit_breaker")]
+    pub cb: Option<HttpClientCircuitBreakerConfig>,
     /// Short application name
     #[serde(skip)]
     app_name: Option<String>,
@@ -119,6 +126,7 @@ impl Default for HttpClientConfig {
             referer: true,
             tcp: HttpClientTcpConfig::default(),
             http2: HttpClientHttp2Config::default(),
+            cb: None,
             app_name: None,
             app_version: None,
         }
@@ -237,7 +245,10 @@ impl HttpClientConfig {
         &self,
         builder: ClientBuilder,
     ) -> Result<ClientWithMiddleware, HttpClientError> {
-        Ok(wrap_client(builder.build()?))
+        Ok(wrap_client(
+            builder.build()?,
+            self.cb.as_ref().map(|cb| cb.make_circuit_breaker()),
+        ))
     }
 
     /// Build and return configured [`reqwest`] HTTP client

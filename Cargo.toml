@@ -53,6 +53,7 @@ opentelemetry-semantic-conventions = "0.14"
 password-hash = {version = "0.5", features = ["alloc"]}
 problemdetails = {version = "0.4", features = ["axum"]}
 prometheus = "0.13"
+recloser = "1.1"
 reqwest = {version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls-native-roots"]}
 reqwest-middleware = {version = "0.3", features = ["multipart", "json"]}
 reqwest-tracing = {version = "0.5", features = ["opentelemetry_0_22"]}
