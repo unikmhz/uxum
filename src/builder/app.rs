@@ -30,7 +30,7 @@ use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::{
         AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
-        NoOpAuthExtractor, NoOpAuthProvider,
+        HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
     http_client::{HttpClientConfig, HttpClientError},
@@ -39,49 +39,50 @@ use crate::{
         timeout::TimeoutError,
     },
     logging::span::CustomMakeSpan,
-    metrics::{MetricsBuilder, MetricsError},
+    metrics::{MetricsBuilder, MetricsError, MetricsState},
     state,
     tracing::TracingError,
     util::ResponseExtension,
-    HeaderAuthExtractor, MetricsState,
 };
 
-/// Error type used in app builder
+/// Error type used in app builder.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum AppBuilderError {
-    /// API doc error
+    /// API doc error.
     #[error(transparent)]
     ApiDoc(#[from] ApiDocError),
-    /// Metrics error
+    /// Metrics error.
     #[error(transparent)]
     Metrics(#[from] MetricsError),
-    /// Tracing error
+    /// Tracing error.
     #[error(transparent)]
     Tracing(#[from] TracingError),
-    /// Duplicate handler name
+    /// Duplicate handler name.
     #[error("Duplicate handler name: {0}")]
     DuplicateHandlerName(&'static str),
-    /// HTTP client error
+    /// HTTP client error.
     #[error("HTTP client error: {0}")]
     HttpClient(#[from] HttpClientError),
-    /// HTTP client is absent from configuration
+    /// HTTP client is absent from configuration.
     #[error("HTTP client is absent from configuration: {0}")]
     HttpClientAbsent(String),
 }
 
-/// Builder for application routes
+/// Builder for application routes.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
-    /// Authentication and authorization back-end
+    /// Authentication and authorization back-end.
     auth_provider: AuthProv,
-    /// Authentication front-end
+    /// Authentication front-end.
     ///
     /// Handles protocol- and schema-specific message exchange.
     auth_extractor: AuthExt,
-    /// Application configuration
+    /// Application configuration.
     config: AppConfig,
+    /// Metrics container object.
+    metrics: Option<MetricsState>,
 }
 
 impl From<AppConfig> for AppBuilder {
@@ -90,6 +91,7 @@ impl From<AppConfig> for AppBuilder {
             auth_provider: NoOpAuthProvider,
             auth_extractor: NoOpAuthExtractor,
             config: value,
+            metrics: None,
         }
     }
 }
@@ -100,18 +102,19 @@ impl Default for AppBuilder<NoOpAuthProvider, NoOpAuthExtractor> {
             auth_provider: NoOpAuthProvider,
             auth_extractor: NoOpAuthExtractor,
             config: AppConfig::default(),
+            metrics: None,
         }
     }
 }
 
 impl AppBuilder {
-    /// Create new builder with default configuration
+    /// Create new builder with default configuration.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Create new builder with provided configuration
+    /// Create new builder with provided configuration.
     #[must_use]
     pub fn from_config(cfg: &AppConfig) -> Self {
         cfg.clone().into()
@@ -125,27 +128,29 @@ where
     AuthExt::User: Borrow<AuthProv::User>,
     AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
 {
-    /// Enable HTTP Basic authentication using built-in user and role databases
+    /// Enable HTTP Basic authentication using built-in user and role databases.
     #[must_use]
     pub fn with_basic_auth(self) -> AppBuilder<ConfigAuthProvider, BasicAuthExtractor> {
         AppBuilder {
             auth_provider: self.config.auth.clone().into(),
             auth_extractor: BasicAuthExtractor::default(),
             config: self.config,
+            metrics: self.metrics,
         }
     }
 
-    /// Enable header authentication using built-in user and role databases
+    /// Enable header authentication using built-in user and role databases.
     #[must_use]
     pub fn with_header_auth(self) -> AppBuilder<ConfigAuthProvider, HeaderAuthExtractor> {
         AppBuilder {
             auth_provider: self.config.auth.clone().into(),
             auth_extractor: HeaderAuthExtractor::default(),
             config: self.config,
+            metrics: self.metrics,
         }
     }
 
-    /// Set custom authentication extractor (front-end)
+    /// Set custom authentication extractor (front-end).
     #[must_use]
     pub fn with_auth_extractor<E: AuthExtractor>(
         self,
@@ -155,20 +160,22 @@ where
             auth_provider: self.auth_provider,
             auth_extractor,
             config: self.config,
+            metrics: self.metrics,
         }
     }
 
-    /// Set custom authentication provider (back-end)
+    /// Set custom authentication provider (back-end).
     #[must_use]
     pub fn with_auth_provider<P: AuthProvider>(self, auth_provider: P) -> AppBuilder<P, AuthExt> {
         AppBuilder {
             auth_provider,
             auth_extractor: self.auth_extractor,
             config: self.config,
+            metrics: self.metrics,
         }
     }
 
-    /// Create [`tower`] auth layer for use in a specific handler
+    /// Create [`tower`] auth layer for use in a specific handler.
     #[must_use]
     pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
         AuthLayer::new(
@@ -178,7 +185,7 @@ where
         )
     }
 
-    /// Set used API doc builder
+    /// Set used API doc builder.
     ///
     /// The builder must be configured prior to passing it to this method. This enables OpenAPI
     /// spec generation, and an (optional) RapiDoc UI.
@@ -189,7 +196,7 @@ where
         self
     }
 
-    /// Add state to be used in handlers using [`axum::extract::State`]
+    /// Add state to be used in handlers using [`axum::extract::State`].
     pub fn with_state<S>(&mut self, state: S) -> &mut Self
     where
         S: Clone + Send + 'static,
@@ -199,7 +206,7 @@ where
         self
     }
 
-    /// Set used metrics builder
+    /// Set used metrics builder.
     ///
     /// The builder must be configured prior to passing it to this method. This enables gathering
     /// of handler execution metrics, as well as an exporter HTTP endpoint.
@@ -210,7 +217,7 @@ where
         self
     }
 
-    /// Configure metrics builder
+    /// Configure metrics builder.
     ///
     /// This gets the builder from configuration, and then passes it to the provided callback
     /// function for additional customization.
@@ -223,7 +230,7 @@ where
         self
     }
 
-    /// Configure API doc builder
+    /// Configure API doc builder.
     ///
     /// This gets the builder from configuration, or creates a new default one if configuration
     /// wasn't provided. Next it passes the builder to the provided callback function for
@@ -235,7 +242,29 @@ where
         self.config.api_doc = Some(modifier(self.config.api_doc.take().unwrap_or_default()));
     }
 
-    /// Build top-level Axum router
+    /// Get metrics state object.
+    ///
+    /// Creates a new state object on first call.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if metrics registry or provider could not be initialized.
+    pub fn metrics(&mut self) -> Result<&MetricsState, AppBuilderError> {
+        // TODO: export metrics state for application-defined metrics
+        // TODO: make metrics optional
+        match self.metrics {
+            Some(ref metrics) => Ok(metrics),
+            None => {
+                let otel_res = self.config.otel_resource();
+                let metrics = self.config.metrics.build_state(otel_res.clone())?;
+                self.metrics = Some(metrics);
+                // SAFETY: Some() is guaranteed, as we assigned it before
+                Ok(self.metrics.as_ref().unwrap())
+            }
+        }
+    }
+
+    /// Build top-level Axum router.
     ///
     /// # Errors
     ///
@@ -245,22 +274,20 @@ where
         let _build_span = debug_span!("build_app").entered();
         let mut rtr = Router::new();
 
-        // Build metrics subsystem
-        let otel_res = self.config.otel_resource();
-        // TODO: export metrics state for application-defined metrics
-        let metrics_state = self.config.metrics.build_state(otel_res.clone())?;
+        // Build metrics subsystem.
+        let metrics_state = self.metrics()?.clone();
         if self.config.metrics.is_enabled() {
             rtr = rtr.merge(metrics_state.build_router());
         }
 
-        // Add probes and management mode API
+        // Add probes and management mode API.
         rtr = rtr.merge(
             self.config
                 .probes
                 .build_router(self.auth_provider.clone(), self.auth_extractor.clone()),
         );
 
-        // A set to ensure uniqueness of handler names
+        // A set to ensure uniqueness of handler names.
         let mut handler_names = HashSet::new();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
         for handler in inventory::iter::<&dyn HandlerExt> {
@@ -276,14 +303,14 @@ where
             debug!("handler recorded");
         }
 
-        // Register handlers
+        // Register handlers.
         for (path, handlers) in grouped {
             if let Some(method_rtr) = self.register_path(path, handlers) {
                 rtr = rtr.route(path, method_rtr.handle_error(error_handler));
             }
         }
 
-        // Add RapiDoc and/or OpenAPI specification generator if enabled
+        // Add RapiDoc and/or OpenAPI specification generator if enabled.
         if let Some(ref mut api_doc) = self.config.api_doc {
             let disabled = self
                 .config
@@ -300,18 +327,19 @@ where
             rtr = rtr.merge(api_doc.build_router(auth)?);
         }
 
-        // Wrap router in global layers
+        // Wrap router in global layers.
         let final_rtr = self.wrap_global_layers(rtr, metrics_state);
         info!("finished building application");
         Ok(final_rtr)
     }
 
-    /// Build and return configured [`reqwest`] HTTP client with distributed tracing support
+    /// Build and return configured [`reqwest`] HTTP client with distributed tracing support.
     pub async fn http_client(
         &mut self,
         name: impl AsRef<str>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
-        match self.config.http_clients.get_mut(name.as_ref()) {
+        let metrics = self.metrics()?.client_metrics(name);
+        match self.config.http_clients.get_mut(metrics.name()) {
             Some(cfg) => {
                 if let Some(app_name) = &self.config.app_name {
                     cfg.with_app_name(app_name);
@@ -319,9 +347,11 @@ where
                 if let Some(app_version) = &self.config.app_version {
                     cfg.with_app_version(app_version);
                 }
-                cfg.to_client().await.map_err(Into::into)
+                cfg.to_client(Some(metrics)).await.map_err(Into::into)
             }
-            None => Err(AppBuilderError::HttpClientAbsent(name.as_ref().to_string())),
+            None => Err(AppBuilderError::HttpClientAbsent(
+                metrics.name().to_string(),
+            )),
         }
     }
 
@@ -331,7 +361,8 @@ where
         &mut self,
         name: impl AsRef<str>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
-        match self.http_client(name).await {
+        let metrics = self.metrics()?.client_metrics(name);
+        match self.http_client(metrics.name()).await {
             Ok(client) => Ok(client),
             Err(AppBuilderError::HttpClientAbsent(_)) => {
                 let mut cfg = HttpClientConfig::default();
@@ -341,15 +372,15 @@ where
                 if let Some(app_version) = &self.config.app_version {
                     cfg.with_app_version(app_version);
                 }
-                cfg.to_client().await.map_err(Into::into)
+                cfg.to_client(Some(metrics)).await.map_err(Into::into)
             }
             Err(err) => Err(err),
         }
     }
 
-    /// Wrap router in global [`tower`] layers
+    /// Wrap router in global [`tower`] layers.
     fn wrap_global_layers(&self, rtr: Router, metrics: MetricsState) -> Router {
-        // [`tower`] layers that are executed for any request
+        // [`tower`] layers that are executed for any request.
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
@@ -377,7 +408,7 @@ where
         rtr.layer(global_layers)
     }
 
-    /// Register all handlers for a given path in [`MethodRouter`]
+    /// Register all handlers for a given path in [`MethodRouter`].
     ///
     /// Returns [`None`] if all handlers for a path are disabled.
     #[must_use]
@@ -405,7 +436,7 @@ where
         path_has_handlers.then_some(method_rtr)
     }
 
-    /// Register a handler in [`MethodRouter`]
+    /// Register a handler in [`MethodRouter`].
     fn register_handler(
         &self,
         method_rtr: MethodRouter<(), BoxError>,
@@ -425,7 +456,7 @@ where
         }
     }
 
-    /// Convert a [`HandlerExt`] structure into a [`tower`] layered service
+    /// Convert a [`HandlerExt`] structure into a [`tower`] layered service.
     #[must_use]
     fn handler_service(
         &self,
@@ -447,29 +478,29 @@ where
         ServiceBuilder::new()
             .boxed_clone()
             .layer(ResponseExtension(HandlerName::new(name)))
-            // Authentication layer
+            // Authentication layer.
             .option_layer(match handler.no_auth() {
                 true => None,
                 false => Some(self.auth_layer(handler.permissions())),
             })
-            // Buffer layer
+            // Buffer layer.
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.buffer.as_ref())
                     .map(|lcfg| lcfg.make_layer()),
             )
-            // Rate limiting layer
+            // Rate limiting layer.
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
                     .map(|rcfg| rcfg.make_layer()),
             )
-            // CORS layer
+            // CORS layer.
             .option_layer(cors_layer)
-            // TODO: throttle
+            // TODO: throttle.
             .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
             .service(handler.service())
     }
 
-    /// Generate a value to be used in HTTP Server header
+    /// Generate a value to be used in HTTP Server header.
     #[must_use]
     fn server_header(&self) -> Option<HeaderValue> {
         const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -488,7 +519,7 @@ where
 }
 
 impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor> {
-    /// Set realm used for HTTP authentication challenge
+    /// Set realm used for HTTP authentication challenge.
     ///
     /// Default value is "auth".
     #[must_use]
@@ -499,7 +530,7 @@ impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor> {
 }
 
 impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
-    /// Set user ID header name for use in authentication
+    /// Set user ID header name for use in authentication.
     ///
     /// Default value is "X-API-Name".
     #[must_use]
@@ -508,7 +539,7 @@ impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
         self
     }
 
-    /// Set authenticating token header name for use in authentication
+    /// Set authenticating token header name for use in authentication.
     ///
     /// Default value is "X-API-Key".
     #[must_use]
@@ -532,30 +563,30 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
         .into_response()
 }
 
-/// Application API method handler object trait
+/// Application API method handler object trait.
 ///
 /// Using [`crate::handler`] macro will generate a unique unit struct type implementing this trait,
 /// and register it using [`inventory::submit!`].
 pub trait HandlerExt: Sync {
-    /// Get handler name
+    /// Get handler name.
     ///
     /// Must be unique, otherwise app initialization will panic.
     fn name(&self) -> &'static str;
-    /// Get URL path to run this handler
+    /// Get URL path to run this handler.
     ///
     /// Uses [`axum::extract::Path`] format for embedded path parameters.
     fn path(&self) -> &'static str;
-    /// Get URL path to run this handler, reformatted for OpenAPI specification
+    /// Get URL path to run this handler, reformatted for OpenAPI specification.
     fn spec_path(&self) -> &'static str;
-    /// Get HTTP method to run this handler
+    /// Get HTTP method to run this handler.
     fn method(&self) -> http::Method;
-    /// Get required permissions, if any
+    /// Get required permissions, if any.
     fn permissions(&self) -> &'static [&'static str];
-    /// Skip authentication for this handler
+    /// Skip authentication for this handler.
     fn no_auth(&self) -> bool;
-    /// Return handler function packaged as a [`tower`] service
+    /// Return handler function packaged as a [`tower`] service.
     fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible>;
-    /// Generate OpenAPI specification object for handler
+    /// Generate OpenAPI specification object for handler.
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 

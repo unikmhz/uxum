@@ -2,7 +2,9 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     future::Future,
+    ops::Deref,
     pin::Pin,
+    sync::Arc,
     task::{ready, Context, Poll},
     time::Instant,
 };
@@ -55,6 +57,7 @@ impl IntoResponse for MetricsError {
 
 /// Configuration and builder for metrics subsystem
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct MetricsBuilder {
     /// Whether HTTP metrics gathering is enabled
     #[serde(default = "crate::util::default_true")]
@@ -266,13 +269,15 @@ impl MetricsBuilder {
         let meter = provider.meter("axum-app");
 
         // TODO: try_init() and handle errors
+
+        // HTTP server metrics
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
             .with_unit(Unit::new("s"))
             .with_description("The HTTP request latencies in seconds.")
             .init();
         let requests_total = meter
-            .u64_counter("requests")
+            .u64_counter("http.server.requests")
             .with_description(
                 "How many HTTP requests processed, partitioned by status code and HTTP method.",
             )
@@ -291,60 +296,134 @@ impl MetricsBuilder {
             .with_unit(Unit::new("By"))
             .with_description("The HTTP reponse body sizes in bytes.")
             .init();
+        let http_server = HttpServerMetrics {
+            request_duration,
+            requests_total,
+            requests_active,
+            request_body_size,
+            response_body_size,
+        };
+
+        // HTTP client metrics
+        let request_duration = meter
+            .f64_histogram("http.client.request.duration")
+            .with_unit(Unit::new("s"))
+            .with_description("The HTTP request latencies in seconds.")
+            .init();
+        let requests_total = meter
+            .u64_counter("http.client.requests")
+            .with_description(
+                "How many HTTP requests processed, partitioned by status code and HTTP method.",
+            )
+            .init();
+        let requests_active = meter
+            .i64_up_down_counter("http.client.active_requests")
+            .with_description("The number of active HTTP requests.")
+            .init();
+        let request_body_size = meter
+            .u64_histogram("http.client.request.body.size")
+            .with_unit(Unit::new("By"))
+            .with_description("The HTTP request body sizes in bytes.")
+            .init();
+        let response_body_size = meter
+            .u64_histogram("http.client.response.body.size")
+            .with_unit(Unit::new("By"))
+            .with_description("The HTTP reponse body sizes in bytes.")
+            .init();
+        let http_client = HttpClientMetricsInner {
+            request_duration,
+            requests_total,
+            requests_active,
+            request_body_size,
+            response_body_size,
+        };
+        let http_client = HttpClientMetrics(Arc::new(http_client));
+
+        // Tokio runtime metrics
         let num_workers = meter
             .u64_observable_gauge("runtime.workers")
             .with_description("The number of worker threads used by the runtime.")
             .init();
+        let runtime = RuntimeMetrics { num_workers };
 
         Ok(MetricsState {
             registry,
-            http_server: HttpServerMetrics {
-                request_duration,
-                requests_total,
-                requests_active,
-                request_body_size,
-                response_body_size,
-            },
-            runtime: RuntimeMetrics { num_workers },
+            http_server,
+            http_client,
+            runtime,
             metrics_path: self.metrics_path.clone(),
         })
     }
 }
 
-/// Metrics state [`tower`] layer
-#[derive(Clone)]
+/// Metrics state [`tower`] layer.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct MetricsState {
-    /// Prometheus registry
+    /// Prometheus registry.
     ///
     /// Holds all configured metrics and their collected values.
     registry: Registry,
-    /// HTTP server metrics
+    /// HTTP server metrics.
     http_server: HttpServerMetrics,
-    /// Tokio runtime metrics
+    /// HTTP client metrics.
+    http_client: HttpClientMetrics,
+    /// Tokio runtime metrics.
     runtime: RuntimeMetrics,
-    /// URL path for metrics prometheus exporter
+    /// URL path for metrics prometheus exporter.
     metrics_path: String,
 }
 
-/// Container for HTTP server metrics
-#[derive(Clone)]
+/// Container for HTTP server metrics.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub(crate) struct HttpServerMetrics {
-    /// Distribution of request handling durations
+    /// Distribution of request handling durations.
     request_duration: Histogram<f64>,
-    /// Lifetime counter of received requests
+    /// Lifetime counter of received requests.
     requests_total: Counter<u64>,
-    /// Currently active requests
+    /// Currently active requests.
     requests_active: UpDownCounter<i64>,
-    /// Distribution of request body sizes
+    /// Distribution of request body sizes.
     request_body_size: Histogram<u64>,
-    /// Distribution of response body sizes
+    /// Distribution of response body sizes.
     response_body_size: Histogram<u64>,
 }
 
-/// Container for Tokio runtime metrics
-#[derive(Clone)]
+/// Shared container for HTTP client metrics
+#[derive(Clone, Debug)]
+#[repr(transparent)]
+pub struct HttpClientMetrics(Arc<HttpClientMetricsInner>);
+
+impl Deref for HttpClientMetrics {
+    type Target = HttpClientMetricsInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Inner container for HTTP client metrics.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct HttpClientMetricsInner {
+    /// Distribution of request handling durations.
+    pub request_duration: Histogram<f64>,
+    /// Lifetime counter of received requests.
+    pub requests_total: Counter<u64>,
+    /// Currently active requests.
+    pub requests_active: UpDownCounter<i64>,
+    /// Distribution of request body sizes.
+    pub request_body_size: Histogram<u64>,
+    /// Distribution of response body sizes.
+    pub response_body_size: Histogram<u64>,
+}
+
+/// Container for Tokio runtime metrics.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
 pub(crate) struct RuntimeMetrics {
-    /// Number of workers inside the runtime
+    /// Number of workers inside the runtime.
     num_workers: ObservableGauge<u64>,
 }
 
@@ -360,21 +439,55 @@ impl<S> Layer<S> for MetricsState {
 }
 
 impl MetricsState {
-    /// Build Axum router containing all metrics methods
+    /// Build Axum router containing all metrics methods.
     pub fn build_router(&self) -> Router {
         let _span = debug_span!("build_metrics_router").entered();
         Router::new()
             .route(&self.metrics_path, routing::get(get_metrics))
             .with_state(self.clone())
     }
+
+    /// Get HTTP client metrics state object.
+    #[must_use]
+    pub fn client_metrics(&self, name: impl AsRef<str>) -> ClientMetricsState {
+        ClientMetricsState {
+            name: name.as_ref().to_string(),
+            metrics: self.http_client.clone(),
+        }
+    }
 }
 
-/// Metrics state [`tower`] service
+/// HTTP client metrics state object.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct ClientMetricsState {
+    /// Client name label.
+    name: String,
+    /// Metrics container.
+    metrics: HttpClientMetrics,
+}
+
+impl ClientMetricsState {
+    /// Get client name label.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Get metrics container.
+    #[must_use]
+    pub fn metrics(&self) -> &HttpClientMetrics {
+        &self.metrics
+    }
+}
+
+/// Metrics state [`tower`] service.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct HttpMetrics<S> {
-    /// Shared state for all metered requests
+    /// Shared state for all metered requests.
     state: MetricsState,
-    /// Inner service
+    /// Inner service.
     inner: S,
 }
 
@@ -401,7 +514,7 @@ where
             None => String::new(),
         };
         let path = ext.get::<MatchedPath>().cloned();
-        let request_size = req.size_hint().upper().unwrap_or(0);
+        let request_size = req.size_hint().upper().unwrap_or_default();
         self.state.http_server.requests_active.add(
             1,
             &[
@@ -423,21 +536,22 @@ where
 
 /// Response future for [`HttpMetrics`] middleware
 #[pin_project]
+#[non_exhaustive]
 pub struct HttpMetricsFuture<F> {
-    /// Inner future
+    /// Inner future.
     #[pin]
     inner: F,
-    /// Shared state for all metered requests
+    /// Shared state for all metered requests.
     state: MetricsState,
-    /// Request processing beginning timestamp
+    /// Request processing beginning timestamp.
     start: Instant,
-    /// HTTP request method
+    /// HTTP request method.
     method: Method,
-    /// HTTP URI scheme
+    /// HTTP URI scheme.
     scheme: String,
-    /// Matched [`axum`] route
+    /// Matched [`axum`] route.
     path: Option<MatchedPath>,
-    /// HTTP request size, in bytes
+    /// HTTP request size, in bytes.
     request_size: u64,
 }
 

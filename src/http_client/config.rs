@@ -8,15 +8,18 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
 use tokio::{fs::OpenOptions, io::AsyncReadExt};
 
-use crate::http_client::{
-    cb::HttpClientCircuitBreakerConfig, errors::HttpClientError, middleware::wrap_client,
+use crate::{
+    http_client::{
+        cb::HttpClientCircuitBreakerConfig, errors::HttpClientError, middleware::wrap_client,
+    },
+    metrics::ClientMetricsState,
 };
 
-/// HTTP client configuration
+/// HTTP client configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HttpClientConfig {
-    /// Path to PEM-formatted file containing a private key and at least one client certificate
+    /// Path to PEM-formatted file containing a private key and at least one client certificate.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -24,7 +27,7 @@ pub struct HttpClientConfig {
         alias = "identity"
     )]
     pub client_cert: Option<Box<Path>>,
-    /// Set a timeout for only the connect phase of a client
+    /// Set a timeout for only the connect phase of a client.
     ///
     /// Default is `None`.
     #[serde(
@@ -33,7 +36,7 @@ pub struct HttpClientConfig {
         with = "humantime_serde"
     )]
     pub connect_timeout: Option<Duration>,
-    /// Enables a read timeout
+    /// Enables a read timeout.
     ///
     /// The timeout applies to each read operation, and resets after a successful read.
     /// This is more appropriate for detecting stalled connections when the size isn’t known beforehand.
@@ -45,7 +48,7 @@ pub struct HttpClientConfig {
         with = "humantime_serde"
     )]
     pub read_timeout: Option<Duration>,
-    /// Enables a total request timeout
+    /// Enables a total request timeout.
     ///
     /// The timeout is applied from when the request starts connecting until the response body has
     /// finished. Also considered a total deadline.
@@ -58,7 +61,7 @@ pub struct HttpClientConfig {
         with = "humantime_serde"
     )]
     pub request_timeout: Option<Duration>,
-    /// Set an optional timeout for idle sockets being kept-alive
+    /// Set an optional timeout for idle sockets being kept-alive.
     ///
     /// Set to `None` to disable timeout.
     ///
@@ -70,10 +73,10 @@ pub struct HttpClientConfig {
         with = "humantime_serde"
     )]
     pub pool_idle_timeout: Option<Duration>,
-    /// Sets the maximum idle connection per host allowed in the pool
+    /// Sets the maximum idle connection per host allowed in the pool.
     #[serde(default = "HttpClientConfig::default_pool_max_idle_per_host")]
     pub pool_max_idle_per_host: usize,
-    /// Set whether connections should emit verbose logs
+    /// Set whether connections should emit verbose logs.
     ///
     /// Enabling this option will emit [`log`] messages at the `TRACE` level for read and write
     /// operations on connections.
@@ -81,32 +84,32 @@ pub struct HttpClientConfig {
     /// [`log`]: https://crates.io/crates/log
     #[serde(default)]
     pub verbose: bool,
-    /// Sets the default headers for every request
+    /// Sets the default headers for every request.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty", alias = "headers")]
     pub extra_headers: BTreeMap<String, String>,
-    /// Set a redirect policy for this client
+    /// Set a redirect policy for this client.
     ///
     /// Default will follow redirects up to a maximum of 10.
     #[serde(default)]
     pub redirect: HttpClientRedirectPolicy,
-    /// Enable or disable automatic setting of the `Referer` header
+    /// Enable or disable automatic setting of the `Referer` header.
     ///
     /// Default is `true`.
     #[serde(default = "crate::util::default_true", alias = "referrer")]
     pub referer: bool,
-    /// TCP-level configuration
+    /// TCP-level configuration.
     #[serde(default)]
     pub tcp: HttpClientTcpConfig,
-    /// HTTP/2 protocol configuration
+    /// HTTP/2 protocol configuration.
     #[serde(default)]
     pub http2: HttpClientHttp2Config,
-    /// Circuit breaker configuration
+    /// Circuit breaker configuration.
     #[serde(default, alias = "breaker", alias = "circuit_breaker")]
     pub cb: Option<HttpClientCircuitBreakerConfig>,
-    /// Short application name
+    /// Short application name.
     #[serde(skip)]
     app_name: Option<String>,
-    /// Application version
+    /// Application version.
     #[serde(skip)]
     app_version: Option<String>,
 }
@@ -134,21 +137,21 @@ impl Default for HttpClientConfig {
 }
 
 impl HttpClientConfig {
-    /// Default value for [`Self::pool_idle_timeout`]
+    /// Default value for [`Self::pool_idle_timeout`].
     #[must_use]
     #[inline]
     fn default_pool_idle_timeout() -> Option<Duration> {
         Some(Duration::from_secs(90))
     }
 
-    /// Default value for [`Self::pool_max_idle_per_host`]
+    /// Default value for [`Self::pool_max_idle_per_host`].
     #[must_use]
     #[inline]
     fn default_pool_max_idle_per_host() -> usize {
         usize::MAX
     }
 
-    /// Build a value for `User-Agent` header
+    /// Build a value for `User-Agent` header.
     #[must_use]
     fn user_agent(&self) -> Option<HeaderValue> {
         const UXUM_PRODUCT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
@@ -165,7 +168,7 @@ impl HttpClientConfig {
         }
     }
 
-    /// Set short name of an application
+    /// Set short name of an application.
     ///
     /// Whitespace is not allowed, as this value is used in User-Agent: HTTP header, among other
     /// things.
@@ -175,7 +178,7 @@ impl HttpClientConfig {
         self
     }
 
-    /// Set application version
+    /// Set application version.
     ///
     /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
     /// HTTP header, among other things.
@@ -185,7 +188,7 @@ impl HttpClientConfig {
         self
     }
 
-    /// Create [`reqwest::ClientBuilder`] from configuration
+    /// Create [`reqwest::ClientBuilder`] from configuration.
     pub async fn to_client_builder(&self) -> Result<ClientBuilder, HttpClientError> {
         let mut builder = ClientBuilder::new()
             .use_rustls_tls()
@@ -240,33 +243,38 @@ impl HttpClientConfig {
         Ok(builder)
     }
 
-    /// Convert passed client builder into client with all necessary middlewares attached
+    /// Convert passed client builder into client with all necessary middlewares attached.
     pub fn build_client(
         &self,
         builder: ClientBuilder,
+        metrics: Option<ClientMetricsState>,
     ) -> Result<ClientWithMiddleware, HttpClientError> {
         Ok(wrap_client(
             builder.build()?,
+            metrics,
             self.cb.as_ref().map(|cb| cb.make_circuit_breaker()),
         ))
     }
 
-    /// Build and return configured [`reqwest`] HTTP client
-    pub async fn to_client(&self) -> Result<ClientWithMiddleware, HttpClientError> {
-        self.build_client(self.to_client_builder().await?)
+    /// Build and return configured [`reqwest`] HTTP client.
+    pub async fn to_client(
+        &self,
+        metrics: Option<ClientMetricsState>,
+    ) -> Result<ClientWithMiddleware, HttpClientError> {
+        self.build_client(self.to_client_builder().await?, metrics)
     }
 }
 
-/// TCP-level configuration
+/// TCP-level configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HttpClientTcpConfig {
-    /// Set whether sockets have `TCP_NODELAY` enabled
+    /// Set whether sockets have `TCP_NODELAY` enabled.
     ///
     /// Default is `true`.
     #[serde(default = "crate::util::default_true")]
     pub nodelay: bool,
-    /// Set `SO_KEEPALIVE` option for all sockets with the supplied duration
+    /// Set `SO_KEEPALIVE` option for all sockets with the supplied duration.
     ///
     /// If `None`, the option will not be set.
     #[serde(
@@ -286,11 +294,11 @@ impl Default for HttpClientTcpConfig {
     }
 }
 
-/// HTTP/2 protocol configuration
+/// HTTP/2 protocol configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HttpClientHttp2Config {
-    /// Sets whether to use an HTTP/2 adaptive flow control
+    /// Sets whether to use an HTTP/2 adaptive flow control.
     ///
     /// Enabling this will override the limits set in
     /// [`Self::initial_stream_window`] and [`Self::initial_connection_window`].
@@ -298,22 +306,22 @@ pub struct HttpClientHttp2Config {
     /// Default is `false`.
     #[serde(default)]
     pub adaptive_window: bool,
-    /// Sets the max connection-level flow control for HTTP/2
+    /// Sets the max connection-level flow control for HTTP/2.
     ///
     /// Default is currently 65535 but may change internally to optimize for common uses.
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_connection_window: Option<NonZeroU32>,
-    /// Sets the `SETTINGS_INITIAL_WINDOW_SIZE` option for HTTP/2 stream-level flow control
+    /// Sets the `SETTINGS_INITIAL_WINDOW_SIZE` option for HTTP/2 stream-level flow control.
     ///
     /// Default is currently 65535 but may change internally to optimize for common uses.
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_stream_window: Option<NonZeroU32>,
-    /// HTTP/2 keep-alive configuration
+    /// HTTP/2 keep-alive configuration.
     #[serde(default)]
     pub keepalive: HttpClientHttp2KeepaliveConfig,
-    /// Sets the maximum frame size to use for HTTP/2
+    /// Sets the maximum frame size to use for HTTP/2.
     ///
     /// Default is currently 16384 but may change internally to optimize for common uses.
     // TODO: bytesize
@@ -321,11 +329,11 @@ pub struct HttpClientHttp2Config {
     pub max_frame_size: Option<NonZeroU32>,
 }
 
-/// HTTP/2 keepalive configuration
+/// HTTP/2 keepalive configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HttpClientHttp2KeepaliveConfig {
-    /// Sets an interval for HTTP2 Ping frames should be sent to keep a connection alive
+    /// Sets an interval for HTTP2 Ping frames should be sent to keep a connection alive.
     ///
     /// Pass `None` to disable HTTP2 keep-alive.
     /// Default is currently disabled.
@@ -335,7 +343,7 @@ pub struct HttpClientHttp2KeepaliveConfig {
         with = "humantime_serde"
     )]
     pub interval: Option<Duration>,
-    /// Sets a timeout for receiving an acknowledgement of the keep-alive ping
+    /// Sets a timeout for receiving an acknowledgement of the keep-alive ping.
     ///
     /// If the ping is not acknowledged within the timeout, the connection will be closed.
     /// Does nothing if [`Self::interval`] is disabled.
@@ -346,7 +354,7 @@ pub struct HttpClientHttp2KeepaliveConfig {
         with = "humantime_serde"
     )]
     pub timeout: Option<Duration>,
-    /// Sets whether HTTP2 keep-alive should apply while the connection is idle
+    /// Sets whether HTTP2 keep-alive should apply while the connection is idle.
     ///
     /// If disabled, keep-alive pings are only sent while there are open request/responses streams.
     /// If enabled, pings are also sent when no streams are active.
@@ -356,16 +364,16 @@ pub struct HttpClientHttp2KeepaliveConfig {
     pub while_idle: bool,
 }
 
-/// HTTP redirect policy
+/// HTTP redirect policy.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum HttpClientRedirectPolicy {
-    /// No redirects will be followed
+    /// No redirects will be followed.
     None,
-    /// Redirects will be followed up to a preconfigured limit
+    /// Redirects will be followed up to a preconfigured limit.
     Limited {
-        /// Max number of redirects to follow
+        /// Max number of redirects to follow.
         #[serde(flatten, default = "HttpClientRedirectPolicy::default_redirect_limit")]
         redirect_limit: usize,
     },
@@ -389,7 +397,7 @@ impl From<HttpClientRedirectPolicy> for reqwest::redirect::Policy {
 }
 
 impl HttpClientRedirectPolicy {
-    /// Default value for [`Self::Limited::redirect_limit`]
+    /// Default value for [`Self::Limited::redirect_limit`].
     #[must_use]
     #[inline]
     fn default_redirect_limit() -> usize {
@@ -397,7 +405,7 @@ impl HttpClientRedirectPolicy {
     }
 }
 
-/// Load client X.509 identity from a local file
+/// Load client X.509 identity from a local file.
 async fn load_identity(pem_file: &Path) -> Result<Identity, HttpClientError> {
     let mut pem_buf = Vec::new();
     OpenOptions::new()
