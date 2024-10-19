@@ -1,3 +1,5 @@
+//! Various [`tower`] layers used in the framework.
+
 pub(crate) mod buffer;
 pub(crate) mod cors;
 pub(crate) mod ext;

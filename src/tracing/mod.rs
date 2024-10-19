@@ -1,3 +1,5 @@
+//! Code to set up trace collection, aggregation and transport.
+
 use std::{num::NonZeroUsize, time::Duration};
 
 use opentelemetry_otlp::{Protocol, TonicExporterBuilder, WithExportConfig};
@@ -19,41 +21,41 @@ use url::Url;
 
 use crate::logging::LoggingLevel;
 
-/// Error type used in tracing configuration
+/// Error type used in tracing configuration.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TracingError {
-    // OTel tracing error
+    // OTel tracing error.
     #[error("OTel tracing error: {0}")]
     OpenTelemetry(#[from] opentelemetry::trace::TraceError),
 }
 
-/// OpenTelemetry tracing configuration
+/// OpenTelemetry tracing configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TracingConfig {
-    /// Trace collector endpoint URL
+    /// Trace collector endpoint URL.
     #[serde(default = "TracingConfig::default_endpoint")]
     endpoint: Url,
-    /// Protocol to use when exporting data
+    /// Protocol to use when exporting data.
     #[serde(default, alias = "format")]
     protocol: TracingProtocol,
-    /// OTLP collector timeout
+    /// OTLP collector timeout.
     #[serde(default = "TracingConfig::default_timeout")]
     timeout: Duration,
-    /// Sampling rule
+    /// Sampling rule.
     #[serde(default)]
     sample: TracingSampler,
-    /// Minimum severity level to export
+    /// Minimum severity level to export.
     #[serde(default)]
     level: LoggingLevel,
-    /// Limits configuration
+    /// Limits configuration.
     #[serde(default, flatten)]
     limits: TracingSpanLimits,
-    /// Optional features configuration
+    /// Optional features configuration.
     #[serde(default)]
     include: TracingIncludes,
-    /// Batch span processor configuration
+    /// Batch span processor configuration.
     #[serde(default)]
     batch: TracingBatchConfig,
 }
@@ -74,25 +76,25 @@ impl Default for TracingConfig {
 }
 
 impl TracingConfig {
-    /// Default value for [`Self::endpoint`]
+    /// Default value for [`Self::endpoint`].
     #[must_use]
     #[inline]
     #[allow(clippy::unwrap_used)]
     fn default_endpoint() -> Url {
-        // TODO: check correctness using a unit test
+        // TODO: check correctness using a unit test.
         Url::parse("http://localhost:4317").unwrap()
     }
 
-    /// Default value for [`Self::timeout`]
+    /// Default value for [`Self::timeout`].
     #[must_use]
     #[inline]
     fn default_timeout() -> Duration {
         Duration::from_secs(opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT)
     }
 
-    /// Build internal protocol exporter
+    /// Build internal protocol exporter.
     fn build_exporter(&self) -> TonicExporterBuilder {
-        // TODO: allow adding metadata
+        // TODO: allow adding metadata.
         opentelemetry_otlp::new_exporter()
             .tonic()
             .with_protocol(self.protocol.into())
@@ -100,7 +102,7 @@ impl TracingConfig {
             .with_timeout(self.timeout)
     }
 
-    /// Build OpenTelemetry SDK configuration
+    /// Build OpenTelemetry SDK configuration.
     fn build_config(&self, resource: Resource) -> Config {
         Config::default()
             .with_sampler::<Sampler>(self.sample.into())
@@ -113,12 +115,16 @@ impl TracingConfig {
             .with_resource(resource)
     }
 
-    /// Build OpenTelemetry SDK batch configuration
+    /// Build OpenTelemetry SDK batch configuration.
     fn build_batch_config(&self) -> BatchConfig {
         self.batch.to_builder().build()
     }
 
-    /// Build OpenTelemetry tracing pipeline
+    /// Build OpenTelemetry tracing pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if span exporter and/or processor cannot be installed for some reason.
     pub fn build_pipeline(&self, resource: Resource) -> Result<Tracer, TracingError> {
         let _span = debug_span!("build_tracing_pipeline").entered();
         opentelemetry_otlp::new_pipeline()
@@ -130,7 +136,7 @@ impl TracingConfig {
             .map_err(Into::into)
     }
 
-    /// Build OpenTelemetry layer for [`tracing`]
+    /// Build OpenTelemetry layer for [`tracing`].
     pub fn build_layer<S>(
         &self,
         tracer: &Tracer,
@@ -139,7 +145,7 @@ impl TracingConfig {
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
         let _span = debug_span!("build_tracing_layer").entered();
-        // TODO: additional params from config
+        // TODO: additional params from config.
         tracing_opentelemetry::layer()
             .with_tracer(tracer.clone())
             .with_location(self.include.location)
@@ -158,15 +164,15 @@ impl TracingConfig {
     }
 }
 
-/// Protocol to use for data export
+/// Protocol to use for data export.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 enum TracingProtocol {
-    /// GRPC over HTTP
+    /// GRPC over HTTP.
     #[default]
     OtlpGrpc,
-    /// Protobuf over HTTP
+    /// Protobuf over HTTP.
     OtlpHttp,
 }
 
@@ -179,15 +185,15 @@ impl From<TracingProtocol> for Protocol {
     }
 }
 
-/// Trace sampling configuration
+/// Trace sampling configuration.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 enum TracingSampler {
-    /// Always export data
+    /// Always export data.
     #[default]
     Always,
-    /// Export a specified fraction of all data
+    /// Export a specified fraction of all data.
     Fraction(f64),
 }
 
@@ -200,23 +206,23 @@ impl From<TracingSampler> for Sampler {
     }
 }
 
-/// Limits on number of properties in various tracing objects
+/// Limits on number of properties in various tracing objects.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 struct TracingSpanLimits {
-    /// The max events that can be added to a Span
+    /// Max number of events that can be added to a Span.
     #[serde(default = "TracingSpanLimits::default_max")]
     max_events_per_span: u32,
-    /// The max attributes that can be added to a Span
+    /// Max number of attributes that can be added to a Span.
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_span: u32,
-    /// The max links that can be added to a Span
+    /// Max number of links that can be added to a Span.
     #[serde(default = "TracingSpanLimits::default_max")]
     max_links_per_span: u32,
-    /// The max attributes that can be added into an Event
+    /// Max number of attributes that can be added into an Event.
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_event: u32,
-    /// The max attributes that can be added into a Link
+    /// Max number of attributes that can be added into a Link.
     #[serde(default = "TracingSpanLimits::default_max")]
     max_attributes_per_link: u32,
 }
@@ -234,7 +240,7 @@ impl Default for TracingSpanLimits {
 }
 
 impl TracingSpanLimits {
-    /// Default value for all attributes
+    /// Default value for all attributes.
     #[must_use]
     #[inline]
     fn default_max() -> u32 {
@@ -242,27 +248,27 @@ impl TracingSpanLimits {
     }
 }
 
-/// Configuration of optional data to include in tracing objects
+/// Configuration of optional data to include in tracing objects.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 #[allow(clippy::struct_excessive_bools)]
 struct TracingIncludes {
-    /// Include file/module/line in span and event attributes
+    /// Include file/module/line in span and event attributes.
     #[serde(default = "crate::util::default_true")]
     location: bool,
-    /// Convert [`std::error::Error`] values into `exception.*` fields
+    /// Convert [`std::error::Error`] values into `exception.*` fields.
     #[serde(default = "crate::util::default_true")]
     exception_from_error_fields: bool,
-    /// Convert events with `error` field into `exception.*` fields
+    /// Convert events with `error` field into `exception.*` fields.
     #[serde(default = "crate::util::default_true")]
     exception_from_error_events: bool,
-    /// Set status error description from exception events
+    /// Set status error description from exception events.
     #[serde(default = "crate::util::default_true")]
     status_from_error_events: bool,
-    /// Track both busy and inactive times for spans
+    /// Track both busy and inactive times for spans.
     #[serde(default)]
     inactivity: bool,
-    /// Record thread name/ID in span attributes
+    /// Record thread name/ID in span attributes.
     #[serde(default = "crate::util::default_true")]
     thread_info: bool,
 }
@@ -280,36 +286,36 @@ impl Default for TracingIncludes {
     }
 }
 
-/// Batch span processor configuration
+/// Batch span processor configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 struct TracingBatchConfig {
-    /// The maximum queue size to buffer spans for delayed processing
+    /// The maximum queue size to buffer spans for delayed processing.
     ///
     /// If the queue gets full it drops the spans. The default value of is 2048.
     #[serde(default = "TracingBatchConfig::default_max_queue_size")]
     max_queue_size: NonZeroUsize,
-    /// The delay interval between two consecutive processing of batches
+    /// The delay interval between two consecutive processing of batches.
     ///
     /// The default value is 5 seconds.
     #[serde(default = "TracingBatchConfig::default_scheduled_delay")]
     scheduled_delay: Duration,
-    /// The maximum number of spans to process in a single batch
+    /// The maximum number of spans to process in a single batch.
     ///
     /// If there are more than one batch worth of spans then it processes multiple batches
     /// of spans one batch after the other without any delay. The default value is 512.
     #[serde(default = "TracingBatchConfig::default_max_export_batch_size")]
     max_export_batch_size: NonZeroUsize,
-    /// The maximum duration to export a batch of data
+    /// The maximum duration to export a batch of data.
     ///
     /// Default value is 30 seconds.
     #[serde(default = "TracingBatchConfig::default_max_export_timeout")]
     max_export_timeout: Duration,
-    /// Maximum number of concurrent exports
+    /// Maximum number of concurrent exports.
     ///
     /// Limits the number of spawned tasks for exports and thus memory consumed
     /// by an exporter. A value of 1 will cause exports to be performed
-    /// synchronously on the BatchSpanProcessor task. The default value is 1.
+    /// synchronously on the `BatchSpanProcessor` task. The default value is 1.
     #[serde(default = "TracingBatchConfig::default_max_concurrent_exports")]
     max_concurrent_exports: NonZeroUsize,
 }
@@ -327,7 +333,7 @@ impl Default for TracingBatchConfig {
 }
 
 impl TracingBatchConfig {
-    /// Default value for [`Self::max_queue_size`]
+    /// Default value for [`Self::max_queue_size`].
     #[must_use]
     #[inline]
     fn default_max_queue_size() -> NonZeroUsize {
@@ -335,14 +341,14 @@ impl TracingBatchConfig {
         NonZeroUsize::new(2048).unwrap()
     }
 
-    /// Default value for [`Self::scheduled_delay`]
+    /// Default value for [`Self::scheduled_delay`].
     #[must_use]
     #[inline]
     fn default_scheduled_delay() -> Duration {
         Duration::from_secs(5)
     }
 
-    /// Default value for [`Self::max_export_batch_size`]
+    /// Default value for [`Self::max_export_batch_size`].
     #[must_use]
     #[inline]
     fn default_max_export_batch_size() -> NonZeroUsize {
@@ -350,14 +356,14 @@ impl TracingBatchConfig {
         NonZeroUsize::new(512).unwrap()
     }
 
-    /// Default value for [`Self::max_export_timeout`]
+    /// Default value for [`Self::max_export_timeout`].
     #[must_use]
     #[inline]
     fn default_max_export_timeout() -> Duration {
         Duration::from_secs(30)
     }
 
-    /// Default value for [`Self::max_concurrent_exports`]
+    /// Default value for [`Self::max_concurrent_exports`].
     #[must_use]
     #[inline]
     fn default_max_concurrent_exports() -> NonZeroUsize {
@@ -365,7 +371,8 @@ impl TracingBatchConfig {
         NonZeroUsize::new(1).unwrap()
     }
 
-    /// Create OpenTelemetry batch config builder
+    /// Create OpenTelemetry batch config builder.
+    #[must_use]
     fn to_builder(&self) -> BatchConfigBuilder {
         BatchConfigBuilder::default()
             .with_max_queue_size(self.max_queue_size.get())

@@ -4,13 +4,13 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::util::quote_option;
 
-/// External documentation link
+/// External documentation link.
 #[derive(Debug, FromMeta)]
 pub(crate) struct OpenApiExternalDoc {
-    /// Description of the link
+    /// Description of the link.
     #[darling(default)]
     description: Option<String>,
-    /// Link URL
+    /// Link URL.
     url: String,
 }
 

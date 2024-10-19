@@ -1,7 +1,10 @@
-use std::net::SocketAddr;
+//! Handle object to start, stop and control the service.
+
+use std::{net::SocketAddr, time::Duration};
 
 use axum::Router;
 use axum_server::Handle as AxumHandle;
+use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use opentelemetry_sdk::trace::Tracer;
 use thiserror::Error;
 use tokio::task::JoinHandle;
@@ -12,42 +15,56 @@ use crate::{
     builder::server::ServerBuilder, config::AppConfig, errors::IoError, notify::ServiceNotifier,
 };
 
-/// Error type returned by uxum handle
+/// Error type returned by uxum handle.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum HandleError {
-    /// Error while setting up logging
+    /// Error while setting up logging.
     #[error(transparent)]
     Logging(#[from] crate::logging::LoggingError),
-    /// Error while setting up trace collection and propagation
+    /// Error while setting up trace collection and propagation.
     #[error(transparent)]
     Tracing(#[from] crate::tracing::TracingError),
-    /// Error while building HTTP server
+    /// Error while building HTTP server.
     #[error(transparent)]
     ServerBuilder(#[from] crate::builder::server::ServerBuilderError),
-    /// Error running HTTP server
-    #[error("Server error: {0}")]
+    /// Error running HTTP server.
+    #[error("HTTP server error: {0}")]
     Server(IoError),
+    /// Error running HTTPS server.
+    #[error("HTTPS server error: {0}")]
+    TlsServer(IoError),
+    /// Server task error.
+    #[error("Server task error: {0}")]
+    ServerTask(#[from] tokio::task::JoinError),
+    /// No server is currently running.
+    #[error("No server is currently running")]
+    NotRunning,
 }
 
-/// Handle for starting and controlling the server
+/// Handle for starting and controlling the server.
 ///
 /// Unwritten logs will be flushed when dropping this object. This might help even in case of a
 /// panic.
 #[allow(dead_code)]
+#[non_exhaustive]
 pub struct Handle {
-    /// Guards for [`tracing_appender::non_blocking::NonBlocking`]
+    /// Guards for [`tracing_appender::non_blocking::NonBlocking`].
     buf_guards: Vec<WorkerGuard>,
-    /// Tracing pipeline
+    /// Tracing pipeline.
     tracer: Option<Tracer>,
-    /// Internal [`axum_server`] control handle
+    /// Internal [`axum_server`] control handle.
     handle: AxumHandle,
-    /// Service supervisor notification
+    /// Service supervisor notification.
     notify: ServiceNotifier,
-    /// Service supervisor notification task
+    /// Service supervisor notification task.
     service_watchdog: Option<JoinHandle<()>>,
-    /// UNIX signal handler task
+    /// UNIX signal handler task.
     signal_handler: Option<JoinHandle<()>>,
+    /// Plain HTTP server task.
+    http_task: Option<JoinHandle<Result<(), HandleError>>>,
+    /// HTTPS server task.
+    https_task: Option<JoinHandle<Result<(), HandleError>>>,
 }
 
 impl Drop for Handle {
@@ -63,28 +80,146 @@ impl Drop for Handle {
 }
 
 impl Handle {
-    pub async fn start(&mut self, server: ServerBuilder, app: Router) -> Result<(), HandleError> {
+    /// Set up background service tasks.
+    fn prepare(&mut self, server: &ServerBuilder) -> Result<(), HandleError> {
         if self.signal_handler.is_none() {
             self.signal_handler = Some(server.spawn_signal_handler(self.handle.clone())?);
         }
-        self.notify.on_ready();
         if self.service_watchdog.is_none() {
             self.service_watchdog = Some(tokio::spawn(self.notify.watchdog_task()));
         }
-        // TODO: spawn server as distinct task and return Ok(())
-        server
-            .build()
-            .await?
-            .handle(self.handle.clone())
-            // axum::ServiceExt
-            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-            .await
-            .map_err(|err| HandleError::Server(err.into()))
+        Ok(())
+    }
+
+    /// Start axum server tasks.
+    async fn start_servers(
+        &mut self,
+        server: ServerBuilder,
+        app: Router,
+    ) -> Result<(), HandleError> {
+        let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
+        if server.has_tls_config() {
+            self.https_task = Some(tokio::spawn(
+                server
+                    .clone()
+                    .build_tls()
+                    .await?
+                    .handle(self.handle.clone())
+                    .serve(make_service.clone())
+                    .map_err(|err| HandleError::TlsServer(err.into())),
+            ));
+        }
+        self.http_task = Some(tokio::spawn(
+            server
+                .build()
+                .await?
+                .handle(self.handle.clone())
+                .serve(make_service)
+                .map_err(|err| HandleError::Server(err.into())),
+        ));
+        Ok(())
+    }
+
+    /// Start the server in the background.
+    pub async fn start(&mut self, server: ServerBuilder, app: Router) -> Result<(), HandleError> {
+        self.prepare(&server)?;
+        self.start_servers(server, app).await?;
+        self.notify.on_ready();
+        Ok(())
+    }
+
+    /// Immediately shutdown the server.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if one of server tasks finished with an error.
+    pub async fn shutdown(&mut self) -> Result<(), HandleError> {
+        self.notify.on_shutdown();
+        self.handle.shutdown();
+        if let Some(task) = self.http_task.take() {
+            task.await??;
+        }
+        if let Some(task) = self.https_task.take() {
+            task.await??;
+        }
+        Ok(())
+    }
+
+    /// Gracefully shutdown the server, waiting for in-progress requests to finish.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if one of server tasks finished with an error.
+    pub async fn graceful_shutdown(
+        &mut self,
+        graceful: Option<Duration>,
+    ) -> Result<(), HandleError> {
+        self.notify.on_shutdown();
+        self.handle.graceful_shutdown(graceful);
+        if let Some(task) = self.http_task.take() {
+            task.await??;
+        }
+        if let Some(task) = self.https_task.take() {
+            task.await??;
+        }
+        Ok(())
+    }
+
+    /// Immediately abort execution of the server.
+    pub fn abort(&mut self) {
+        self.notify.on_shutdown();
+        if let Some(task) = self.http_task.take() {
+            task.abort();
+        }
+        if let Some(task) = self.https_task.take() {
+            task.abort();
+        }
+    }
+
+    /// Start the server and block execution until the server exits.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * Caught an error when initializing server tasks.
+    /// * One of server tasks finished with an error.
+    pub async fn run(
+        &mut self,
+        server: ServerBuilder,
+        app: Router,
+        graceful: Option<Duration>,
+    ) -> Result<(), HandleError> {
+        self.start(server, app).await?;
+        let http_fut = self.http_task.take();
+        let https_fut = self.https_task.take();
+        match (http_fut, https_fut) {
+            (None, None) => Err(HandleError::NotRunning),
+            (Some(task), None) => task.await?,
+            (None, Some(task)) => task.await?,
+            (Some(http), Some(https)) => {
+                let mut tasks = FuturesUnordered::new();
+                tasks.push(http);
+                tasks.push(https);
+                match tasks.next().await {
+                    // Gracefully shutdown other tasks and return result of the one which exited
+                    // first.
+                    Some(ret) => {
+                        self.handle.graceful_shutdown(graceful);
+                        while let Some(other_ret) = tasks.next().await {
+                            let _ = other_ret?;
+                        }
+                        ret?
+                    }
+                    // This should not happen normally.
+                    None => Ok(()),
+                }
+            }
+        }
     }
 }
 
 impl AppConfig {
-    /// Initialize logging and tracing subsystems
+    /// Initialize logging and tracing subsystems.
     ///
     /// Returns a guard that shouldn't be dropped as long as there is a need for these subsystems.
     ///
@@ -116,6 +251,8 @@ impl AppConfig {
             notify,
             service_watchdog: None,
             signal_handler: None,
+            http_task: None,
+            https_task: None,
         })
     }
 }

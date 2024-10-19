@@ -5,7 +5,7 @@ use syn::{
     TypePath,
 };
 
-/// Type for detected query string extractor
+/// Type for detected query string extractor.
 #[derive(Debug)]
 pub(crate) struct QueryType(Path);
 
@@ -15,7 +15,7 @@ impl ToTokens for QueryType {
     }
 }
 
-/// Detect query string extractor inside handler function signature
+/// Detect query string extractor inside handler function signature.
 #[must_use]
 pub(crate) fn detect_query_strings(handler: &ItemFn) -> Option<QueryType> {
     handler.sig.inputs.iter().find_map(|input| match input {
@@ -40,7 +40,7 @@ pub(crate) fn detect_query_strings(handler: &ItemFn) -> Option<QueryType> {
                         _ => None,
                     })
             }
-            // TODO: support other variants
+            // TODO: support other variants.
             _ => None,
         },
         FnArg::Receiver(_) => None,

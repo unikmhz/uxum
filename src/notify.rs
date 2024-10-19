@@ -1,10 +1,12 @@
+//! Routines used to interact with a system service supervisor, like `systemd`.
+
 use std::{future::Future, time::Duration};
 
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, trace_span, warn, Instrument};
 
-/// Interact with service supervisor
+/// Interact with service supervisor.
 ///
 /// Currently only detects and supports running under `systemd`.
 /// If not run under `systemd`, then using this struct is a no-op.
@@ -19,7 +21,7 @@ impl Default for ServiceNotifier {
 }
 
 impl ServiceNotifier {
-    /// Create new service notifier
+    /// Create new service notifier.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -27,7 +29,7 @@ impl ServiceNotifier {
         }
     }
 
-    /// Get requested watchdog interval
+    /// Get requested watchdog interval.
     ///
     /// Returns [`None`] if watchdog is not enabled or not running under `systemd`.
     #[must_use]
@@ -38,7 +40,7 @@ impl ServiceNotifier {
         }
     }
 
-    /// Notify that the service is ready to accept requests
+    /// Notify that the service is ready to accept requests.
     pub fn on_ready(&self) {
         if !self.has_systemd {
             return;
@@ -50,7 +52,7 @@ impl ServiceNotifier {
         }
     }
 
-    /// Notify that the service is reloading itself
+    /// Notify that the service is reloading itself.
     pub fn on_reload(&self) {
         if !self.has_systemd {
             return;
@@ -62,7 +64,7 @@ impl ServiceNotifier {
         }
     }
 
-    /// Notify that the service is stopping
+    /// Notify that the service is stopping.
     pub fn on_shutdown(&self) {
         if !self.has_systemd {
             return;
@@ -74,7 +76,7 @@ impl ServiceNotifier {
         }
     }
 
-    /// Get watchdog task
+    /// Get watchdog task.
     ///
     /// Generates an eternally waiting future if watchdog is not enabled or not running under `systemd`.
     pub fn watchdog_task(&self) -> impl Future<Output = ()> {

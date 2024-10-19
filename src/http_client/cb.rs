@@ -1,3 +1,5 @@
+//! HTTP client - circuit breaker.
+
 use std::time::Duration;
 
 use recloser::{AsyncRecloser, Recloser};

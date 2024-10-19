@@ -1,3 +1,6 @@
+//! Code to generate OpenAPI schema and provide an UI for API discovery and documentation
+//! (RapiDoc).
+
 use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
@@ -20,67 +23,67 @@ use tracing::{debug, debug_span};
 
 use crate::builder::app::HandlerExt;
 
-/// Error type used in API doc objects
+/// Error type used in API doc objects.
 #[derive(Debug, Error)]
 pub enum ApiDocError {
-    /// OpenAPI specification JSON rendering errors
+    /// OpenAPI specification JSON rendering errors.
     #[error(transparent)]
     RenderSpec(#[from] serde_json::Error),
-    /// Unsupported method for OpenAPI specification
+    /// Unsupported method for OpenAPI specification.
     #[error("Method {0} not supported in OpenAPI specification")]
     UnsupportedMethod(Method),
 }
 
-/// Builder for API documentation spec and UI
+/// Builder for API documentation spec and UI.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, Template)]
 #[non_exhaustive]
 #[template(path = "rapidoc.html.j2", ext = "html")]
 pub struct ApiDocBuilder {
-    /// URL path for API documentation UI (RapiDoc)
+    /// URL path for API documentation UI (RapiDoc).
     #[serde(default = "ApiDocBuilder::default_apidoc_path")]
     apidoc_path: String,
-    /// URL path for generated OpenAPI spec
+    /// URL path for generated OpenAPI spec.
     #[serde(default = "ApiDocBuilder::default_spec_path")]
     spec_path: String,
-    /// URL path for embedded RapiDoc JavaScript source
+    /// URL path for embedded RapiDoc JavaScript source.
     #[serde(default = "ApiDocBuilder::default_js_path")]
     js_path: String,
-    /// Short app name
+    /// Short app name.
     #[serde(default)]
     app_name: Option<String>,
-    /// App version
+    /// App version.
     #[serde(default)]
     app_version: Option<String>,
-    /// App title for use in UI and documentation
+    /// App title for use in UI and documentation.
     #[serde(default)]
     app_title: Option<String>,
-    /// Top-level description
+    /// Top-level description.
     #[serde(default)]
     description: Option<String>,
-    /// Contact name
+    /// Contact name.
     #[serde(default)]
     contact_name: Option<String>,
-    /// Contact URL
+    /// Contact URL.
     #[serde(default)]
     contact_url: Option<String>,
-    /// Contact email
+    /// Contact email.
     #[serde(default)]
     contact_email: Option<String>,
-    /// OpenAPI spec tag metadata
+    /// OpenAPI spec tag metadata.
     #[serde(default)]
     tags: Vec<openapi3::Tag>,
-    /// Whether to install RapiDoc UI endpoints
+    /// Whether to install RapiDoc UI endpoints.
     #[serde(default = "crate::util::default_true")]
     enable_ui: bool,
-    /// Inline the subschemas or use references
+    /// Inline the subschemas or use references.
     ///
     /// See [`SchemaSettings::inline_subschemas`].
     #[serde(default)]
     inline_subschemas: bool,
-    /// Attributes passed to RapiDoc component
+    /// Attributes passed to RapiDoc component.
     #[serde(default = "ApiDocBuilder::default_rapidoc_attributes")]
     rapidoc_attributes: HashMap<String, String>,
-    /// List of handlers that have been disabled in configuration
+    /// List of handlers that have been disabled in configuration.
     #[serde(skip)]
     disabled_handlers: Vec<String>,
 }
@@ -108,31 +111,31 @@ impl Default for ApiDocBuilder {
 }
 
 impl ApiDocBuilder {
-    /// Hardcoded version of used OpenAPI specification
+    /// Hardcoded version of used OpenAPI specification.
     const OPENAPI_VERSION: &'static str = "3.0.3";
 
-    /// Default value for [`Self::apidoc_path`]
+    /// Default value for [`Self::apidoc_path`].
     #[must_use]
     #[inline]
     fn default_apidoc_path() -> String {
         "/apidoc".into()
     }
 
-    /// Default value for [`Self::spec_path`]
+    /// Default value for [`Self::spec_path`].
     #[must_use]
     #[inline]
     fn default_spec_path() -> String {
         "/openapi.json".into()
     }
 
-    /// Default value for [`Self::js_path`]
+    /// Default value for [`Self::js_path`].
     #[must_use]
     #[inline]
     fn default_js_path() -> String {
         "/rapidoc-min.js".into()
     }
 
-    /// Default value for [`Self::rapidoc_attributes`]
+    /// Default value for [`Self::rapidoc_attributes`].
     #[must_use]
     #[inline]
     fn default_rapidoc_attributes() -> HashMap<String, String> {
@@ -147,7 +150,7 @@ impl ApiDocBuilder {
         }
     }
 
-    /// Get app title as a string slice
+    /// Get app title as a string slice.
     #[must_use]
     pub fn app_title(&self) -> &str {
         self.app_title
@@ -156,77 +159,77 @@ impl ApiDocBuilder {
             .unwrap_or("Service")
     }
 
-    /// Set URL path for API documentation UI (RapiDoc)
+    /// Set URL path for API documentation UI (RapiDoc).
     #[must_use]
     pub fn with_apidoc_path(mut self, path: impl ToString) -> Self {
         self.apidoc_path = path.to_string();
         self
     }
 
-    /// Set URL path for generated OpenAPI specification
+    /// Set URL path for generated OpenAPI specification.
     #[must_use]
     pub fn with_spec_path(mut self, path: impl ToString) -> Self {
         self.spec_path = path.to_string();
         self
     }
 
-    /// Set URL path for embedded RapiDoc JavaScript source
+    /// Set URL path for embedded RapiDoc JavaScript source.
     #[must_use]
     pub fn with_js_path(mut self, path: impl ToString) -> Self {
         self.js_path = path.to_string();
         self
     }
 
-    /// Set short app name
+    /// Set short app name.
     #[must_use]
     pub fn with_app_name(mut self, name: impl ToString) -> Self {
         self.app_name = Some(name.to_string());
         self
     }
 
-    /// Set app version
+    /// Set app version.
     #[must_use]
     pub fn with_app_version(mut self, version: impl ToString) -> Self {
         self.app_version = Some(version.to_string());
         self
     }
 
-    /// Set app title for use in UI and documentation
+    /// Set app title for use in UI and documentation.
     #[must_use]
     pub fn with_app_title(mut self, title: impl ToString) -> Self {
         self.app_title = Some(title.to_string());
         self
     }
 
-    /// Set top-level description
+    /// Set top-level description.
     #[must_use]
     pub fn with_description(mut self, descr: impl ToString) -> Self {
         self.description = Some(descr.to_string());
         self
     }
 
-    /// Set contact name
+    /// Set contact name.
     #[must_use]
     pub fn with_contact_name(mut self, name: impl ToString) -> Self {
         self.contact_name = Some(name.to_string());
         self
     }
 
-    /// Set contact URL
+    /// Set contact URL.
     #[must_use]
     pub fn with_contact_url(mut self, url: impl ToString) -> Self {
         self.contact_url = Some(url.to_string());
         self
     }
 
-    /// Set contact email
+    /// Set contact email.
     #[must_use]
     pub fn with_contact_email(mut self, email: impl ToString) -> Self {
         self.contact_email = Some(email.to_string());
         self
     }
 
-    /// Add optional information for a tag
+    /// Add optional information for a tag.
     #[must_use]
     pub fn with_tag<T, U, V>(mut self, tag: T, description: Option<U>, url: Option<V>) -> Self
     where
@@ -247,21 +250,21 @@ impl ApiDocBuilder {
         self
     }
 
-    /// Disable RapiDoc UI
+    /// Disable RapiDoc UI.
     #[must_use]
     pub fn without_ui(mut self) -> Self {
         self.enable_ui = false;
         self
     }
 
-    /// Discourage use of references in generated OpenAPI specification
+    /// Discourage use of references in generated OpenAPI specification.
     #[must_use]
     pub fn with_inline_subschemas(mut self) -> Self {
         self.inline_subschemas = true;
         self
     }
 
-    /// Set single RapiDoc attribute
+    /// Set single RapiDoc attribute.
     #[must_use]
     pub fn with_rapidoc_attribute<T, U>(mut self, key: T, value: U) -> Self
     where
@@ -273,7 +276,7 @@ impl ApiDocBuilder {
         self
     }
 
-    /// Set multiple rapidoc attributes
+    /// Set multiple rapidoc attributes.
     #[must_use]
     pub fn with_rapidoc_attributes<'a, T, U, V>(mut self, kvs: V) -> Self
     where
@@ -286,9 +289,9 @@ impl ApiDocBuilder {
         self
     }
 
-    /// Set fallback app name and version
+    /// Set fallback app name and version.
     ///
-    /// This gets called from [`crate::AppBuilder`]
+    /// This gets called from [`crate::AppBuilder`].
     pub fn set_app_defaults(
         &mut self,
         name: Option<impl ToString>,
@@ -302,12 +305,12 @@ impl ApiDocBuilder {
         }
     }
 
-    /// Set disabled handler names
+    /// Set disabled handler names.
     pub fn set_disabled_handlers(&mut self, handlers: impl IntoIterator<Item = String>) {
         self.disabled_handlers = handlers.into_iter().collect();
     }
 
-    /// Create schema generator for custom types
+    /// Create schema generator for custom types.
     #[must_use]
     fn build_generator(&self) -> SchemaGenerator {
         SchemaSettings::openapi3()
@@ -317,13 +320,19 @@ impl ApiDocBuilder {
             .into_generator()
     }
 
-    /// Check if builder has any data for [`openapi3::Contact`]
+    /// Check if builder has any data for [`openapi3::Contact`].
     #[must_use]
     fn has_contact_data(&self) -> bool {
         self.contact_name.is_some() || self.contact_email.is_some() || self.contact_url.is_some()
     }
 
-    /// Build Axum router containing all OpenAPI methods
+    /// Build Axum router containing all OpenAPI methods.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err`
+    /// Returns `Err` if OpenAPI specification object could not be generated for some reason or
+    /// there was some error during serialization.
     pub fn build_router(
         &self,
         auth: BTreeMap<String, openapi3::SecurityScheme>,
@@ -350,7 +359,11 @@ impl ApiDocBuilder {
         Ok(rtr)
     }
 
-    /// Build OpenAPI specification object hierarchy
+    /// Build OpenAPI specification object hierarchy.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if OpenAPI specification object could not be generated for some reason.
     pub fn build_spec(
         &self,
         auth: BTreeMap<String, openapi3::SecurityScheme>,
@@ -413,7 +426,7 @@ impl ApiDocBuilder {
                 version: self.app_version.clone().unwrap_or("0.0.0".into()),
                 extensions: Map::default(),
             },
-            servers: vec![], // FIXME: read from configuration
+            servers: vec![], // FIXME: read from configuration.
             paths,
             components: Some(openapi3::Components {
                 schemas: gen
@@ -431,7 +444,12 @@ impl ApiDocBuilder {
         })
     }
 
-    /// Build and serialize OpenAPI specification
+    /// Build and serialize OpenAPI specification.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if OpenAPI specification object could not be generated for some reason or
+    /// there was some error during serialization.
     pub fn render_spec(
         &self,
         auth: BTreeMap<String, openapi3::SecurityScheme>,
@@ -442,12 +460,12 @@ impl ApiDocBuilder {
     }
 }
 
-/// Newtype for pre-rendered OpenAPI specification
+/// Newtype for pre-rendered OpenAPI specification.
 #[derive(Clone)]
 #[repr(transparent)]
 pub struct OpenApiSpec(Vec<u8>);
 
-/// Handler to serve OpenAPI specification as JSON
+/// Handler to serve OpenAPI specification as JSON.
 async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/swagger+json")],
@@ -455,12 +473,12 @@ async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     )
 }
 
-/// Handler to serve RapiDoc UI page
+/// Handler to serve RapiDoc UI page.
 async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
     api_doc.0.into_response()
 }
 
-/// Handler to serve RapidDoc code as minified javascript
+/// Handler to serve RapiDoc code as minified javascript.
 async fn get_rapidoc_js() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, mime::APPLICATION_JAVASCRIPT.as_ref())],
@@ -468,7 +486,7 @@ async fn get_rapidoc_js() -> impl IntoResponse {
     )
 }
 
-/// Handler to serve RapiDoc javascript map file
+/// Handler to serve RapiDoc javascript map file.
 async fn get_rapidoc_js_map() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())],

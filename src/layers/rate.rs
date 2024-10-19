@@ -1,3 +1,5 @@
+//! Rate limiting [`tower`] layer.
+
 use std::{
     future::Future,
     marker::PhantomData,
@@ -30,25 +32,25 @@ use crate::layers::util::{
     ExtractionError, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor, UserIdKeyExtractor,
 };
 
-/// Error type returned by rate-limiting layer
+/// Error type returned by rate-limiting layer.
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum RateLimitError {
-    /// Extraction error
+    /// Extraction error.
     #[error(transparent)]
     Extraction(#[from] ExtractionError),
-    /// Rate limit exceeded
+    /// Rate limit exceeded.
     #[error("Rate limit reached: available after {remaining_seconds} seconds")]
     LimitReached {
-        /// Remaining seconds until method becomes available again
+        /// Remaining seconds until method becomes available again.
         ///
-        /// NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110
+        /// NOTE: Retry-After cannot be specified with fractional digits as per RFC 9110.
         remaining_seconds: u64,
     },
 }
 
 impl RateLimitError {
-    /// HTTP status code for used for this error
+    /// HTTP status code for used for this error.
     fn http_status(&self) -> StatusCode {
         match self {
             Self::LimitReached { .. } => StatusCode::TOO_MANY_REQUESTS,
@@ -65,38 +67,38 @@ impl IntoResponse for RateLimitError {
     }
 }
 
-/// Configuration for rate-limiting layer
+/// Configuration for rate-limiting layer.
 ///
 /// Uses [`governor`] crate internally.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HandlerRateLimitConfig {
-    /// Key extractor used to find rate-limiting bucket
+    /// Key extractor used to find rate-limiting bucket.
     #[serde(default)]
     key: RateLimitKey,
-    /// Sustained requests per second
+    /// Sustained requests per second.
     rps: NonZeroU32,
-    /// Maximum requests per second during burst
+    /// Maximum requests per second during burst.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     burst_rps: Option<NonZeroU32>,
-    /// Duration of burst, used for bucket size calculation
+    /// Duration of burst, used for bucket size calculation.
     #[serde(
         default = "HandlerRateLimitConfig::default_burst_duration",
         with = "humantime_serde"
     )]
     burst_duration: Duration,
-    // TODO: boolean - ignore extraction errors
+    // TODO: boolean - ignore extraction errors.
 }
 
 impl HandlerRateLimitConfig {
-    /// Default value for [`Self::burst_duration`]
+    /// Default value for [`Self::burst_duration`].
     #[must_use]
     #[inline]
     fn default_burst_duration() -> Duration {
         Duration::from_secs(1)
     }
 
-    /// Helper method to calculate governor burst size
+    /// Helper method to calculate governor burst size.
     pub fn burst_size(&self) -> NonZeroU32 {
         let rps = match self.burst_rps {
             Some(rps) if rps > self.rps => rps,
@@ -106,43 +108,43 @@ impl HandlerRateLimitConfig {
         NonZeroU32::new((seconds * f64::from(rps.get())).ceil() as u32).unwrap_or(self.rps)
     }
 
-    /// Helper method for governor period calculation
+    /// Helper method for governor period calculation.
     pub fn period(&self) -> Duration {
         Duration::from_secs(1) / self.rps.get()
     }
 
-    /// Create layer for use in [`tower`] services
+    /// Create layer for use in [`tower`] services.
     pub fn make_layer<S, T>(&self) -> RateLimitLayer<S, T> {
         self.into()
     }
 }
 
-/// Method of key extraction for rate limiting
+/// Method of key extraction for rate limiting.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 enum RateLimitKey {
-    /// Global rate limit
+    /// Global rate limit.
     #[default]
     Global,
-    /// Per-peer-IP-address rate limit
+    /// Per-peer-IP-address rate limit.
     PeerIp,
-    /// Smart per-peer-IP-address rate limit
+    /// Smart per-peer-IP-address rate limit.
     ///
     /// Same as [`RateLimitKey::PeerIp`], but accounts for addresses passed via
     /// `X-Forwarded-For` and similar headers.
     SmartIp,
-    /// Per-authenticated-user-ID rate limit
+    /// Per-authenticated-user-ID rate limit.
     UserId,
 }
 
-/// Rate-limiting [`tower`] layer
+/// Rate-limiting [`tower`] layer.
 pub struct RateLimitLayer<S, T> {
-    /// Rate limiter configuration
+    /// Rate limiter configuration.
     config: HandlerRateLimitConfig,
-    /// Inner service type
+    /// Inner service type.
     _phantom_service: PhantomData<S>,
-    /// Request body type
+    /// Request body type.
     _phantom_request: PhantomData<T>,
 }
 
@@ -169,11 +171,11 @@ where
     }
 }
 
-/// Rate-limiting [`tower`] service
+/// Rate-limiting [`tower`] service.
 pub struct RateLimit<S, T> {
-    /// Inner service
+    /// Inner service.
     inner: S,
-    /// Rate limiter
+    /// Rate limiter.
     limiter: Arc<Box<dyn Limiter<T> + Send + Sync>>,
 }
 
@@ -214,7 +216,7 @@ where
             Ok(()) => RateLimitFuture::Positive {
                 inner: self.inner.call(req),
             },
-            // TODO: option to allow ignoring extraction errors
+            // TODO: option to allow ignoring extraction errors.
             Err(error) => {
                 if let RateLimitError::LimitReached { remaining_seconds } = &error {
                     warn!(wait = remaining_seconds, "rate limit exceeded");
@@ -230,7 +232,7 @@ where
     S: Service<Request<T>> + Send + 'static,
     T: Send + 'static,
 {
-    /// Create new rate limiting service
+    /// Create new rate limiting service.
     #[must_use]
     pub fn new(inner: S, config: &HandlerRateLimitConfig) -> Self {
         let limiter: Box<dyn Limiter<T> + Send + Sync> = match config.key {
@@ -246,18 +248,18 @@ where
     }
 }
 
-/// Rate-limiting [`tower`] service future
+/// Rate-limiting [`tower`] service future.
 #[pin_project(project = ProjectedOutcome)]
 pub enum RateLimitFuture<F> {
-    /// Happy path, calling inner service
+    /// Happy path, calling inner service.
     Positive {
-        /// Inner future
+        /// Inner future.
         #[pin]
         inner: F,
     },
-    /// Key extraction error or rate limit exceeded
+    /// Key extraction error or rate limit exceeded.
     Negative {
-        /// Cause of negative response
+        /// Cause of negative response.
         error: RateLimitError,
     },
 }
@@ -280,16 +282,17 @@ where
     }
 }
 
-/// Trait for all rate limiters
+/// Trait for all rate limiters.
 trait Limiter<T> {
-    /// Check whether a request can pass through a rate-limiter
+    /// Check whether a request can pass through a rate-limiter.
     fn check_limit(&self, req: &Request<T>) -> Result<(), RateLimitError>;
 }
 
-/// Global rate limiter
+/// Global rate limiter.
 ///
 /// Does no key extraction from requests.
 struct GlobalLimiter {
+    /// Internal limiter state.
     limiter: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware<QuantaInstant>>,
 }
 
@@ -303,7 +306,7 @@ impl<T> Limiter<T> for GlobalLimiter {
 }
 
 impl GlobalLimiter {
-    /// Create new global limiter
+    /// Create new global limiter.
     #[must_use]
     fn new(config: &HandlerRateLimitConfig) -> Self {
         Self {
@@ -320,7 +323,9 @@ impl GlobalLimiter {
 ///
 /// Extracts key data from requests using provided [`Self::extractor`].
 struct KeyedLimiter<K: KeyExtractor> {
+    /// Key extractor.
     extractor: K,
+    /// Internal keyed limiter states.
     limiters: RateLimiter<
         K::Key,
         DashMap<K::Key, InMemoryState>,
@@ -340,7 +345,7 @@ impl<T, K: KeyExtractor> Limiter<T> for KeyedLimiter<K> {
 }
 
 impl<K: KeyExtractor> KeyedLimiter<K> {
-    /// Create new keyed limiter
+    /// Create new keyed limiter.
     #[must_use]
     fn new(extractor: K, config: &HandlerRateLimitConfig) -> Self {
         Self {

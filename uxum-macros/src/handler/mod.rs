@@ -1,3 +1,5 @@
+//! Various options and extractors used in handler macro.
+
 pub(crate) mod body;
 pub(crate) mod data;
 pub(crate) mod doc;

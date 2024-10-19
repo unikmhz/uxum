@@ -1,6 +1,8 @@
+//! Error utility functions and types.
+
 use std::{fmt, io};
 
-/// Wrapper for [`std::io::Error`]
+/// Wrapper for [`std::io::Error`].
 #[derive(Debug)]
 #[repr(transparent)]
 pub struct IoError(io::Error);

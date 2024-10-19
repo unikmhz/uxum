@@ -1,4 +1,4 @@
-//! Application configuration structures
+//! Application configuration structures.
 
 use std::collections::HashMap;
 
@@ -20,53 +20,53 @@ use crate::{
     tracing::TracingConfig,
 };
 
-/// Top-level application configuration
+/// Top-level application configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct AppConfig {
-    /// Tokio runtime configuration
+    /// Tokio runtime configuration.
     #[serde(default)]
     pub runtime: RuntimeConfig,
-    /// Logging configuration
+    /// Logging configuration.
     #[serde(default)]
     pub logging: LoggingConfig,
-    /// Tracing configuration
+    /// Tracing configuration.
     #[serde(default)]
     pub tracing: Option<TracingConfig>,
-    /// Individual handler configuration
+    /// Individual handler configuration.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
-    /// API doc configuration
+    /// API doc configuration.
     #[serde(default)]
     pub api_doc: Option<ApiDocBuilder>,
-    /// Metrics configuration
+    /// Metrics configuration.
     #[serde(default)]
     pub metrics: MetricsBuilder,
-    /// Probes and maintenance mode configuration
+    /// Probes and maintenance mode configuration.
     #[serde(default)]
     pub probes: ProbeConfig,
-    /// Common OpenTelemetry configuration
+    /// Common OpenTelemetry configuration.
     #[serde(default)]
     pub otel: OpenTelemetryConfig,
-    /// Authentication and authorization back-end configuration
+    /// Authentication and authorization back-end configuration.
     #[serde(default)]
     pub auth: AuthConfig,
-    /// [`reqwest`] HTTP client configuration
+    /// [`reqwest`] HTTP client configuration.
     #[serde(default)]
     pub http_clients: HashMap<String, HttpClientConfig>,
-    /// Short application name
+    /// Short application name.
     #[serde(skip)]
     pub app_name: Option<String>,
-    /// Application version
+    /// Application version.
     #[serde(skip)]
     pub app_version: Option<String>,
-    /// OpenTelemetry static attributes
+    /// OpenTelemetry static attributes.
     #[serde(skip)]
     pub otel_res: Option<opentelemetry_sdk::Resource>,
 }
 
 impl AppConfig {
-    /// Set short name of an application
+    /// Set short name of an application.
     ///
     /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
     /// things.
@@ -76,7 +76,7 @@ impl AppConfig {
         self
     }
 
-    /// Set application version
+    /// Set application version.
     ///
     /// Preferably in semver format. Whitespace is not allowed, as this value is used in Server:
     /// HTTP header, among other things.
@@ -87,32 +87,32 @@ impl AppConfig {
     }
 }
 
-/// Configuration of a single handler
+/// Configuration of a single handler.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HandlerConfig {
-    /// Method is completely disabled at runtime
+    /// Method is completely disabled at runtime.
     #[serde(default)]
     pub disabled: bool,
-    /// Method is hidden from OpenAPI specification
+    /// Method is hidden from OpenAPI specification.
     #[serde(default)]
     pub hidden: bool,
-    /// Request buffering configuration
+    /// Request buffering configuration.
     #[serde(default)]
     pub buffer: Option<HandlerBufferConfig>,
-    /// CORS configuration
+    /// CORS configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cors: Option<CorsConfig>,
-    /// Rate limiter configuration
+    /// Rate limiter configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<HandlerRateLimitConfig>,
-    /// Throttling configuration
+    /// Throttling configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub throttle: Option<u8>,
-    /// Request timeout configuration
+    /// Request timeout configuration.
     #[serde(default, skip_serializing_if = "HandlerTimeoutConfig::is_default")]
     pub timeout: HandlerTimeoutConfig,
-    /// Required RBAC permissions
+    /// Required RBAC permissions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
 }

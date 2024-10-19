@@ -1,4 +1,4 @@
-//! State extractor support for method handlers
+//! State extractor support for method handlers.
 
 use std::{
     any::{Any, TypeId},
@@ -13,7 +13,7 @@ type AnyMap = HashMap<TypeId, Box<dyn StateClone + Send>, BuildHasherDefault<IdH
 
 static STATES: Lazy<Mutex<AnyMap>> = Lazy::new(|| Mutex::new(Default::default()));
 
-/// Hasher for [`TypeId`] values
+/// Hasher for [`TypeId`] values.
 ///
 /// No transformations are necessary, as type IDs are already pre-hashed by compiler.
 #[derive(Default)]
@@ -35,7 +35,7 @@ impl Hasher for IdHasher {
     }
 }
 
-/// Get a clone of previously registered state object
+/// Get a clone of previously registered state object.
 ///
 /// # Panics
 ///
@@ -53,7 +53,7 @@ where
     }
 }
 
-/// Register state object for use in handlers
+/// Register state object for use in handlers.
 pub fn put<S>(state: S)
 where
     S: StateClone + Clone + Send,
@@ -62,15 +62,15 @@ where
     STATES.lock().insert(type_id, Box::new(state));
 }
 
-/// Trait that is required to be implemented for types of state objects
+/// Trait that is required to be implemented for types of state objects.
 pub trait StateClone: Any {
-    /// Auto-boxing clone helper method
+    /// Auto-boxing clone helper method.
     fn clone_box(&self) -> Box<dyn StateClone + Send>;
-    /// Convert to `&dyn Any`
+    /// Convert to `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
-    /// Convert to `&mut dyn Any`
+    /// Convert to `&mut dyn Any`.
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    /// Convert to `Box<dyn Any>`
+    /// Convert to `Box<dyn Any>`.
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 

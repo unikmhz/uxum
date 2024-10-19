@@ -4,7 +4,12 @@
 // #![warn(clippy::pedantic)]
 // #![warn(clippy::restriction)]
 // #![warn(clippy::cargo)]
-// #![warn(missing_docs)]
+#![warn(
+    missing_docs,
+    clippy::doc_link_with_quotes,
+    clippy::doc_markdown,
+    clippy::missing_errors_doc
+)]
 // #![allow(clippy::module_name_repetitions)]
 // #![allow(clippy::single_call_fn)]
 // #![allow(clippy::implicit_return)]
@@ -53,6 +58,7 @@ pub use self::{
         },
     },
     config::*,
+    handle::{Handle, HandleError},
     http_client::*,
     layers::{
         buffer::HandlerBufferConfig,

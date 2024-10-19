@@ -1,3 +1,5 @@
+//! HTTP client - middleware setup.
+
 use std::time::Instant;
 
 use http::{Extensions, HeaderValue};
@@ -56,7 +58,7 @@ impl Middleware for HeaderPropagationMiddleware {
                 deadline
                     .and_then(|instant| instant.time_left())
                     .and_then(|duration| {
-                        // TODO: proper ISO8601 duration formatting
+                        // TODO: proper ISO8601 duration formatting.
                         HeaderValue::from_str(&format!("PT{:.2}S", duration.as_secs_f64())).ok()
                     })
             })
@@ -132,7 +134,7 @@ impl Middleware for MetricsMiddleware {
             Ok(r) => r.content_length().unwrap_or_default(),
             Err(_) => 0,
         };
-        // TODO: record errors
+        // TODO: record errors.
         let labels = [
             KeyValue::new("http.client", name.to_string()),
             KeyValue::new("http.request.method", method.to_string()),

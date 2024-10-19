@@ -5,17 +5,19 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tower_http::cors::{Any, CorsLayer};
 
-/// Error type returned by CORS module
+/// Error type returned by CORS module.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum CorsError {
+    /// Invalid CORS origin.
     #[error("Invalid CORS origin")]
     InvalidOrigin(header::InvalidHeaderValue),
+    /// Invalid CORS header.
     #[error("Invalid CORS header")]
     InvalidHeader(header::InvalidHeaderName),
 }
 
-/// Allow either any value, or listed values
+/// Allow either any value, or listed values.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) enum AnyOr<T> {
     #[default]
@@ -23,7 +25,7 @@ pub(crate) enum AnyOr<T> {
     Some(Vec<T>),
 }
 
-/// CORS configuration for a handler
+/// CORS configuration for a handler.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct CorsConfig {
@@ -55,7 +57,13 @@ pub struct CorsConfig {
 }
 
 impl CorsConfig {
-    /// Create CORS [`tower`] layer
+    /// Create CORS [`tower`] layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * Origin cannot be transformed into HTTP header value encoding.
+    /// * Some of header names cannot be transformed into HTTP header name encoding.
     pub fn make_layer(&self) -> Result<CorsLayer, CorsError> {
         let mut layer = CorsLayer::new();
         layer = match &self.origins {
@@ -193,7 +201,7 @@ mod tests {
         opt_int_param: Option<AnyOr<i32>>,
     }
 
-    /// Deserialize - all "any"
+    /// Deserialize - all "any".
     #[test]
     fn anyor_de_all_any() {
         let serialized = r#"{
@@ -212,7 +220,7 @@ mod tests {
         );
     }
 
-    /// Deserialize - all "or"
+    /// Deserialize - all "or".
     #[test]
     fn anyor_de_all_or() {
         let serialized = r#"{
@@ -231,7 +239,7 @@ mod tests {
         );
     }
 
-    /// Deserialize - default values
+    /// Deserialize - default values.
     #[test]
     fn anyor_de_default() {
         let serialized = "{}";
@@ -246,7 +254,7 @@ mod tests {
         );
     }
 
-    /// Deserialize - invalid any string
+    /// Deserialize - invalid any string.
     #[test]
     fn anyor_de_invalid_any() {
         let serialized = r#"{
@@ -257,7 +265,7 @@ mod tests {
         assert!(from_str::<TestData>(serialized).is_err());
     }
 
-    /// Serialize - all "any"
+    /// Serialize - all "any".
     #[test]
     fn anyor_ser_all_any() {
         let deserialized = TestData {
@@ -276,7 +284,7 @@ mod tests {
         );
     }
 
-    /// Serialize - all "or"
+    /// Serialize - all "or".
     #[test]
     fn anyor_ser_all_or() {
         let deserialized = TestData {
@@ -295,7 +303,7 @@ mod tests {
         );
     }
 
-    /// Serialize - default values
+    /// Serialize - default values.
     #[test]
     fn anyor_ser_default() {
         let deserialized = TestData {

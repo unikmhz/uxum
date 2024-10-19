@@ -1,3 +1,5 @@
+//! Subsystem to gather and export application metrics.
+
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -35,14 +37,14 @@ use tracing::{debug_span, trace};
 
 use crate::layers::ext::HandlerName;
 
-/// Error type used in metrics subsystem
+/// Error type used in metrics subsystem.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum MetricsError {
-    /// Prometheus exporter error
+    /// Prometheus exporter error.
     #[error("Prometheus error: {0}")]
     Prometheus(#[from] prometheus::Error),
-    /// OpenTelemetry metrics error
+    /// OpenTelemetry metrics error.
     #[error("OTel metrics error: {0}")]
     OpenTelemetry(#[from] opentelemetry::metrics::MetricsError),
 }
@@ -55,30 +57,30 @@ impl IntoResponse for MetricsError {
     }
 }
 
-/// Configuration and builder for metrics subsystem
+/// Configuration and builder for metrics subsystem.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct MetricsBuilder {
-    /// Whether HTTP metrics gathering is enabled
+    /// Whether HTTP metrics gathering is enabled.
     #[serde(default = "crate::util::default_true")]
     enabled: bool,
-    /// Histogram metric buckets for total request duration
+    /// Histogram metric buckets for total request duration.
     ///
     /// Measured in seconds.
     #[serde(default = "MetricsBuilder::default_duration_buckets")]
     duration_buckets: Vec<f64>,
-    /// Histogram metric buckets for request size
+    /// Histogram metric buckets for request size.
     ///
     /// Measured in bytes.
     #[serde(default = "MetricsBuilder::default_size_buckets")]
     size_buckets: Vec<f64>,
-    /// URL path for metrics prometheus exporter
+    /// URL path for metrics prometheus exporter endpoint.
     #[serde(default = "MetricsBuilder::default_metrics_path")]
     metrics_path: String,
-    /// Static labels to add to gathered metrics
+    /// Static labels to add to gathered metrics.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     labels: HashMap<String, String>,
-    /// Optional prefix to use before
+    /// Optional prefix for metric names.
     #[serde(default)]
     prefix: Option<String>,
 }
@@ -97,7 +99,7 @@ impl Default for MetricsBuilder {
 }
 
 impl MetricsBuilder {
-    /// Default value for [`Self::duration_buckets`]
+    /// Default value for [`Self::duration_buckets`].
     #[must_use]
     #[inline]
     fn default_duration_buckets() -> Vec<f64> {
@@ -108,7 +110,7 @@ impl MetricsBuilder {
         .into()
     }
 
-    /// Default value for [`Self::size_buckets`]
+    /// Default value for [`Self::size_buckets`].
     #[must_use]
     #[inline]
     fn default_size_buckets() -> Vec<f64> {
@@ -139,21 +141,21 @@ impl MetricsBuilder {
         .into()
     }
 
-    /// Default value for [`Self::metrics_path`]
+    /// Default value for [`Self::metrics_path`].
     #[must_use]
     #[inline]
     fn default_metrics_path() -> String {
         "/metrics".into()
     }
 
-    /// Whether HTTP metrics gathering is enabled
+    /// Whether HTTP metrics gathering is enabled.
     #[must_use]
     #[inline]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 
-    /// Set histogram metric buckets for total request duration
+    /// Set histogram metric buckets for total request duration.
     #[must_use]
     pub fn with_duration_buckets<B, I>(mut self, buckets: B) -> Self
     where
@@ -164,7 +166,7 @@ impl MetricsBuilder {
         self
     }
 
-    /// Set histogram metric buckets for request size
+    /// Set histogram metric buckets for request size.
     #[must_use]
     pub fn with_size_buckets<B, I>(mut self, buckets: B) -> Self
     where
@@ -175,14 +177,14 @@ impl MetricsBuilder {
         self
     }
 
-    /// Set URL path for metrics prometheus exporter
+    /// Set URL path for metrics prometheus exporter endpoint.
     #[must_use]
     pub fn with_metrics_path<B, S>(mut self, path: impl ToString) -> Self {
         self.metrics_path = path.to_string();
         self
     }
 
-    /// Add one static label to be added to gathered metrics
+    /// Add one static label to be added to gathered metrics.
     #[must_use]
     pub fn with_label<T, U>(mut self, key: T, value: U) -> Self
     where
@@ -193,7 +195,7 @@ impl MetricsBuilder {
         self
     }
 
-    /// Add multiple static labels to be added to gathered metrics
+    /// Add multiple static labels to be added to gathered metrics.
     #[must_use]
     pub fn with_labels<'a, T, U, V>(mut self, kvs: V) -> Self
     where
@@ -208,14 +210,16 @@ impl MetricsBuilder {
         self
     }
 
-    /// Set optional prefix to use before
+    /// Set optional prefix for metric names.
+    ///
+    /// Defaults to no prefix used.
     #[must_use]
     pub fn with_prefix(mut self, prefix: impl ToString) -> Self {
         self.prefix = Some(prefix.to_string());
         self
     }
 
-    /// Build new Prometheus registry
+    /// Build new Prometheus registry.
     fn build_prometheus_registry(&self) -> Result<Registry, MetricsError> {
         Registry::new_custom(
             self.prefix.clone(),
@@ -228,7 +232,7 @@ impl MetricsBuilder {
         .map_err(Into::into)
     }
 
-    /// Build metrics state object
+    /// Build metrics state object.
     ///
     /// # Errors
     ///
@@ -268,9 +272,9 @@ impl MetricsBuilder {
         global::set_meter_provider(provider.clone());
         let meter = provider.meter("axum-app");
 
-        // TODO: try_init() and handle errors
+        // TODO: try_init() and handle errors.
 
-        // HTTP server metrics
+        // HTTP server metrics.
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
             .with_unit(Unit::new("s"))
@@ -339,12 +343,19 @@ impl MetricsBuilder {
         };
         let http_client = HttpClientMetrics(Arc::new(http_client));
 
-        // Tokio runtime metrics
+        // Tokio runtime metrics.
         let num_workers = meter
             .u64_observable_gauge("runtime.workers")
-            .with_description("The number of worker threads used by the runtime.")
+            .with_description("Number of worker threads used by the runtime.")
             .init();
-        let runtime = RuntimeMetrics { num_workers };
+        let num_alive_tasks = meter
+            .u64_observable_gauge("runtime.alive_tasks")
+            .with_description("Current number of alive tasks in the runtime.")
+            .init();
+        let runtime = RuntimeMetrics {
+            num_workers,
+            num_alive_tasks,
+        };
 
         Ok(MetricsState {
             registry,
@@ -423,8 +434,15 @@ pub struct HttpClientMetricsInner {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub(crate) struct RuntimeMetrics {
-    /// Number of workers inside the runtime.
+    /// Number of worker threads used by the runtime.
+    ///
+    /// The number of workers is set by configuring `worker_threads` on [`tokio::runtime::Builder`].
+    /// When using the `current_thread` runtime, the return value is always `1`.
     num_workers: ObservableGauge<u64>,
+    /// Current number of alive tasks in the runtime.
+    ///
+    /// This counter increases when a task is spawned and decreases when a task exits.
+    num_alive_tasks: ObservableGauge<u64>,
 }
 
 impl<S> Layer<S> for MetricsState {
@@ -622,6 +640,10 @@ async fn get_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, 
         .runtime
         .num_workers
         .observe(rt_metrics.num_workers() as u64, &[]);
+    metrics
+        .runtime
+        .num_alive_tasks
+        .observe(rt_metrics.num_alive_tasks() as u64, &[]);
 
     // Serialize metrics
     let encoder = TextEncoder::new();

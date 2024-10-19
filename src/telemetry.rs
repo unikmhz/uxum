@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 
-/// Common OpenTelemetry configuration
+/// Common OpenTelemetry configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct OpenTelemetryConfig {
-    /// OpenTelemetry resource detection timeout
+    /// OpenTelemetry resource detection timeout.
     #[serde(
         default = "OpenTelemetryConfig::default_detector_timeout",
         with = "humantime_serde"
@@ -33,14 +33,14 @@ impl Default for OpenTelemetryConfig {
 }
 
 impl OpenTelemetryConfig {
-    /// Default value for [`Self::detector_timeout`]
+    /// Default value for [`Self::detector_timeout`].
     fn default_detector_timeout() -> Duration {
         Duration::from_secs(6)
     }
 }
 
 impl AppConfig {
-    /// Get OpenTelemetry resource
+    /// Get OpenTelemetry resource.
     ///
     /// Creates new resource object on first call. On subsequent calls returns previously created
     /// object as a clone.
@@ -59,8 +59,8 @@ impl AppConfig {
                 Box::new(TelemetryResourceDetector),
             ],
         );
-        // TODO: res::SERVICE_NAMESPACE
-        // TODO: res::DEPLOYMENT_ENVIRONMENT
+        // TODO: res::SERVICE_NAMESPACE.
+        // TODO: res::DEPLOYMENT_ENVIRONMENT.
         let mut static_resources = Vec::new();
         if let Some(val) = &self.app_name {
             static_resources.push(KeyValue::new(res::SERVICE_NAME, val.clone()));

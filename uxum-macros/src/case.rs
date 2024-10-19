@@ -1,21 +1,21 @@
 use convert_case::{Case, Casing};
 use syn::Ident;
 
-/// String conversion to camel case
+/// String conversion to camel case.
 pub(crate) trait ToCamelCase {
-    /// Resulting type
+    /// Resulting type.
     type CamelCased;
 
-    /// Convert string-like type to camel case
+    /// Convert string-like type to camel case.
     fn to_camel_case(&self) -> Self::CamelCased;
 }
 
-/// String conversion to snake case
+/// String conversion to snake case.
 pub(crate) trait ToSnakeCase {
-    /// Resulting type
+    /// Resulting type.
     type SnakeCased;
 
-    /// Convert string-like type to snake case
+    /// Convert string-like type to snake case.
     fn to_snake_case(&self) -> Self::SnakeCased;
 }
 

@@ -1,3 +1,5 @@
+//! [`tower`] layer to record request ID.
+
 use std::{
     marker::PhantomData,
     task::{Context, Poll},
@@ -9,16 +11,16 @@ use tower::{Layer, Service};
 use tower_http::request_id::RequestId;
 
 tokio::task_local! {
-    /// Request ID of currently executing request, if any
+    /// Request ID of currently executing request, if any.
     pub static CURRENT_REQUEST_ID: Option<RequestId>;
 }
 
 pub(crate) const X_REQUEST_ID: &str = "x-request-id";
 
-/// Record request ID [`tower`] layer
+/// Record request ID [`tower`] layer.
 #[derive(Clone)]
 pub(crate) struct RecordRequestIdLayer<S> {
-    /// Inner service type
+    /// Inner service type.
     _phantom_service: PhantomData<S>,
 }
 
@@ -35,7 +37,7 @@ where
 }
 
 impl<S> RecordRequestIdLayer<S> {
-    /// Create new record request ID layer
+    /// Create new record request ID layer.
     #[must_use]
     pub(crate) fn new() -> Self {
         Self {
@@ -44,10 +46,10 @@ impl<S> RecordRequestIdLayer<S> {
     }
 }
 
-/// Record request ID [`tower`] service
+/// Record request ID [`tower`] service.
 #[derive(Clone, Debug)]
 pub(crate) struct RecordRequestIdService<S> {
-    /// Inner service
+    /// Inner service.
     inner: S,
 }
 
@@ -70,7 +72,7 @@ where
 }
 
 impl<S> RecordRequestIdService<S> {
-    /// Create new record request ID service
+    /// Create new record request ID service.
     #[must_use]
     fn new(inner: S) -> Self {
         Self { inner }

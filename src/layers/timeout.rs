@@ -1,3 +1,5 @@
+//! Request timeout [`tower`] layer.
+
 use std::{
     future::Future,
     marker::PhantomData,
@@ -26,21 +28,21 @@ use tracing::warn;
 use crate::layers::ext::Deadline;
 
 tokio::task_local! {
-    /// Deadline of currently executing request, if any
+    /// Deadline of currently executing request, if any.
     pub static CURRENT_DEADLINE: Option<Deadline>;
 }
 
-/// Error type returned by timeout layer
+/// Error type returned by timeout layer.
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum TimeoutError {
-    /// Request timed out
+    /// Request timed out.
     #[error("Request timed out")]
     TimedOut,
 }
 
 impl TimeoutError {
-    /// HTTP status code for used for this error
+    /// HTTP status code for used for this error.
     fn http_status(&self) -> StatusCode {
         match self {
             Self::TimedOut => StatusCode::GATEWAY_TIMEOUT,
@@ -56,14 +58,14 @@ impl IntoResponse for TimeoutError {
     }
 }
 
-/// Handler request timeout configuration
+/// Handler request timeout configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct HandlerTimeoutConfig {
-    /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header
+    /// Allow passing client-supplied ISO8601 timeout duration in an X-Timeout HTTP header.
     #[serde(default = "crate::util::default_true")]
     pub use_x_timeout: bool,
-    /// Default timeout for a handler
+    /// Default timeout for a handler.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -71,7 +73,7 @@ pub struct HandlerTimeoutConfig {
         with = "humantime_serde"
     )]
     pub default_timeout: Option<Duration>,
-    /// Minimum allowed timeout for a method
+    /// Minimum allowed timeout for a method.
     ///
     /// Timeout durations less than this value will automatically be responded
     /// with a 504 HTTP status code.
@@ -81,7 +83,7 @@ pub struct HandlerTimeoutConfig {
         with = "humantime_serde"
     )]
     pub min_timeout: Option<Duration>,
-    /// Maximum allowed timeout for a method
+    /// Maximum allowed timeout for a method.
     ///
     /// Timeout durations over this value will automatically be responded
     /// with a 504 HTTP status code.
@@ -105,12 +107,12 @@ impl Default for HandlerTimeoutConfig {
 }
 
 impl HandlerTimeoutConfig {
-    /// Predicate to skip serializing timeout for [`serde`]
+    /// Predicate to skip serializing timeout for [`serde`].
     pub fn is_default(&self) -> bool {
         *self == Self::default()
     }
 
-    /// Create layer for use in tower services
+    /// Create layer for use in tower services.
     pub fn make_layer<S>(&self) -> Option<TimeoutLayer<S>> {
         if self.use_x_timeout || self.default_timeout.is_some() {
             Some(self.into())
@@ -119,7 +121,7 @@ impl HandlerTimeoutConfig {
         }
     }
 
-    /// Get deadline based on configuration and X-Timeout header
+    /// Get deadline based on configuration and `X-Timeout` header.
     pub fn get_deadline(&self, timeout_header: Option<&HeaderValue>) -> Option<Instant> {
         if self.use_x_timeout && timeout_header.is_some() {
             timeout_header.and_then(|h| match h.to_str() {
@@ -154,11 +156,11 @@ impl HandlerTimeoutConfig {
     }
 }
 
-/// Timeout [`tower`] layer
+/// Timeout [`tower`] layer.
 pub struct TimeoutLayer<S> {
-    /// Timeout configuration
+    /// Timeout configuration.
     config: HandlerTimeoutConfig,
-    /// Inner service type
+    /// Inner service type.
     _phantom_service: PhantomData<S>,
 }
 
@@ -183,12 +185,12 @@ where
     }
 }
 
-/// Timeout [`tower`] service
+/// Timeout [`tower`] service.
 #[derive(Clone, Debug)]
 pub struct TimeoutService<S> {
-    /// Timeout configuration
+    /// Timeout configuration.
     config: Arc<HandlerTimeoutConfig>,
-    /// Inner service
+    /// Inner service.
     inner: S,
 }
 
@@ -232,22 +234,22 @@ impl<S> TimeoutService<S> {
     }
 }
 
-/// Timeout [`tower`] service future
+/// Timeout [`tower`] service future.
 #[pin_project(project = Type)]
 #[derive(Debug)]
 pub enum TimeoutFuture<F> {
-    /// Timeout exists, enforce it
+    /// Timeout exists, enforce it.
     Bounded {
-        /// Inner future
+        /// Inner future.
         #[pin]
         inner: TaskLocalFuture<Option<Deadline>, F>,
-        /// Sleep future
+        /// Sleep future.
         #[pin]
         sleep: Sleep,
     },
-    /// Timeout doesn't exist
+    /// Timeout doesn't exist.
     Unbounded {
-        /// Inner future
+        /// Inner future.
         #[pin]
         inner: TaskLocalFuture<Option<Deadline>, F>,
     },
@@ -263,13 +265,13 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
             Type::Bounded { inner, sleep } => {
-                // Check if future is ready
+                // Check if future is ready.
                 match inner.poll(cx) {
                     Poll::Pending => {}
                     Poll::Ready(res) => return Poll::Ready(res.map_err(Into::into)),
                 }
 
-                // Inner future is not ready yet, so check the timeout
+                // Inner future is not ready yet, so check the timeout.
                 match sleep.poll(cx) {
                     Poll::Pending => Poll::Pending,
                     Poll::Ready(_) => {
@@ -284,7 +286,7 @@ where
 }
 
 impl<F> TimeoutFuture<F> {
-    /// Create new timeout service future
+    /// Create new timeout service future.
     #[must_use]
     pub fn new(inner: TaskLocalFuture<Option<Deadline>, F>, deadline: Option<Instant>) -> Self {
         match deadline {

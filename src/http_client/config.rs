@@ -1,3 +1,5 @@
+//! HTTP client - configuration.
+
 use std::{collections::BTreeMap, num::NonZeroU32, path::Path, str::FromStr, time::Duration};
 
 use reqwest::{
@@ -189,6 +191,12 @@ impl HttpClientConfig {
     }
 
     /// Create [`reqwest::ClientBuilder`] from configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * Some client configuration is invalid.
+    /// * Unable to load TLS identity file(s) from filesystem.
     pub async fn to_client_builder(&self) -> Result<ClientBuilder, HttpClientError> {
         let mut builder = ClientBuilder::new()
             .use_rustls_tls()
@@ -244,6 +252,12 @@ impl HttpClientConfig {
     }
 
     /// Convert passed client builder into client with all necessary middlewares attached.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * TLS subsystem cannot be initialized.
+    /// * DNS resolver fails to load its configuration.
     pub fn build_client(
         &self,
         builder: ClientBuilder,
@@ -257,6 +271,14 @@ impl HttpClientConfig {
     }
 
     /// Build and return configured [`reqwest`] HTTP client.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * Some client configuration is invalid.
+    /// * Unable to load TLS identity file(s) from filesystem.
+    /// * TLS subsystem cannot be initialized.
+    /// * DNS resolver fails to load its configuration.
     pub async fn to_client(
         &self,
         metrics: Option<ClientMetricsState>,

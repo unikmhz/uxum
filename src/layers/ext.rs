@@ -1,4 +1,4 @@
-//! Miscellaneous types used as request extensions
+//! Miscellaneous types used as request extensions.
 
 use std::{
     borrow::{Borrow, BorrowMut},
@@ -10,7 +10,7 @@ use std::{
 
 use tokio::time::Instant as TokioInstant;
 
-/// Static handler name
+/// Static handler name.
 ///
 /// This gets attached as an extension to requests and responses for use mainly in middleware
 /// layers.
@@ -19,13 +19,13 @@ use tokio::time::Instant as TokioInstant;
 pub struct HandlerName(&'static str);
 
 impl HandlerName {
-    /// Construct new [`HandlerName`] from static string slice
+    /// Construct new [`HandlerName`] from static string slice.
     #[must_use]
     pub fn new(name: &'static str) -> Self {
         Self(name)
     }
 
-    /// Get static string slice stored inside
+    /// Get static string slice stored inside.
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         self.0
@@ -58,25 +58,25 @@ impl fmt::Display for HandlerName {
     }
 }
 
-/// Cutoff time after which the request must be timed out
+/// Cutoff time after which the request must be timed out.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Deadline(Instant);
 
 impl Deadline {
-    /// Construct new [`Deadline`] with zero time left
+    /// Construct new [`Deadline`] with zero time left.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Check if deadline has passed
+    /// Check if deadline has passed.
     #[must_use]
     pub fn is_expired(&self) -> bool {
         self.0 >= Instant::now()
     }
 
-    /// Get remaining time
+    /// Get remaining time.
     ///
     /// Returns [`None`] if deadline has passed.
     #[must_use]

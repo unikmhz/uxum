@@ -14,35 +14,35 @@ use crate::{
     util::quote_option,
 };
 
-/// Handler attributes related to OpenAPI specification
+/// Handler attributes related to OpenAPI specification.
 #[derive(Debug, Default, FromMeta)]
 pub(crate) struct HandlerSpec {
-    /// Tags assigned to this handler
+    /// Tags assigned to this handler.
     #[darling(default)]
     tags: Vec<syn::LitStr>,
-    /// Handler summary
+    /// Handler summary.
     ///
     /// Taken from first line of docstring if not explicitly specified.
     #[darling(default)]
     summary: Option<String>,
-    /// Handler description
+    /// Handler description.
     ///
     /// Taken from the docstring lines after the first, if not explicitly specified.
     #[darling(default)]
     description: Option<String>,
-    /// Documentation links
+    /// Documentation links.
     #[darling(default)]
     docs: Option<OpenApiExternalDoc>,
-    /// Schema for path parameters
+    /// Schema for path parameters.
     #[darling(default)]
     path_params: HashMap<String, OpenApiPathParameter>,
-    /// Deprecation flag
+    /// Deprecation flag.
     #[darling(default)]
     deprecated: bool,
 }
 
 impl HandlerSpec {
-    /// Generate OpenAPI operation schema code
+    /// Generate OpenAPI operation schema code.
     #[must_use]
     pub(crate) fn generate_schema(
         &self,
@@ -66,8 +66,8 @@ impl HandlerSpec {
             let descr = quote_option(&param.description);
             let deprecated = param.deprecated;
             let allow_empty = param.allow_empty;
-            // TODO: sense from extractors
-            // FIXME: unwrap
+            // TODO: sense from extractors.
+            // FIXME: unwrap.
             let value_type = param
                 .value_type
                 .unwrap_or(syn::Path::from_string("String").unwrap());
@@ -83,7 +83,7 @@ impl HandlerSpec {
                         style: None,
                         explode: None,
                         allow_reserved: false,
-                        // FIXME: subschema
+                        // FIXME: subschema.
                         schema: gen.subschema_for::<#value_type>().into_object(),
                         example: None,
                         examples: None,
@@ -111,7 +111,7 @@ impl HandlerSpec {
                                     name: key.into(),
                                     location: "query".into(),
                                     description: meta.and_then(|m| m.description.clone()),
-                                    required: true, // FIXME: not always required
+                                    required: true, // FIXME: not always required.
                                     deprecated: meta.map(|m| m.deprecated).unwrap_or_default(),
                                     allow_empty_value: false,
                                     value: openapi3::ParameterValue::Schema {

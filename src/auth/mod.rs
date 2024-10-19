@@ -1,3 +1,5 @@
+//! Authentication and authorization system.
+
 mod config;
 mod errors;
 mod extractor;

@@ -1,3 +1,5 @@
+//! Logging configuration via [`tracing`] crate.
+
 pub(crate) mod json;
 pub(crate) mod span;
 
@@ -20,26 +22,28 @@ use crate::logging::json::{ExtensibleJsonFormat, JsonKeyNames};
 
 type LoggingRegistry = Layered<Vec<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
 
-/// Error type used in logging configuration
+/// Error type used in logging configuration.
 #[derive(Debug, Error)]
 pub enum LoggingError {
+    /// Log destination I/O error.
     #[error("Log destination I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Error while initializing log directory writer.
     #[error("Error while initializing log directory writer: {0}")]
     Directory(#[from] tracing_appender::rolling::InitError),
 }
 
-/// Logging configuration
+/// Logging configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct LoggingConfig {
-    /// List of subscribers defined in configuration
+    /// List of subscribers defined in configuration.
     #[serde(default)]
     pub subscribers: Vec<LoggingSubscriberConfig>,
 }
 
 impl LoggingConfig {
-    /// Create registry subscriber from configuration
+    /// Create registry subscriber from configuration.
     ///
     /// # Errors
     ///
@@ -59,32 +63,32 @@ impl LoggingConfig {
     }
 }
 
-/// Individual logging subscriber configuration
+/// Individual logging subscriber configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct LoggingSubscriberConfig {
-    /// Overall format for logging output
+    /// Overall format for logging output.
     #[serde(default, flatten)]
     pub format: LoggingFormat,
-    /// Minimum severity level to include in output
+    /// Minimum severity level to include in output.
     #[serde(default)]
     pub level: LoggingLevel,
-    /// Custom minimum severity levels for span targets
+    /// Custom minimum severity levels for span targets.
     #[serde(default)]
     pub targets: BTreeMap<String, LoggingLevel>,
-    /// Use ANSI escape sequences for output colors and formatting
+    /// Use ANSI escape sequences for output colors and formatting.
     #[serde(default)]
     pub color: bool,
-    /// Include errors of logging subsystem in output
+    /// Include errors of logging subsystem in output.
     #[serde(default = "crate::util::default_true")]
     pub internal_errors: bool,
-    /// Additional span information to include in output
+    /// Additional span information to include in output.
     #[serde(default)]
     pub print: LoggingPrintingConfig,
-    /// Write buffer configuration for a non-blocking writer
+    /// Write buffer configuration for a non-blocking writer.
     #[serde(default)]
     pub buffer: LoggingBufferConfig,
-    /// Log destination configuration
+    /// Log destination configuration.
     #[serde(default)]
     pub output: LoggingDestination,
 }
@@ -105,7 +109,7 @@ impl Default for LoggingSubscriberConfig {
 }
 
 impl LoggingSubscriberConfig {
-    /// Logging subscriber template for use in development
+    /// Logging subscriber template for use in development.
     #[must_use]
     pub fn default_for_dev() -> Self {
         Self {
@@ -127,7 +131,7 @@ impl LoggingSubscriberConfig {
         }
     }
 
-    /// Make [`tracing_subscriber::Layer`] from subscriber configuration
+    /// Make [`tracing_subscriber::Layer`] from subscriber configuration.
     pub fn make_layer<T>(
         &self,
     ) -> Result<(Box<dyn Layer<T> + Send + Sync>, WorkerGuard), LoggingError>
@@ -187,79 +191,79 @@ impl LoggingSubscriberConfig {
     }
 }
 
-/// Format for logging output
+/// Format for logging output.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "lowercase", tag = "format")]
 pub enum LoggingFormat {
-    /// Format which prints span context before log message
+    /// Format which prints span context before log message.
     ///
     /// See [`tracing_subscriber::fmt::format::Full`].
     #[default]
     Full,
-    /// More compact format, span names are hidden
+    /// More compact format, span names are hidden.
     ///
     /// See [`tracing_subscriber::fmt::format::Compact`].
     Compact,
-    /// Excessively verbose and pretty multiline format
+    /// Excessively verbose and pretty multiline format.
     ///
     /// Might be useful when developing and testing code.
     /// See [`tracing_subscriber::fmt::format::Pretty`].
     Pretty,
-    /// Formats logs as newline-delimited JSON objects
+    /// Formats logs as newline-delimited JSON objects.
     ///
     /// See [`tracing_subscriber::fmt::format::Json`].
     Json {
-        /// Flatten event metadata fields into object
+        /// Flatten event metadata fields into object.
         ///
         /// See [`tracing_subscriber::fmt::format::Json::flatten_event`].
         #[serde(default)]
         flatten_metadata: bool,
-        /// Add current span name to object
+        /// Add current span name to object.
         ///
         /// See [`tracing_subscriber::fmt::format::Json::with_current_span`].
         #[serde(default)]
         current_span: bool,
-        /// Static fields to add to object
+        /// Static fields to add to object.
         #[serde(default)]
         static_fields: BTreeMap<String, serde_json::Value>,
-        /// Custom names for JSON keys
+        /// Custom names for JSON keys.
         #[serde(default)]
         key_names: Box<JsonKeyNames>,
     },
 }
 
-/// Minumum event severity for log output
+/// Minumum event severity for log output.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LoggingLevel {
-    /// Disables logging altogether
+    /// Disables logging altogether.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::OFF`].
     #[serde(alias = "off", alias = "disabled", alias = "DISABLED")]
     Off,
-    /// Write "error" level only
+    /// Write "error" level only.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::ERROR`].
     #[serde(alias = "error", alias = "err", alias = "ERR")]
     Error,
-    /// Write "warn" and more severe levels
+    /// Write "warn" and more severe levels.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::WARN`].
     #[serde(alias = "warn", alias = "warning", alias = "WARNING")]
     Warn,
-    /// Write "info" and more severe levels
+    /// Write "info" and more severe levels.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::INFO`].
     #[serde(alias = "info")]
     Info,
-    /// Write "debug" and more severe levels
+    /// Write "debug" and more severe levels.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::DEBUG`].
     #[serde(alias = "debug")]
     #[default]
     Debug,
-    /// Write everything
+    /// Write everything.
     ///
     /// See [`tracing_subscriber::filter::LevelFilter::TRACE`].
     #[serde(alias = "trace")]
@@ -279,27 +283,27 @@ impl From<LoggingLevel> for LevelFilter {
     }
 }
 
-/// Additional information to include in output
+/// Additional information to include in output.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[allow(clippy::struct_excessive_bools)]
 pub struct LoggingPrintingConfig {
-    /// Print event target
+    /// Print event target.
     #[serde(default)]
     pub target: bool,
-    /// Print source file path
+    /// Print source file path.
     #[serde(default)]
     pub file: bool,
-    /// Print source line number
+    /// Print source line number.
     #[serde(default)]
     pub line_number: bool,
-    /// Print severity level
+    /// Print severity level.
     #[serde(default = "crate::util::default_true")]
     pub level: bool,
-    /// Print thread name
+    /// Print thread name.
     #[serde(default)]
     pub thread_name: bool,
-    /// Print thread ID
+    /// Print thread ID.
     #[serde(default)]
     pub thread_id: bool,
 }
@@ -317,11 +321,11 @@ impl Default for LoggingPrintingConfig {
     }
 }
 
-/// Configuration for a non-blocking writer
+/// Configuration for a non-blocking writer.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct LoggingBufferConfig {
-    /// Maximum buffered lines to store
+    /// Maximum buffered lines to store.
     ///
     /// After reaching this number of lines, new events will either be dropped or block, depending
     /// on [`Self::lossy`] parameter.
@@ -329,7 +333,7 @@ pub struct LoggingBufferConfig {
     /// See [`tracing_appender::non_blocking::NonBlockingBuilder::buffered_lines_limit`].
     #[serde(default = "LoggingBufferConfig::default_lines")]
     pub lines: usize,
-    /// What to do with log lines that cannot be added to the buffer
+    /// What to do with log lines that cannot be added to the buffer.
     ///
     /// Either drop them if `true`, or block execution until there is sufficient space in the buffer
     /// if `false`.
@@ -337,7 +341,7 @@ pub struct LoggingBufferConfig {
     /// See [`tracing_appender::non_blocking::NonBlockingBuilder::lossy`].
     #[serde(default = "crate::util::default_true")]
     pub lossy: bool,
-    /// Override the thread name of log appender
+    /// Override the thread name of log appender.
     ///
     /// See [`tracing_appender::non_blocking::NonBlockingBuilder::thread_name`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -355,14 +359,14 @@ impl Default for LoggingBufferConfig {
 }
 
 impl LoggingBufferConfig {
-    /// Default value for [`Self::lines`]
+    /// Default value for [`Self::lines`].
     #[must_use]
     #[inline]
     fn default_lines() -> usize {
         128_000
     }
 
-    /// Construct a builder for non-blocking writer
+    /// Construct a builder for non-blocking writer.
     #[must_use]
     pub fn make_builder(&self) -> NonBlockingBuilder {
         let mut builder = NonBlockingBuilder::default()
@@ -374,7 +378,7 @@ impl LoggingBufferConfig {
         builder
     }
 
-    /// Construct a non-blocking writer
+    /// Construct a non-blocking writer.
     pub fn make_writer<W>(&self, ll_writer: W) -> (NonBlocking, WorkerGuard)
     where
         W: io::Write + Send + 'static,
@@ -383,27 +387,27 @@ impl LoggingBufferConfig {
     }
 }
 
-/// Logging output destination configuration
+/// Logging output destination configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "lowercase", tag = "type")]
 pub enum LoggingDestination {
-    /// Output to standard output (stdout, fd 1)
+    /// Output to standard output (stdout, fd 1).
     #[default]
     #[serde(alias = "stdout", alias = "out")]
     StdOut,
-    /// Output to standard error (stderr, fd 2)
+    /// Output to standard error (stderr, fd 2).
     #[serde(alias = "stderr", alias = "err")]
     StdErr,
-    /// Output to file
+    /// Output to file.
     File(LoggingFileConfig),
-    /// Output to files in a directory with optional rotation
+    /// Output to files in a directory with optional rotation.
     #[serde(alias = "dir")]
     Directory(LoggingDirectoryConfig),
 }
 
 impl LoggingDestination {
-    /// Make [`tracing_subscriber::fmt::writer::BoxMakeWriter`] from configuration
+    /// Make [`tracing_subscriber::fmt::writer::BoxMakeWriter`] from configuration.
     pub fn make_writer(
         &self,
         buf_builder: NonBlockingBuilder,
@@ -444,31 +448,31 @@ impl LoggingDestination {
     }
 }
 
-/// Configuration of file output
+/// Configuration of file output.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct LoggingFileConfig {
-    /// Path to file
+    /// Path to file.
     pub path: String,
 }
 
-/// Configuration of directory output
+/// Configuration of directory output.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct LoggingDirectoryConfig {
-    /// Path to directory
+    /// Path to directory.
     #[serde(default = "LoggingDirectoryConfig::default_path")]
     pub path: String,
-    /// Log rotation configuration
+    /// Log rotation configuration.
     #[serde(default)]
     pub rotate: LogRotation,
-    /// Template prefix for file names
+    /// Template prefix for file names.
     #[serde(default)]
     pub prefix: Option<String>,
-    /// Template suffix for file names
+    /// Template suffix for file names.
     #[serde(default = "LoggingDirectoryConfig::default_suffix")]
     pub suffix: Option<String>,
-    /// Maximum amount of files to keep in directory
+    /// Maximum amount of files to keep in directory.
     #[serde(default)]
     pub max_files: Option<usize>,
 }
@@ -486,14 +490,14 @@ impl Default for LoggingDirectoryConfig {
 }
 
 impl LoggingDirectoryConfig {
-    /// Default value for [`Self::path`]
+    /// Default value for [`Self::path`].
     #[must_use]
     #[inline]
     fn default_path() -> String {
         ".".into()
     }
 
-    /// Default value for [`Self::suffix`]
+    /// Default value for [`Self::suffix`].
     #[must_use]
     #[inline]
     #[allow(clippy::unnecessary_wraps)]
@@ -502,19 +506,19 @@ impl LoggingDirectoryConfig {
     }
 }
 
-/// Log rotation configuration
+/// Log rotation configuration.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LogRotation {
-    /// Rotate logs once every minute
+    /// Rotate logs once every minute.
     Minutely,
-    /// Rotate logs once every hour
+    /// Rotate logs once every hour.
     Hourly,
-    /// Rotate logs once every day
+    /// Rotate logs once every day.
     #[default]
     Daily,
-    /// Never rotate logs
+    /// Never rotate logs.
     Never,
 }
 

@@ -201,7 +201,7 @@ where
     where
         S: Clone + Send + 'static,
     {
-        // TODO: maybe make state registry non-global? dubious
+        // TODO: maybe make state registry non-global? dubious.
         state::put(state);
         self
     }
@@ -250,15 +250,15 @@ where
     ///
     /// Returns `Err` if metrics registry or provider could not be initialized.
     pub fn metrics(&mut self) -> Result<&MetricsState, AppBuilderError> {
-        // TODO: export metrics state for application-defined metrics
-        // TODO: make metrics optional
+        // TODO: export metrics state for application-defined metrics.
+        // TODO: make metrics optional.
         match self.metrics {
             Some(ref metrics) => Ok(metrics),
             None => {
                 let otel_res = self.config.otel_resource();
                 let metrics = self.config.metrics.build_state(otel_res.clone())?;
                 self.metrics = Some(metrics);
-                // SAFETY: Some() is guaranteed, as we assigned it before
+                // SAFETY: Some() is guaranteed, as we assigned it before.
                 Ok(self.metrics.as_ref().unwrap())
             }
         }
@@ -334,6 +334,10 @@ where
     }
 
     /// Build and return configured [`reqwest`] HTTP client with distributed tracing support.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if metrics registry or HTTP client could not be initialized.
     pub async fn http_client(
         &mut self,
         name: impl AsRef<str>,
@@ -357,6 +361,10 @@ where
 
     /// Same as [`Self::http_client`], but returns default client if there is no configuration
     /// available.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if metrics registry or HTTP client could not be initialized.
     pub async fn http_client_or_default(
         &mut self,
         name: impl AsRef<str>,
@@ -387,7 +395,7 @@ where
             .sensitive_headers([header::AUTHORIZATION])
             .layer(
                 TraceLayer::new_for_http()
-                    // TODO: allow customizing level() / include_headers()
+                    // TODO: allow customizing level() / include_headers().
                     .make_span_with(CustomMakeSpan::new().include_headers(true))
                     .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
                     .on_response(
@@ -404,7 +412,7 @@ where
                 header::SERVER,
                 self.server_header(),
             ));
-        // TODO: DefaultBodyLimit (configurable)
+        // TODO: DefaultBodyLimit (configurable).
         rtr.layer(global_layers)
     }
 
@@ -549,9 +557,9 @@ impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
     }
 }
 
-// FIXME: write proper handler
+// FIXME: write proper handler.
 pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
-    // TODO: generalize, remove all the downcasts
+    // TODO: generalize, remove all the downcasts.
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();
     }
@@ -590,4 +598,8 @@ pub trait HandlerExt: Sync {
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 
+// All handlers are registered at this point.
+//
+// This happens magically before `main()` is run.
+// For more info see documentation on [`inventory`] crate.
 inventory::collect!(&'static dyn HandlerExt);

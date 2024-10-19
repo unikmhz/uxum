@@ -8,20 +8,20 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::{Builder, Runtime};
 use tracing::trace;
 
-/// Runtime scheduler to use
+/// Runtime scheduler to use.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum RuntimeType {
-    /// Use current-thread scheduler
+    /// Use current-thread scheduler.
     CurrentThread,
-    /// Use multi-thread scheduler
+    /// Use multi-thread scheduler.
     #[default]
     MultiThread,
 }
 
 impl RuntimeType {
-    /// Create new runtime builder with an appropriate scheduler type selected
+    /// Create new runtime builder with an appropriate scheduler type selected.
     pub fn builder(&self) -> Builder {
         match self {
             Self::CurrentThread => Builder::new_current_thread(),
@@ -30,11 +30,11 @@ impl RuntimeType {
     }
 }
 
-/// Tokio runtime configuration
+/// Tokio runtime configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct RuntimeConfig {
-    /// Type of runtime to use
+    /// Type of runtime to use.
     #[serde(default)]
     pub r#type: RuntimeType,
     /// Number of ticks after which the scheduler will poll for external events (timers, I/O, and so on).
@@ -93,7 +93,8 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// Create and configure new runtime builder
+    /// Create and configure new runtime builder.
+    #[must_use]
     pub fn builder(&self) -> Builder {
         let mut rb = self.r#type.builder();
         rb.enable_all();
@@ -133,7 +134,11 @@ impl RuntimeConfig {
         rb
     }
 
-    /// Create and configure new runtime
+    /// Create and configure new runtime.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some driver inside the runtime failed to initialize.
     pub fn build(&self) -> Result<Runtime, std::io::Error> {
         self.builder().build()
     }

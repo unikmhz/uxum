@@ -4,12 +4,12 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::util::quote_option;
 
-/// Available service endpoint
+/// Available service endpoint.
 #[derive(Debug, FromMeta)]
 pub(crate) struct OpenApiServer {
-    /// Server URL
+    /// Server URL.
     url: String,
-    /// Server description
+    /// Server description.
     #[darling(default)]
     description: Option<String>,
 }

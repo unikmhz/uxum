@@ -1,3 +1,5 @@
+//! Custom span generators for request tracing.
+
 use axum::{body::Body, http::Request};
 use opentelemetry::{propagation::Extractor, trace::TraceContextExt};
 use tower_http::{request_id::RequestId, trace::MakeSpan};
@@ -6,12 +8,12 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 const DEFAULT_MESSAGE_LEVEL: Level = Level::DEBUG;
 
-/// Custom span creation for [`tower_http::trace::TraceLayer`]
+/// Custom span creation for [`tower_http::trace::TraceLayer`].
 #[derive(Debug, Clone)]
 pub(crate) struct CustomMakeSpan {
-    /// Verbosity level of created span
+    /// Verbosity level of created span.
     level: Level,
-    /// Include HTTP request headers as span attributes
+    /// Include HTTP request headers as span attributes.
     include_headers: bool,
 }
 
@@ -25,12 +27,12 @@ impl Default for CustomMakeSpan {
 }
 
 impl CustomMakeSpan {
-    /// Create new span creator with default settings
+    /// Create new span creator with default settings.
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    /// Set the [`Level`] used for the [tracing span]
+    /// Set the [`Level`] used for the [tracing span].
     ///
     /// Defaults to [`Level::DEBUG`].
     ///
@@ -41,7 +43,7 @@ impl CustomMakeSpan {
         self
     }
 
-    /// Include request headers on the [`Span`]
+    /// Include request headers on the [`Span`].
     ///
     /// By default headers are not included.
     pub(crate) fn include_headers(mut self, include_headers: bool) -> Self {
@@ -52,7 +54,7 @@ impl CustomMakeSpan {
 
 impl MakeSpan<Body> for CustomMakeSpan {
     fn make_span(&mut self, request: &Request<Body>) -> Span {
-        // TODO: don't send trace/span IDs as redundant attributes in otel traces
+        // TODO: don't send trace/span IDs as redundant attributes in otel traces.
         let x_request_id = request
             .extensions()
             .get::<RequestId>()
@@ -108,16 +110,16 @@ impl MakeSpan<Body> for CustomMakeSpan {
 ///
 /// This is lifted verbatim from [`opentelemetry_http`] crate due to [`http`] crate version
 /// incompatibilities.
-// TODO: move back to standard extractor when everyone synchronizes their version of http crate
+// TODO: move back to standard extractor when everyone synchronizes their version of http crate.
 pub(crate) struct HeaderExtractor<'a>(pub(crate) &'a http::HeaderMap);
 
 impl<'a> Extractor for HeaderExtractor<'a> {
-    /// Get a value for a key from the HeaderMap.  If the value is not valid ASCII, returns None.
+    /// Get a value for a key from the [`http::HeaderMap`].  If the value is not valid ASCII, returns None.
     fn get(&self, key: &str) -> Option<&str> {
         self.0.get(key).and_then(|value| value.to_str().ok())
     }
 
-    /// Collect all the keys from the HeaderMap.
+    /// Collect all the keys from the [`http::HeaderMap`].
     fn keys(&self) -> Vec<&str> {
         self.0
             .keys()
@@ -127,8 +129,8 @@ impl<'a> Extractor for HeaderExtractor<'a> {
 }
 
 pub(crate) fn register_request(req: Request<Body>) -> Request<Body> {
-    // TODO: don't lookup trace/span IDs, use values pre-extracted by tracing-opentelemetry
-    // TODO: don't send trace/span IDs as redundant attributes in otel traces
+    // TODO: don't lookup trace/span IDs, use values pre-extracted by tracing-opentelemetry.
+    // TODO: don't send trace/span IDs as redundant attributes in otel traces.
     let parent_context = opentelemetry::global::get_text_map_propagator(|prop| {
         prop.extract(&HeaderExtractor(req.headers()))
     });

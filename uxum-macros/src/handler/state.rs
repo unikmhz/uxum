@@ -5,7 +5,7 @@ use syn::{
     TypePath,
 };
 
-/// Type for detected state extractor
+/// Type for detected state extractor.
 #[derive(Debug)]
 pub(crate) struct StateType(Path);
 
@@ -15,6 +15,7 @@ impl ToTokens for StateType {
     }
 }
 
+/// Detect used state type by inspecting function arguments.
 pub(crate) fn detect_state(handler: &ItemFn) -> Option<StateType> {
     handler.sig.inputs.iter().find_map(|input| match input {
         FnArg::Typed(arg_type) => match arg_type.ty.as_ref() {

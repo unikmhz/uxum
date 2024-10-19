@@ -1,3 +1,5 @@
+//! Custom JSON formatter and writer for use in logging.
+
 use std::{borrow::Cow, collections::BTreeMap, fmt, io, marker::PhantomData};
 
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
@@ -14,35 +16,35 @@ use tracing_subscriber::{
     registry::{LookupSpan, SpanRef},
 };
 
-/// Custom names JSON keys
+/// Custom names JSON keys.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct JsonKeyNames {
-    /// Custom name for "timestamp" key
+    /// Custom name for `timestamp` key.
     #[serde(default = "JsonKeyNames::default_timestamp")]
     timestamp: Cow<'static, str>,
-    /// Custom name for "level" key
+    /// Custom name for `level` key.
     #[serde(default = "JsonKeyNames::default_level")]
     level: Cow<'static, str>,
-    /// Custom name for "fields" key
+    /// Custom name for `fields` key.
     #[serde(default = "JsonKeyNames::default_fields")]
     fields: Cow<'static, str>,
-    /// Custom name for "target" key
+    /// Custom name for `target` key.
     #[serde(default = "JsonKeyNames::default_target")]
     target: Cow<'static, str>,
-    /// Custom name for "filename" key
+    /// Custom name for `filename` key.
     #[serde(default = "JsonKeyNames::default_filename")]
     filename: Cow<'static, str>,
-    /// Custom name for "line_number" key
+    /// Custom name for `line_number` key.
     #[serde(default = "JsonKeyNames::default_line_number")]
     line_number: Cow<'static, str>,
-    /// Custom name for "span" key
+    /// Custom name for `span` key.
     #[serde(default = "JsonKeyNames::default_span")]
     span: Cow<'static, str>,
-    /// Custom name for "threadName" key
+    /// Custom name for `threadName` key.
     #[serde(default = "JsonKeyNames::default_thread_name")]
     thread_name: Cow<'static, str>,
-    /// Custom name for "threadId" key
+    /// Custom name for `threadId` key.
     #[serde(default = "JsonKeyNames::default_thread_id")]
     thread_id: Cow<'static, str>,
 }
@@ -64,63 +66,63 @@ impl Default for JsonKeyNames {
 }
 
 impl JsonKeyNames {
-    /// Default value for [`Self::timestamp`]
+    /// Default value for [`Self::timestamp`].
     #[must_use]
     #[inline]
     fn default_timestamp() -> Cow<'static, str> {
         Cow::Borrowed("timestamp")
     }
 
-    /// Default value for [`Self::level`]
+    /// Default value for [`Self::level`].
     #[must_use]
     #[inline]
     fn default_level() -> Cow<'static, str> {
         Cow::Borrowed("level")
     }
 
-    /// Default value for [`Self::fields`]
+    /// Default value for [`Self::fields`].
     #[must_use]
     #[inline]
     fn default_fields() -> Cow<'static, str> {
         Cow::Borrowed("fields")
     }
 
-    /// Default value for [`Self::target`]
+    /// Default value for [`Self::target`].
     #[must_use]
     #[inline]
     fn default_target() -> Cow<'static, str> {
         Cow::Borrowed("target")
     }
 
-    /// Default value for [`Self::filename`]
+    /// Default value for [`Self::filename`].
     #[must_use]
     #[inline]
     fn default_filename() -> Cow<'static, str> {
         Cow::Borrowed("filename")
     }
 
-    /// Default value for [`Self::line_number`]
+    /// Default value for [`Self::line_number`].
     #[must_use]
     #[inline]
     fn default_line_number() -> Cow<'static, str> {
         Cow::Borrowed("line_number")
     }
 
-    /// Default value for [`Self::span`]
+    /// Default value for [`Self::span`].
     #[must_use]
     #[inline]
     fn default_span() -> Cow<'static, str> {
         Cow::Borrowed("span")
     }
 
-    /// Default value for [`Self::thread_name`]
+    /// Default value for [`Self::thread_name`].
     #[must_use]
     #[inline]
     fn default_thread_name() -> Cow<'static, str> {
         Cow::Borrowed("threadName")
     }
 
-    /// Default value for [`Self::thread_id`]
+    /// Default value for [`Self::thread_id`].
     #[must_use]
     #[inline]
     fn default_thread_id() -> Cow<'static, str> {
@@ -128,34 +130,34 @@ impl JsonKeyNames {
     }
 }
 
-/// Extensible JSON format
+/// Extensible JSON format.
 ///
 /// Similar to [`tracing_subscriber::fmt::format::json::Json`], but with extra features.
 #[derive(Clone, Debug)]
 pub(crate) struct ExtensibleJsonFormat<T = SystemTime> {
-    /// Time formatter
+    /// Time formatter.
     timer: T,
-    /// Add timestamps to output
+    /// Add timestamps to output.
     display_timestamp: bool,
-    /// Add span target to output
+    /// Add span target to output.
     display_target: bool,
-    /// Add event level to output
+    /// Add event level to output.
     display_level: bool,
-    /// Add thread ID to output
+    /// Add thread ID to output.
     display_thread_id: bool,
-    /// Add thread name to output
+    /// Add thread name to output.
     display_thread_name: bool,
-    /// Add filename of source code origin to output
+    /// Add filename of source code origin to output.
     display_filename: bool,
-    /// Add file line of source code origin to output
+    /// Add file line of source code origin to output.
     display_line_number: bool,
-    /// Flatten event metadata
+    /// Flatten event metadata.
     flatten_event: bool,
-    /// Add current span info to output
+    /// Add current span info to output.
     display_current_span: bool,
-    /// Static fields to add to output
+    /// Static fields to add to output.
     static_fields: BTreeMap<String, Value>,
-    /// Custom names to use for JSON object keys
+    /// Custom names to use for JSON object keys.
     key_names: JsonKeyNames,
 }
 
@@ -290,7 +292,7 @@ where
 }
 
 impl ExtensibleJsonFormat {
-    /// Create new JSON formatter
+    /// Create new JSON formatter.
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()
@@ -432,7 +434,7 @@ impl<T> ExtensibleJsonFormat<T> {
         }
     }
 
-    /// Add static fields to generated JSON objects
+    /// Add static fields to generated JSON objects.
     pub(crate) fn with_static_fields(self, static_fields: BTreeMap<String, Value>) -> Self {
         Self {
             static_fields,
@@ -440,7 +442,7 @@ impl<T> ExtensibleJsonFormat<T> {
         }
     }
 
-    /// Set custom JSON field names
+    /// Set custom JSON field names.
     pub(crate) fn with_key_names(self, key_names: JsonKeyNames) -> Self {
         Self { key_names, ..self }
     }
@@ -479,7 +481,7 @@ where
                 }
             }
             // We have fields for this span which are valid JSON but not an object.
-            // This is probably a bug, so panic if we're in debug mode
+            // This is probably a bug, so panic if we're in debug mode.
             Ok(_) if cfg!(debug_assertions) => panic!(
                 "span '{}' had malformed fields! this is a bug.\n  error: invalid JSON object\n  fields: {:?}",
                 self.0.metadata().name(),
@@ -487,7 +489,7 @@ where
             ),
             // If we *aren't* in debug mode, it's probably best not to
             // crash the program, let's log the field found but also an
-            // message saying it's type  is invalid
+            // message saying it's type is invalid.
             Ok(value) => {
                 serializer.serialize_entry("field", &value)?;
                 serializer.serialize_entry("field_error", "field was no a valid object")?
@@ -495,7 +497,7 @@ where
             // We have previously recorded fields for this span
             // should be valid JSON. However, they appear to *not*
             // be valid JSON. This is almost certainly a bug, so
-            // panic if we're in debug mode
+            // panic if we're in debug mode.
             Err(e) if cfg!(debug_assertions) => panic!(
                 "span '{}' had malformed fields! this is a bug.\n  error: {}\n  fields: {:?}",
                 self.0.metadata().name(),

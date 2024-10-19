@@ -50,7 +50,7 @@ async fn main() {
     // Build main application router
     let app = app_builder.build().expect("Unable to build app");
     // Create server handle
-    let handle = Handle::new();
+    let handle = axum_server::Handle::new();
     // Spawn signal handler
     config
         .server

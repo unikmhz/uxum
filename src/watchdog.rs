@@ -12,16 +12,16 @@ use tokio::{
 };
 use tracing::{trace_span, Instrument};
 
-/// Configuration for runtime watchdog
+/// Configuration for runtime watchdog.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct WatchdogConfig {
-    /// Interval between watchdog updates
+    /// Interval between watchdog updates.
     ///
     /// Default is 2 seconds.
     #[serde(default = "WatchdogConfig::default_interval", with = "humantime_serde")]
     interval: Duration,
-    /// Duration since last update that is considered as a watchdog failure
+    /// Duration since last update that is considered as a watchdog failure.
     ///
     /// Default is 7 seconds.
     #[serde(default = "WatchdogConfig::default_timeout", with = "humantime_serde")]
@@ -38,14 +38,14 @@ impl Default for WatchdogConfig {
 }
 
 impl WatchdogConfig {
-    /// Default value for [`Self::interval`]
+    /// Default value for [`Self::interval`].
     #[must_use]
     #[inline]
     fn default_interval() -> Duration {
         Duration::from_secs(2)
     }
 
-    /// Default value for [`Self::timeout`]
+    /// Default value for [`Self::timeout`].
     #[must_use]
     #[inline]
     fn default_timeout() -> Duration {
@@ -53,16 +53,16 @@ impl WatchdogConfig {
     }
 }
 
-/// Runtime watchdog
+/// Runtime watchdog.
 ///
 /// Runs every `config.interval` and updates its `last` value.
 #[derive(Debug, Default)]
 pub(crate) struct Watchdog {
-    /// Runtime watchdog configuration
+    /// Runtime watchdog configuration.
     config: WatchdogConfig,
-    /// Watchdog task handle
+    /// Watchdog task handle.
     task: Option<JoinHandle<()>>,
-    /// Value periodically updated by watchdog task
+    /// Value periodically updated by watchdog task.
     last: Arc<Mutex<Option<Instant>>>,
 }
 
@@ -85,7 +85,7 @@ impl Drop for Watchdog {
 }
 
 impl Watchdog {
-    /// Create runtime watchdog future
+    /// Create runtime watchdog future.
     fn watchdog_task(&self) -> impl Future<Output = ()> {
         let span = trace_span!("runtime_watchdog");
         let interval_dur = self.config.interval;
@@ -106,14 +106,15 @@ impl Watchdog {
         .instrument(span)
     }
 
-    /// Start internal runtime watchdog task
+    /// Start internal runtime watchdog task.
     pub(crate) fn start(&mut self) {
         if self.task.is_none() {
             self.task = Some(tokio::spawn(self.watchdog_task()));
         }
     }
 
-    /// Check whether runtime watchdog has been tripped
+    /// Check whether runtime watchdog has been tripped.
+    #[must_use]
     pub(crate) fn is_alive(&self) -> bool {
         match self.last.lock().map(|l| l + self.config.timeout) {
             Some(th) => Instant::now() < th,

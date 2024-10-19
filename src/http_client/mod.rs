@@ -1,3 +1,7 @@
+//! Instrumented HTTP client.
+//!
+//! Uses [`reqwest`] internally.
+
 mod cb;
 mod config;
 mod errors;

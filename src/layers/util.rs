@@ -1,3 +1,5 @@
+//! Utility functions used by [`tower`] layers.
+
 use std::{
     hash::Hash,
     net::{IpAddr, SocketAddr},
@@ -10,19 +12,19 @@ use thiserror::Error;
 
 use crate::auth::UserId;
 
-/// Error type returned by key extractors
+/// Error type returned by key extractors.
 #[derive(Clone, Debug, Error)]
 #[error("Unable to extract rate-limiting key from request")]
 pub struct ExtractionError;
 
-/// Key extraction trait for use in various limiting layers
+/// Key extraction trait for use in various limiting layers.
 pub(crate) trait KeyExtractor {
     type Key: Hash + Eq + Clone;
 
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, ExtractionError>;
 }
 
-/// Use user ID as key
+/// Use user ID as key.
 pub(crate) struct UserIdKeyExtractor;
 
 impl KeyExtractor for UserIdKeyExtractor {
@@ -37,7 +39,7 @@ impl KeyExtractor for UserIdKeyExtractor {
     }
 }
 
-/// Use client IP address as key
+/// Use client IP address as key.
 pub(crate) struct PeerIpKeyExtractor;
 
 impl KeyExtractor for PeerIpKeyExtractor {
@@ -48,7 +50,7 @@ impl KeyExtractor for PeerIpKeyExtractor {
     }
 }
 
-/// Use original client IP address as key
+/// Use original client IP address as key.
 pub(crate) struct SmartIpKeyExtractor;
 
 impl KeyExtractor for SmartIpKeyExtractor {
@@ -70,7 +72,7 @@ impl KeyExtractor for SmartIpKeyExtractor {
 const X_REAL_IP: &str = "x-real-ip";
 const X_FORWARDED_FOR: &str = "x-forwarded-for";
 
-/// Tries to parse the `x-forwarded-for` header
+/// Tries to parse the `x-forwarded-for` header.
 fn maybe_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_FORWARDED_FOR)
@@ -81,7 +83,7 @@ fn maybe_x_forwarded_for(headers: &HeaderMap) -> Option<IpAddr> {
         })
 }
 
-/// Tries to parse the `x-real-ip` header
+/// Tries to parse the `x-real-ip` header.
 fn maybe_x_real_ip(headers: &HeaderMap) -> Option<IpAddr> {
     headers
         .get(X_REAL_IP)
@@ -89,7 +91,7 @@ fn maybe_x_real_ip(headers: &HeaderMap) -> Option<IpAddr> {
         .and_then(|hstr| hstr.parse::<IpAddr>().ok())
 }
 
-/// Tries to parse `forwarded` headers
+/// Tries to parse `forwarded` headers.
 fn maybe_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     headers.get_all(FORWARDED).iter().find_map(|hv| {
         hv.to_str()
@@ -107,7 +109,7 @@ fn maybe_forwarded(headers: &HeaderMap) -> Option<IpAddr> {
     })
 }
 
-/// Looks in `ConnectInfo` extension
+/// Looks in `ConnectInfo` extension.
 fn maybe_connect_info<T>(req: &Request<T>) -> Option<IpAddr> {
     req.extensions()
         .get::<ConnectInfo<SocketAddr>>()

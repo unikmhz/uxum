@@ -24,62 +24,62 @@ use crate::{
     signal::{SignalError, SignalStream},
 };
 
-/// Error type returned by server builder
+/// Error type returned by server builder.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ServerBuilderError {
-    /// Unable to parse endpoint address
+    /// Unable to parse endpoint address.
     #[error("Unable to parse endpoint address: {0}")]
     AddressParse(IoError),
-    /// Unable to resolve DNS name
+    /// Unable to resolve DNS name.
     #[error("Unable to resolve DNS name: {0}")]
     Resolve(String),
-    /// Unable to create socket
+    /// Unable to create socket.
     #[error("Unable to create socket: {0}")]
     SocketCreate(IoError),
-    /// Unable to bind socket to local address
+    /// Unable to bind socket to local address.
     #[error("Unable to bind socket to local address {0}: {1}")]
     BindAddr(SocketAddr, IoError),
-    /// Unable to listen on socket
+    /// Unable to listen on socket.
     #[error("Unable to listen on socket {0}: {1}")]
     Listen(SocketAddr, IoError),
-    /// Unable to perform conversion into std listener
+    /// Unable to perform conversion into [`std`] listener.
     #[error("Unable to perform conversion into std listener: {0}")]
     ConvertListener(IoError),
-    /// Unable to extract local address
+    /// Unable to extract local address.
     #[error("Unable to extract local address: {0}")]
     ListenerLocalAddr(hyper::Error),
-    /// Unable to set SO_REUSEADDR
+    /// Unable to set `SO_REUSEADDR`.
     #[error("Unable to set SO_REUSEADDR: {0}")]
     SetReuseAddr(IoError),
-    /// Unable to set SO_RCVBUF
+    /// Unable to set `SO_RCVBUF`.
     #[error("Unable to set SO_RCVBUF: {0}")]
     SetRecvBuffer(IoError),
-    /// Unable to set SO_SNDBUF
+    /// Unable to set `SO_SNDBUF`.
     #[error("Unable to set SO_SNDBUF: {0}")]
     SetSendBuffer(IoError),
-    /// Unable to set SO_KEEPALIVE
+    /// Unable to set `SO_KEEPALIVE`.
     #[error("Unable to set SO_KEEPALIVE: {0}")]
     SetKeepAlive(IoError),
-    /// Unable to set IP_TOS
+    /// Unable to set `IP_TOS`.
     #[error("Unable to set IP_TOS: {0}")]
     SetIpTos(IoError),
-    /// Unable to set TCP_MAXSEG
+    /// Unable to set `TCP_MAXSEG`.
     #[error("Unable to set TCP_MAXSEG: {0}")]
     SetTcpMss(IoError),
-    /// Unable to set TCP_NODELAY
+    /// Unable to set `TCP_NODELAY`.
     #[error("Unable to set TCP_NODELAY: {0}")]
     SetNoDelay(IoError),
-    /// Neither HTTP/1 nor HTTP/2 are enabled
+    /// Neither HTTP/1 nor HTTP/2 are enabled.
     #[error("Neither HTTP/1 nor HTTP/2 are enabled")]
     NoProtocolsEnabled,
-    /// Signal handler error
+    /// Signal handler error.
     #[error(transparent)]
     SignalHandler(#[from] SignalError),
-    /// TLS configuration error
+    /// TLS configuration error.
     #[error("TLS configuration error: {0}")]
     TlsConfig(IoError),
-    /// No TLS configuration was provided
+    /// No TLS configuration was provided.
     #[error("No TLS configuration was provided")]
     NoTlsConfig,
 }
@@ -88,31 +88,27 @@ pub enum ServerBuilderError {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct ServerBuilder {
-    /// Host/address and port to listen on
+    /// Host/address and port to listen on.
     #[serde(default = "ServerBuilder::default_listen")]
     pub listen: String,
-    /// Sleep on accept errors
+    /// Sleep on accept errors.
+    ///
+    /// Default is false.
     #[serde(default)]
     pub sleep_on_accept_errors: bool,
-    /// Size of TCP receive buffer, in bytes
-    #[serde(default)]
-    pub recv_buffer: Option<NonZeroUsize>,
-    /// Size of TCP send buffer, in bytes
-    #[serde(default)]
-    pub send_buffer: Option<NonZeroUsize>,
-    /// IP-level socket configuration
+    /// IP-level socket configuration.
     #[serde(default)]
     pub ip: IpConfig,
-    /// TCP-level socket configuration
+    /// TCP-level socket configuration.
     #[serde(default)]
     pub tcp: TcpConfig,
-    /// Configuration specific to HTTP/1 protocol
+    /// Configuration specific to HTTP/1 protocol.
     #[serde(default)]
     pub http1: Http1Config,
-    /// Configuration specific to HTTP/2 protocol
+    /// Configuration specific to HTTP/2 protocol.
     #[serde(default)]
     pub http2: Http2Config,
-    /// TLS configuration
+    /// TLS configuration.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
 }
@@ -122,8 +118,6 @@ impl Default for ServerBuilder {
         Self {
             listen: Self::default_listen(),
             sleep_on_accept_errors: false,
-            recv_buffer: None,
-            send_buffer: None,
             ip: IpConfig::default(),
             tcp: TcpConfig::default(),
             http1: Http1Config::default(),
@@ -134,20 +128,27 @@ impl Default for ServerBuilder {
 }
 
 impl ServerBuilder {
-    /// Default value for [`Self::listen`]
+    /// Default value for [`Self::listen`].
     #[must_use]
     #[inline]
     fn default_listen() -> String {
         "localhost:8080".into()
     }
 
-    /// Create new server builder with default configuration
+    /// Check if server configuration includes parameters required for setting up TLS.
+    #[must_use]
+    #[inline]
+    pub fn has_tls_config(&self) -> bool {
+        self.tls.is_some()
+    }
+
+    /// Create new server builder with default configuration.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Build TCP network server
+    /// Build TCP network server.
     ///
     /// # Errors
     ///
@@ -169,7 +170,7 @@ impl ServerBuilder {
         .await
     }
 
-    /// Build TLS network server
+    /// Build TLS network server.
     ///
     /// # Errors
     ///
@@ -200,21 +201,25 @@ impl ServerBuilder {
         .await
     }
 
-    /// Create and configure TCP listener
+    /// Create and configure TCP listener.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when unable to set up some aspect of configured network socket.
     pub async fn create_listener(&self) -> Result<TcpListener, ServerBuilderError> {
         let (sock, addr) = socket(&self.listen).await?;
         let sref = SockRef::from(&sock);
-        if let Some(sz) = self.recv_buffer {
-            sref.set_recv_buffer_size(sz.get())
-                .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
-        }
-        if let Some(sz) = self.send_buffer {
-            sref.set_send_buffer_size(sz.get())
-                .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
-        }
         if let Some(tos) = self.ip.tos {
             sref.set_tos(tos)
                 .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
+        }
+        if let Some(sz) = self.tcp.recv_buffer {
+            sref.set_recv_buffer_size(sz.get())
+                .map_err(|err| ServerBuilderError::SetRecvBuffer(err.into()))?;
+        }
+        if let Some(sz) = self.tcp.send_buffer {
+            sref.set_send_buffer_size(sz.get())
+                .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
         }
         if let Some(mss) = self.tcp.mss {
             sref.set_mss(mss.get())
@@ -244,7 +249,7 @@ impl ServerBuilder {
             .map_err(|err| ServerBuilderError::ConvertListener(err.into()))
     }
 
-    /// Configure HTTP/1 protocol
+    /// Configure HTTP/1 protocol.
     pub fn configure_http1<E>(&self, builder: &mut Builder<E>) {
         debug!("setting up HTTP/1");
         let mut http1 = builder.http1();
@@ -262,7 +267,7 @@ impl ServerBuilder {
         }
     }
 
-    /// Configure HTTP/2 protocol
+    /// Configure HTTP/2 protocol.
     pub fn configure_http2<E>(&self, builder: &mut Builder<E>) {
         debug!("setting up HTTP/2");
         let mut http2 = builder.http2();
@@ -282,9 +287,13 @@ impl ServerBuilder {
         }
     }
 
-    /// Launch a task that captures common UNIX signals
+    /// Launch a task that captures common UNIX signals.
     ///
     /// This will gracefully shut down the server if signal type is appropriate.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some signal handler failed to register.
     pub fn spawn_signal_handler(
         &self,
         handle: Handle,
@@ -297,7 +306,7 @@ impl ServerBuilder {
                     match sig.next().await {
                         Ok(sig) if sig.is_shutdown() => {
                             info!("received {}, shutting down server", sig.name());
-                            // FIXME: configure duration
+                            // FIXME: configure duration.
                             handle.graceful_shutdown(Some(Duration::from_secs(5)));
                             break;
                         }
@@ -315,29 +324,35 @@ impl ServerBuilder {
     }
 }
 
-/// IP-level configuration
+/// IP-level configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct IpConfig {
-    /// IP TOS value, as a number
+    /// IP TOS value, as a 32-bit unsigned integer.
     #[serde(default)]
     pub tos: Option<u32>,
 }
 
-/// TCP-level configuration
+/// TCP-level configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TcpConfig {
-    /// Set TCP_NODELAY socket options for accepted connections
+    /// Set `TCP_NODELAY` socket options for accepted connections.
     #[serde(default = "crate::util::default_true")]
     pub nodelay: bool,
-    /// Size of TCP backlog queue
+    /// Size of TCP receive buffer, in bytes.
+    #[serde(default)]
+    pub recv_buffer: Option<NonZeroUsize>,
+    /// Size of TCP send buffer, in bytes.
+    #[serde(default)]
+    pub send_buffer: Option<NonZeroUsize>,
+    /// Size of TCP backlog queue, in number of connections.
     #[serde(default = "TcpConfig::default_backlog")]
     pub backlog: NonZeroU32,
-    /// Size of TCP MSS, in bytes
+    /// Size of TCP MSS, in bytes.
     #[serde(default)]
     pub mss: Option<NonZeroU32>,
-    /// TCP keep-alive socket options
+    /// TCP keep-alive socket options.
     #[serde(default)]
     pub keepalive: TcpKeepaliveConfig,
 }
@@ -346,6 +361,8 @@ impl Default for TcpConfig {
     fn default() -> Self {
         Self {
             nodelay: true,
+            recv_buffer: None,
+            send_buffer: None,
             backlog: Self::default_backlog(),
             mss: None,
             keepalive: TcpKeepaliveConfig::default(),
@@ -354,21 +371,21 @@ impl Default for TcpConfig {
 }
 
 impl TcpConfig {
-    /// Default value for [`Self::backlog`]
+    /// Default value for [`Self::backlog`].
     #[must_use]
     #[inline]
     #[allow(clippy::unwrap_used)]
     fn default_backlog() -> NonZeroU32 {
-        // SAFETY: 1024 is always not a zero
+        // SAFETY: 1024 is always not a zero.
         NonZeroU32::new(1024).unwrap()
     }
 }
 
-/// TCP keepalive configuration
+/// TCP keepalive configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TcpKeepaliveConfig {
-    /// Duration to remain idle before sending TCP keepalive probes
+    /// Duration to remain idle before sending TCP keepalive probes.
     ///
     /// TCP keepalive is disabled if value is not provided.
     #[serde(
@@ -378,7 +395,7 @@ pub struct TcpKeepaliveConfig {
     )]
     pub idle: Option<Duration>,
     /// Duration between two successive TCP keepalive retransmissions, if acknowledgement
-    /// to the previous keepalive transmission is not received
+    /// to the previous keepalive transmission is not received.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -386,7 +403,7 @@ pub struct TcpKeepaliveConfig {
     )]
     pub interval: Option<Duration>,
     /// Number of retransmissions to be carried out before declaring that remote end is not
-    /// available
+    /// available.
     pub retries: Option<NonZeroU32>,
 }
 
@@ -394,12 +411,12 @@ pub struct TcpKeepaliveConfig {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Http1Config {
-    /// Support half-closed HTTP/1 connections
+    /// Support half-closed HTTP/1 connections.
     ///
     /// See [`hyper_util::server::conn::auto::Http1Builder::half_close`].
     #[serde(default)]
     pub half_close: bool,
-    /// Maximum allowed time to wait for client to send HTTP header
+    /// Maximum allowed time to wait for client to send HTTP header.
     ///
     /// If this time is reached without a complete header present, the client connection is closed.
     ///
@@ -410,10 +427,12 @@ pub struct Http1Config {
         with = "humantime_serde"
     )]
     pub header_read_timeout: Option<Duration>,
-    /// Enable HTTP/1 keep-alive
+    /// Enable HTTP/1 keep-alive.
+    ///
+    /// Default is true.
     #[serde(default = "crate::util::default_true")]
     pub keepalive: bool,
-    /// Set maximum per-connection buffer size
+    /// Set maximum per-connection buffer size.
     ///
     /// Default is approx. 400KiB.
     ///
@@ -421,7 +440,7 @@ pub struct Http1Config {
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_buf_size: Option<NonZeroUsize>,
-    /// Use vectored I/O when writing to network sockets
+    /// Use vectored I/O when writing to network sockets.
     ///
     /// See [`hyper_util::server::conn::auto::Http1Builder::writev`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -440,28 +459,28 @@ impl Default for Http1Config {
     }
 }
 
-/// HTTP/2 protocol configuration
+/// HTTP/2 protocol configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Http2Config {
-    /// Enable HTTP/2 adaptive flow control
+    /// Enable HTTP/2 adaptive flow control.
     #[serde(default)]
     pub adaptive_window: bool,
-    /// Enable the [extended CONNECT protocol](https://datatracker.ietf.org/doc/html/rfc8441#section-4)
+    /// Enable the [extended CONNECT protocol](https://datatracker.ietf.org/doc/html/rfc8441#section-4).
     #[serde(default)]
     pub connect_protocol: bool,
-    /// Set the max connection-level flow control for HTTP/2
+    /// Set the max connection-level flow control for HTTP/2.
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_connection_window: Option<NonZeroU32>,
-    /// Set initial connection window for a stream
+    /// Set initial connection window for a stream.
     ///
     /// Sets the [SETTINGS_INITIAL_WINDOW_SIZE](https://http2.github.io/http2-spec/#SETTINGS_INITIAL_WINDOW_SIZE)
     /// option for HTTP/2 connections.
     // TODO: bytesize
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_stream_window: Option<NonZeroU32>,
-    /// HTTP/2 keep-alive configuration
+    /// HTTP/2 keep-alive configuration.
     #[serde(default)]
     pub keepalive: Http2KeepaliveConfig,
     /// Sets the [SETTINGS_MAX_CONCURRENT_STREAMS](https://httpwg.org/specs/rfc9113.html#n-stream-concurrency)
@@ -470,18 +489,18 @@ pub struct Http2Config {
     pub max_concurrent_streams: Option<NonZeroU32>,
 }
 
-/// HTTP/2 keep-alive configuration
+/// HTTP/2 keep-alive configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct Http2KeepaliveConfig {
-    /// HTTP/2 keep-alive interval
+    /// HTTP/2 keep-alive interval.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
         with = "humantime_serde"
     )]
     pub interval: Option<Duration>,
-    /// HTTP/2 keep-alive timeout
+    /// HTTP/2 keep-alive timeout.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -490,14 +509,14 @@ pub struct Http2KeepaliveConfig {
     pub timeout: Option<Duration>,
 }
 
-/// TLS configuration
+/// TLS configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TlsConfig {
-    /// Path to certificate or certificate chain in PEM format
+    /// Path to certificate or certificate chain in PEM format.
     #[serde(alias = "cert", alias = "chain")]
     certificate: Box<Path>,
-    /// Path to private key file in PEM format
+    /// Path to private key file in PEM format.
     #[serde(alias = "key")]
     private_key: Box<Path>,
 }
@@ -510,7 +529,7 @@ impl TlsConfig {
     }
 }
 
-/// Turn DNS name or address into a socket
+/// Turn DNS name or address into a socket.
 ///
 /// # Errors
 ///
@@ -540,7 +559,7 @@ where
     }
 }
 
-/// Resolve DNS name or address into a list of socket address/port pairs
+/// Resolve DNS name or address into a list of socket address/port pairs.
 ///
 /// # Errors
 ///
@@ -556,7 +575,7 @@ where
         .map_err(|err| ServerBuilderError::AddressParse(err.into()))
 }
 
-/// Create a socket of needed type, based on the type of passed in socked address
+/// Create a socket of needed type, based on the type of passed in socked address.
 ///
 /// # Errors
 ///

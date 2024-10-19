@@ -5,15 +5,15 @@ use syn::{
     TypePath,
 };
 
-/// Type of detected request body
+/// Type of detected request body.
 pub(crate) enum RequestBody {
-    /// UTF-8 string
+    /// UTF-8 string.
     String,
-    /// Binary data
+    /// Binary data.
     Bytes,
-    /// HTTP form input
+    /// HTTP form input.
     Form,
-    /// Some type serialized as JSON
+    /// Some type serialized as JSON.
     Json(Path),
 }
 
@@ -23,7 +23,7 @@ impl ToTokens for RequestBody {
         let schema = match self {
             Self::String => quote! { gen.subschema_for::<String>().into_object() },
             Self::Bytes => quote! { gen.subschema_for::<bytes::Bytes>().into_object() },
-            Self::Form => return, // TODO: write this
+            Self::Form => return, // TODO: write this.
             Self::Json(path) => quote! { gen.subschema_for::<#path>().into_object() },
         };
         tokens.append_all(quote! {
@@ -38,7 +38,7 @@ impl ToTokens for RequestBody {
                         extensions: Default::default(),
                     },
                 },
-                required: true, // TODO: optional request bodies
+                required: true, // TODO: optional request bodies.
                 extensions: Default::default(),
             }
         })
@@ -46,7 +46,7 @@ impl ToTokens for RequestBody {
 }
 
 impl RequestBody {
-    /// Get MIME type based on request body type
+    /// Get MIME type based on request body type.
     #[must_use]
     fn media_type(&self) -> &'static str {
         match self {
@@ -58,7 +58,7 @@ impl RequestBody {
     }
 }
 
-/// Detect request body extractor inside handler function signature
+/// Detect request body extractor inside handler function signature.
 #[must_use]
 pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
     handler.sig.inputs.iter().find_map(|input| match input {
@@ -68,10 +68,10 @@ pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
                     .segments
                     .last()
                     .and_then(|seg| match seg.ident.to_string().as_str() {
-                        // TODO: support other extractors
+                        // TODO: support other extractors.
                         "String" => Some(RequestBody::String),
                         "Bytes" => Some(RequestBody::Bytes),
-                        // TODO: type inside Form
+                        // TODO: type inside Form.
                         "Form" => Some(RequestBody::Form),
                         "Json" => match &seg.arguments {
                             PathArguments::AngleBracketed(AngleBracketedGenericArguments {
@@ -88,7 +88,7 @@ pub(crate) fn detect_request_body(handler: &ItemFn) -> Option<RequestBody> {
                         _ => None,
                     })
             }
-            // TODO: support other variants
+            // TODO: support other variants.
             _ => None,
         },
         FnArg::Receiver(_) => None,

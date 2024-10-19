@@ -13,7 +13,7 @@ use axum::{
 use pin_project::pin_project;
 use tower::{Layer, Service};
 
-/// Helper function used for default boolean values in [`serde`]
+/// Helper function used for default boolean values in [`serde`].
 ///
 /// Always returns `true`.
 #[must_use]
@@ -22,7 +22,7 @@ pub(crate) fn default_true() -> bool {
     true
 }
 
-/// Response layer for adding an extension
+/// Response layer for adding an extension.
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]
 #[non_exhaustive]
@@ -79,12 +79,12 @@ where
     }
 }
 
-/// Middleware for adding extensions to response
+/// Middleware for adding extensions to response.
 #[derive(Clone, Copy, Debug)]
 pub struct AddResponseExtension<S, T> {
-    /// Inner service
+    /// Inner service.
     pub(crate) inner: S,
-    /// Value to insert as a response extension
+    /// Value to insert as a response extension.
     pub(crate) value: T,
 }
 
@@ -109,13 +109,13 @@ where
     }
 }
 
-/// Response future for [`AddResponseExtension`]
+/// Response future for [`AddResponseExtension`].
 #[pin_project]
 pub struct ResponseExtensionFuture<F, T> {
-    /// Inner future
+    /// Inner future.
     #[pin]
     inner: F,
-    /// Value to insert as a response extension
+    /// Value to insert as a response extension.
     value: T,
 }
 

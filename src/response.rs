@@ -2,24 +2,24 @@ use axum::http::StatusCode;
 use okapi::openapi3;
 use schemars::gen::SchemaGenerator;
 
-/// Object for documenting handler responses as OpenAPI schema
+/// Object for documenting handler responses as OpenAPI schema.
 pub struct ResponseSchema {
-    /// HTTP status code
+    /// HTTP status code.
     pub status: StatusCode,
-    /// OpenAPI response spec
+    /// OpenAPI response spec.
     pub response: openapi3::Response,
 }
 
-/// Trait used to generate OpenAPI schemas from handler response types
+/// Trait used to generate OpenAPI schemas from handler response types.
 pub trait GetResponseSchemas {
-    /// Iterator over all available responses
+    /// Iterator over all available responses.
     type ResponseIter: IntoIterator<Item = ResponseSchema>;
 
-    /// Get all available responses
+    /// Get all available responses.
     #[must_use]
     fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter;
 
-    /// Convert responses into [`openapi3`] object
+    /// Convert responses into [`openapi3::Responses`] object.
     #[must_use]
     fn get_responses(gen: &mut schemars::gen::SchemaGenerator) -> openapi3::Responses {
         openapi3::Responses {
@@ -52,7 +52,7 @@ mod impls {
             [ResponseSchema {
                 status: StatusCode::OK,
                 response: openapi3::Response {
-                    description: "UTF-8 string response".into(), // TODO: allow customization
+                    description: "UTF-8 string response".into(), // TODO: allow customization.
                     content: okapi::map! {
                         "text/plain; charset=utf-8".into() => openapi3::MediaType {
                             schema: Some(gen.subschema_for::<String>().into_object()),
@@ -107,7 +107,7 @@ mod impls {
             [ResponseSchema {
                 status: StatusCode::OK,
                 response: openapi3::Response {
-                    description: "Serialized JSON".into(), // FIXME: get from schema
+                    description: "Serialized JSON".into(), // FIXME: get from schema.
                     content: okapi::map! {
                         "application/json".into() => openapi3::MediaType {
                             schema: Some(gen.subschema_for::<T>().into_object()),

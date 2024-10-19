@@ -1,4 +1,4 @@
-//! Commonly imported types for use in applications
+//! Commonly imported types for use in applications.
 
 pub use crate::{
     handler,
@@ -10,10 +10,9 @@ pub use crate::{
             response::{IntoResponse, IntoResponseParts},
             Json,
         },
-        axum_server::Handle,
         mime, okapi, openapi3,
         schemars::{self, JsonSchema},
         tracing,
     },
-    AppBuilder, AppConfig, ServerBuilder,
+    AppBuilder, AppConfig, Handle, HandleError, ServerBuilder,
 };

@@ -1,9 +1,11 @@
+//! AAA - user object
+
 use std::{
     borrow::{Borrow, BorrowMut},
     ops::{Deref, DerefMut},
 };
 
-/// User ID
+/// User ID.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct UserId(String);

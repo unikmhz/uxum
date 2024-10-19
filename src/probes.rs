@@ -1,3 +1,5 @@
+//! Service probe and maintenance mode API endpoints.
+
 use std::{
     borrow::Borrow,
     ops::Deref,
@@ -24,23 +26,23 @@ use crate::{
     watchdog::{Watchdog, WatchdogConfig},
 };
 
-/// Configuration for service probes and management mode API
+/// Configuration for service probes and management mode API.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct ProbeConfig {
-    /// URL path for readiness probe
+    /// URL path for readiness probe.
     #[serde(default = "ProbeConfig::default_readiness_path")]
     readiness_path: String,
-    /// URL path for liveness probe
+    /// URL path for liveness probe.
     #[serde(default = "ProbeConfig::default_liveness_path")]
     liveness_path: String,
-    /// URL path to enable maintenance mode
+    /// URL path to enable maintenance mode.
     #[serde(default = "ProbeConfig::default_maintenance_on_path")]
     maintenance_on_path: String,
-    /// URL path to disable maintenance mode
+    /// URL path to disable maintenance mode.
     #[serde(default = "ProbeConfig::default_maintenance_off_path")]
     maintenance_off_path: String,
-    /// Runtime watchdog configuration
+    /// Runtime watchdog configuration.
     #[serde(default)]
     watchdog: Option<WatchdogConfig>,
 }
@@ -58,35 +60,35 @@ impl Default for ProbeConfig {
 }
 
 impl ProbeConfig {
-    /// Default value for [`Self::readiness_path`]
+    /// Default value for [`Self::readiness_path`].
     #[must_use]
     #[inline]
     fn default_readiness_path() -> String {
         "/probe/ready".into()
     }
 
-    /// Default value for [`Self::liveness_path`]
+    /// Default value for [`Self::liveness_path`].
     #[must_use]
     #[inline]
     fn default_liveness_path() -> String {
         "/probe/live".into()
     }
 
-    /// Default value for [`Self::maintenance_on_path`]
+    /// Default value for [`Self::maintenance_on_path`].
     #[must_use]
     #[inline]
     fn default_maintenance_on_path() -> String {
         "/maintenance/on".into()
     }
 
-    /// Default value for [`Self::maintenance_off_path`]
+    /// Default value for [`Self::maintenance_off_path`].
     #[must_use]
     #[inline]
     fn default_maintenance_off_path() -> String {
         "/maintenance/off".into()
     }
 
-    /// Build Axum router containing all probe and maintenance methods
+    /// Build Axum router containing all probe and maintenance methods.
     pub fn build_router<AuthProv, AuthExt>(
         &self,
         auth_provider: AuthProv,
@@ -98,7 +100,7 @@ impl ProbeConfig {
         AuthExt::User: Borrow<AuthProv::User>,
         AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
     {
-        // TODO: add toggle for probes, and possibly for maintenance mode
+        // TODO: add toggle for probes, and possibly for maintenance mode.
         let _span = debug_span!("build_probes").entered();
         let state = ProbeState::new(self.watchdog.as_ref());
         Router::new()
@@ -122,7 +124,7 @@ impl ProbeConfig {
     }
 }
 
-/// Shared state for probes and maintenance mode API
+/// Shared state for probes and maintenance mode API.
 #[derive(Clone)]
 pub struct ProbeState(Arc<ProbeStateInner>);
 
@@ -144,6 +146,8 @@ impl Default for ProbeState {
 }
 
 impl ProbeState {
+    /// Create new [`ProbeState`] with optional [`Watchdog`].
+    #[must_use]
     pub fn new(watchdog: Option<&WatchdogConfig>) -> Self {
         Self(Arc::new(ProbeStateInner {
             in_maintenance: AtomicBool::new(true),
@@ -156,13 +160,15 @@ impl ProbeState {
     }
 }
 
-/// Inner struct for probes/maintenance shared state
+/// Inner struct for probes/maintenance shared state.
 pub struct ProbeStateInner {
+    /// Maintenance mode flag.
     in_maintenance: AtomicBool,
+    /// Optional runtime watchdog for use in liveness probes.
     watchdog: Option<Watchdog>,
 }
 
-/// Readiness probe handler
+/// Readiness probe handler.
 ///
 /// For use in k8s-like deployments.
 async fn readiness_probe(state: State<ProbeState>) -> impl IntoResponse {
@@ -172,7 +178,7 @@ async fn readiness_probe(state: State<ProbeState>) -> impl IntoResponse {
     }
 }
 
-/// Liveness probe handler
+/// Liveness probe handler.
 ///
 /// For use in k8s-like deployments.
 async fn liveness_probe(state: State<ProbeState>) -> impl IntoResponse {
@@ -185,7 +191,7 @@ async fn liveness_probe(state: State<ProbeState>) -> impl IntoResponse {
     }
 }
 
-/// Enable maintenance mode
+/// Enable maintenance mode.
 async fn maintenance_on(state: State<ProbeState>) -> impl IntoResponse {
     if !state.in_maintenance.swap(true, Ordering::Relaxed) {
         info!("maintenance mode enabled");
@@ -193,7 +199,7 @@ async fn maintenance_on(state: State<ProbeState>) -> impl IntoResponse {
     StatusCode::OK
 }
 
-/// Disable maintenance mode
+/// Disable maintenance mode.
 async fn maintenance_off(state: State<ProbeState>) -> impl IntoResponse {
     if state.in_maintenance.swap(false, Ordering::Relaxed) {
         info!("maintenance mode disabled");

@@ -4,50 +4,50 @@ use config::{Config, File};
 use serde::{Deserialize, Serialize};
 use uxum::{prelude::*, GetResponseSchemas, ResponseSchema};
 
-/// Root container for app configuration
+/// Root container for app configuration.
 #[derive(Deserialize)]
 struct ServiceConfig {
-    /// Application configuration
+    /// Application configuration.
     #[serde(flatten)]
     app: AppConfig,
-    /// Server configuration
+    /// Server configuration.
     server: ServerBuilder,
 }
 
 /// Application entry point
-fn main() {
-    // Load configuration from file
+fn main() -> Result<(), HandleError> {
+    // Load configuration from file.
     let mut config: ServiceConfig = Config::builder()
         .add_source(File::with_name("examples/advanced_server/config.yaml"))
         .build()
         .expect("Unable to load configuration")
         .try_deserialize()
         .expect("Error deserializing configuration");
-    // Add some hard-coded values to [`AppConfig`]
+    // Add some hard-coded values to [`AppConfig`].
     let app_cfg = config
         .app
         .with_app_name("advanced_server")
         .with_app_version("1.2.3");
-    // Build and start Tokio runtime
+    // Build and start Tokio runtime.
     app_cfg
         .runtime
         .build()
         .expect("Error creating Tokio runtime")
-        .block_on(run(config));
+        .block_on(run(config))
 }
 
-/// Tokio runtime entry point
-async fn run(mut config: ServiceConfig) {
-    // Initialize uxum handle, including logging and tracing
+/// Tokio runtime entry point.
+async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
+    // Initialize uxum handle, including logging and tracing.
     //
     // Logging will start working right after this call, and until the returned
     // guard is dropped.
     let mut handle = config.app.handle().expect("Error initializing handle");
-    // Create app builder from app config
+    // Create app builder from app config.
     //
     // Also enable the auth subsystem.
     let mut app_builder = AppBuilder::from_config(&config.app).with_basic_auth();
-    // Some hard-coded parameters for built-in API documentation
+    // Some hard-coded parameters for built-in API documentation.
     app_builder.configure_api_doc(|api_doc| {
         api_doc
             .with_app_title("Advanced Server")
@@ -58,7 +58,7 @@ async fn run(mut config: ServiceConfig) {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
-    // Initialize required states
+    // Initialize required states.
     let tracing_client = app_builder
         .http_client_or_default("tracing")
         .await
@@ -66,16 +66,15 @@ async fn run(mut config: ServiceConfig) {
     app_builder
         .with_state(distributed_tracing::TracingState::from(tracing_client))
         .with_state(counter_state::CounterState::default());
-    // Build main application router
+    // Build main application router.
     let app = app_builder.build().expect("Unable to build app");
-    // Start the service
+    // Start the service.
     handle
-        .start(config.server, app)
+        .run(config.server, app, Some(Duration::from_secs(5)))
         .await
-        .expect("Server error");
 }
 
-/// Greet the Axum world
+/// Greet the Axum world.
 #[handler(
     name = "hello_world",
     path = "/",
@@ -89,21 +88,21 @@ async fn root_handler() -> &'static str {
     "Hello Axum world!"
 }
 
-/// Sleep for some time and return response
+/// Sleep for some time and return response.
 #[handler]
 async fn sleep(ConnectInfo(client): ConnectInfo<SocketAddr>) -> String {
     tokio::time::sleep(Duration::from_secs(3)).await;
     format!("Hello {client}! Woken up after 3 seconds!")
 }
 
-/// Authentication is disabled for this handler
+/// Authentication is disabled for this handler.
 #[handler(no_auth)]
 async fn no_op() {}
 
-/// Query parameters
+/// Query parameters.
 #[derive(Deserialize, JsonSchema)]
 struct QueryName {
-    /// Name of the person to greet
+    /// Name of the person to greet.
     #[serde(default = "QueryName::default_name")]
     name: String,
 }
@@ -114,25 +113,25 @@ impl QueryName {
     }
 }
 
-/// Greet someone using a name from a query string
+/// Greet someone using a name from a query string.
 #[handler]
 async fn name_from_qs(q: Query<QueryName>) -> String {
     format!("Hello {}!", q.name)
 }
 
-/// Greet someone using a name from a text body
+/// Greet someone using a name from a text body.
 #[handler]
 async fn name_from_text_body(body: String) -> String {
     format!("Hello {}!", body)
 }
 
-/// Greet someone using a name from a binary body
+/// Greet someone using a name from a binary body.
 #[handler]
 async fn name_from_binary_body(body: bytes::Bytes) -> String {
     format!("Hello {:?}!", body)
 }
 
-/// Greet someone using a name from a URL path element
+/// Greet someone using a name from a URL path element.
 #[handler(
     path = "/hello/:name",
     docs(description = "Another link", url = "http://example.com/hello_name"),
@@ -142,39 +141,39 @@ async fn name_from_path(args: Path<String>) -> String {
     format!("Hello {}!", args.0)
 }
 
-/// Requested operation
+/// Requested operation.
 #[derive(Clone, Copy, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ComputeOp {
-    /// Add two arguments
+    /// Add two arguments.
     #[default]
     Add,
-    /// Subtract second argument from the first
+    /// Subtract second argument from the first.
     Subtract,
-    /// Multiply two arguments
+    /// Multiply two arguments.
     Multiply,
-    /// Divide first argument by the second
+    /// Divide first argument by the second.
     Divide,
 }
 
-/// Request body
+/// Request body.
 #[derive(Deserialize, JsonSchema)]
 pub struct ComputeRequest {
-    /// First argument
+    /// First argument.
     arg1: i64,
-    /// Second argument
+    /// Second argument.
     arg2: i64,
     #[serde(default)]
     op: ComputeOp,
 }
 
-/// Result of computation
+/// Result of computation.
 #[derive(JsonSchema, Serialize)]
 pub struct ComputeResponse {
     result: i64,
 }
 
-/// Perform simple arithmetic
+/// Perform simple arithmetic.
 ///
 /// Gets an operator and two operands as input. Returns result of operation.
 /// This is an example of using automatically (de)serialized JSON as
@@ -190,7 +189,7 @@ async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
     Json(ComputeResponse { result })
 }
 
-/// Return error sometimes
+/// Return error sometimes.
 ///
 /// This is an example of returning Result from a handler.
 ///
@@ -208,29 +207,29 @@ async fn maybe_error_strings() -> Result<String, String> {
     }
 }
 
-/// Request body used in [`get_random_number`]
+/// Request body used in [`get_random_number`].
 #[derive(Deserialize, JsonSchema)]
 struct GetRandomRequest {
-    /// Low bound for a value
+    /// Low bound for a value.
     min: i64,
-    /// High bound for a value
+    /// High bound for a value.
     max: i64,
 }
 
-/// Response body used in [`get_random_number`]
+/// Response body used in [`get_random_number`].
 #[derive(JsonSchema, Serialize)]
 struct GetRandomResponse {
-    /// Generated random value
+    /// Generated random value.
     value: i64,
 }
 
-/// Error message used in [`get_random_number`]
+/// Error message used in [`get_random_number`].
 #[derive(Debug, JsonSchema, Serialize, thiserror::Error)]
 enum GetRandomError {
-    /// Generated number is too small
+    /// Generated number is too small.
     #[error("Generated number is too small")]
     NumberTooSmall,
-    /// Generated number is too large
+    /// Generated number is too large.
     #[error("Generated number is too large")]
     NumberTooLarge,
 }
@@ -267,7 +266,7 @@ impl GetResponseSchemas for GetRandomError {
     }
 }
 
-/// Return random number within supplied bounds
+/// Return random number within supplied bounds.
 ///
 /// This is an example of using a custom error type in a handler.
 #[handler]
@@ -284,7 +283,7 @@ async fn get_random_number(
     }
 }
 
-/// More complex example for using a shared app state object
+/// More complex example for using a shared app state object.
 mod counter_state {
     use std::{
         ops::Deref,
@@ -296,7 +295,7 @@ mod counter_state {
 
     use super::*;
 
-    /// App state used in [`inc_state`] and [`dec_state`] handlers
+    /// App state used in [`inc_state`] and [`dec_state`] handlers.
     #[derive(Clone)]
     pub struct CounterState(Arc<CounterStateInner>);
 
@@ -308,9 +307,9 @@ mod counter_state {
         }
     }
 
-    /// Internal shared struct
+    /// Internal shared struct.
     pub struct CounterStateInner {
-        /// Stored atomic counter value
+        /// Stored atomic counter value.
         counter: AtomicUsize,
     }
 
@@ -322,27 +321,27 @@ mod counter_state {
         }
     }
 
-    /// State methods
+    /// State methods.
     impl CounterState {
-        /// Add 1 to counter
+        /// Add 1 to counter.
         pub fn inc(&self) -> usize {
             self.counter.fetch_add(1, Ordering::Relaxed)
         }
 
-        /// Subtract 1 from counter
+        /// Subtract 1 from counter.
         pub fn dec(&self) -> usize {
             self.counter.fetch_sub(1, Ordering::Relaxed)
         }
     }
 
-    /// Increase persistent counter
+    /// Increase persistent counter.
     #[handler(tags = ["counter"])]
     async fn inc_state(state: State<CounterState>) -> String {
         let old = state.inc();
         format!("Old counter value was {old}")
     }
 
-    /// Decrease persistent counter
+    /// Decrease persistent counter.
     #[handler(tags = ["counter"])]
     async fn dec_state(state: State<CounterState>) -> String {
         let old = state.dec();
@@ -350,19 +349,19 @@ mod counter_state {
     }
 }
 
-/// This is used to test distributed tracing
+/// This is used to test distributed tracing.
 mod distributed_tracing {
     use std::{ops::Deref, sync::Arc};
 
     use super::*;
 
-    /// Error message used in [`call_inner`]
+    /// Error message used in [`call_inner`].
     #[derive(Debug, thiserror::Error)]
     enum CallInnerError {
-        /// Error produced by [`reqwest`] crate
+        /// Error produced by [`reqwest`] crate.
         #[error(transparent)]
         Reqwest(#[from] reqwest::Error),
-        /// Error produced by [`reqwest_middleware`] crate
+        /// Error produced by [`reqwest_middleware`] crate.
         #[error(transparent)]
         ReqwestMiddleware(#[from] reqwest_middleware::Error),
     }
@@ -375,7 +374,7 @@ mod distributed_tracing {
         }
     }
 
-    // I didn't bother to provide correct schema here
+    // I didn't bother to provide correct schema here.
     impl GetResponseSchemas for CallInnerError {
         type ResponseIter = [ResponseSchema; 1];
         fn get_response_schemas(_gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
@@ -394,7 +393,7 @@ mod distributed_tracing {
         }
     }
 
-    /// App state used in [`call_inner`] handler
+    /// App state used in [`call_inner`] handler.
     #[derive(Clone)]
     pub struct TracingState(Arc<TracingStateInner>);
 
@@ -412,12 +411,12 @@ mod distributed_tracing {
         }
     }
 
-    /// Internal shared struct
+    /// Internal shared struct.
     pub struct TracingStateInner {
         client: reqwest_middleware::ClientWithMiddleware,
     }
 
-    /// Call inner service and return its response
+    /// Call inner service and return its response.
     #[handler]
     async fn call_inner(state: State<TracingState>) -> Result<String, CallInnerError> {
         Ok(state

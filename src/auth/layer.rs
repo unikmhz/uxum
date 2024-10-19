@@ -1,4 +1,4 @@
-//! Authentication and authorization [`tower`] layer and service
+//! Authentication and authorization [`tower`] layer and service.
 
 use std::{
     borrow::Borrow,
@@ -24,7 +24,7 @@ use crate::auth::{
     provider::{AuthProvider, NoOpAuthProvider},
 };
 
-/// Authentication and authorization [`tower`] layer
+/// Authentication and authorization [`tower`] layer.
 #[derive(Clone)]
 pub struct AuthLayer<S, AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor>(
     Arc<AuthLayerInner<S, AuthProv, AuthExt>>,
@@ -43,7 +43,7 @@ where
     AuthProv: AuthProvider,
     AuthExt: AuthExtractor,
 {
-    /// Create new [`tower`] auth layer
+    /// Create new [`tower`] auth layer.
     pub fn new(
         permissions: &'static [&'static str],
         auth_provider: AuthProv,
@@ -58,16 +58,16 @@ where
     }
 }
 
-/// Inner struct for [`AuthLayer`]
+/// Inner struct for [`AuthLayer`].
 #[derive(Clone)]
 pub struct AuthLayerInner<S, AuthProv, AuthExt> {
-    /// Required permissions for service
+    /// Required permissions for service.
     permissions: &'static [&'static str],
-    /// Used auth provider (back-end)
+    /// Used auth provider (back-end).
     auth_provider: AuthProv,
-    /// Used auth extractor (front-end)
+    /// Used auth extractor (front-end).
     auth_extractor: AuthExt,
-    /// Inner service type
+    /// Inner service type.
     _phantom_service: PhantomData<S>,
 }
 
@@ -88,16 +88,16 @@ where
     }
 }
 
-/// Authentication and authorization [`tower`] service
+/// Authentication and authorization [`tower`] service.
 #[derive(Clone)]
 pub struct AuthService<S, AuthProv, AuthExt> {
-    /// Required permissions for service
+    /// Required permissions for service.
     permissions: &'static [&'static str],
-    /// Used auth provider (back-end)
+    /// Used auth provider (back-end).
     auth_provider: AuthProv,
-    /// Used auth extractor (front-end)
+    /// Used auth extractor (front-end).
     auth_extractor: AuthExt,
-    /// Inner service
+    /// Inner service.
     inner: S,
 }
 
@@ -123,7 +123,7 @@ where
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
         let span = trace_span!("auth").entered();
-        // Extract user and/or auth tokens from request
+        // Extract user and/or auth tokens from request.
         let (user, tokens) = match self.auth_extractor.extract_auth(&req) {
             Ok(pair) => pair,
             Err(error) => {
@@ -133,7 +133,7 @@ where
                 };
             }
         };
-        // Authenticate user
+        // Authenticate user.
         if let Err(error) = self
             .auth_provider
             .authenticate(user.borrow(), tokens.borrow())
@@ -143,7 +143,7 @@ where
                 error_response: Some(self.auth_extractor.error_response(error)),
             };
         }
-        // Authorize request
+        // Authorize request.
         for perm in self.permissions {
             if let Err(error) = self.auth_provider.authorize(user.borrow(), perm) {
                 warn!(cause = %error, "authorization error");
@@ -152,7 +152,7 @@ where
                 };
             }
         }
-        // Add user ID as an extension into request
+        // Add user ID as an extension into request.
         req.extensions_mut().insert(user);
         drop(span);
         AuthFuture::Positive {
@@ -161,18 +161,18 @@ where
     }
 }
 
-/// Authentication and authorization [`tower`] service future
+/// Authentication and authorization [`tower`] service future.
 #[pin_project(project = ProjectedOutcome)]
 pub enum AuthFuture<F> {
-    /// Happy path, calling inner service
+    /// Happy path, calling inner service.
     Positive {
-        /// Inner future
+        /// Inner future.
         #[pin]
         inner: F,
     },
-    /// Authentication error or failure
+    /// Authentication error or failure.
     Negative {
-        /// Preformatted negative HTTP response
+        /// Preformatted negative HTTP response.
         error_response: Option<Response<Body>>,
     },
 }
