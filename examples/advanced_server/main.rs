@@ -95,6 +95,12 @@ async fn sleep(ConnectInfo(client): ConnectInfo<SocketAddr>) -> String {
     format!("Hello {client}! Woken up after 3 seconds!")
 }
 
+/// Panic within the handler.
+#[handler]
+async fn panic() {
+    panic!("NOOOOOOOO!");
+}
+
 /// Authentication is disabled for this handler.
 #[handler(no_auth)]
 async fn no_op() {}

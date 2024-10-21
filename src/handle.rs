@@ -121,6 +121,10 @@ impl Handle {
     }
 
     /// Start the server in the background.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if caught an error when initializing server tasks.
     pub async fn start(&mut self, server: ServerBuilder, app: Router) -> Result<(), HandleError> {
         self.prepare(&server)?;
         self.start_servers(server, app).await?;
@@ -176,7 +180,9 @@ impl Handle {
         }
     }
 
-    /// Start the server and block execution until the server exits.
+    /// Start the server and block execution until one of the server tasks exits.
+    ///
+    /// Will gracefully shutdown remaining server tasks.
     ///
     /// # Errors
     ///
@@ -190,6 +196,17 @@ impl Handle {
         graceful: Option<Duration>,
     ) -> Result<(), HandleError> {
         self.start(server, app).await?;
+        self.wait(graceful).await
+    }
+
+    /// Block execution until one of the server tasks exits.
+    ///
+    /// Will gracefully shutdown remaining server tasks.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if one of server tasks finished with an error.
+    pub async fn wait(&mut self, graceful: Option<Duration>) -> Result<(), HandleError> {
         let http_fut = self.http_task.take();
         let https_fut = self.https_task.take();
         match (http_fut, https_fut) {

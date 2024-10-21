@@ -53,6 +53,7 @@ impl TimeoutError {
 impl IntoResponse for TimeoutError {
     fn into_response(self) -> Response<Body> {
         problemdetails::new(self.http_status())
+            .with_type("tag:uxum.github.io,2024:timeout")
             .with_title(self.to_string())
             .into_response()
     }

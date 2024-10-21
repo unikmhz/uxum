@@ -62,6 +62,7 @@ impl RateLimitError {
 impl IntoResponse for RateLimitError {
     fn into_response(self) -> Response<Body> {
         problemdetails::new(self.http_status())
+            .with_type("tag:uxum.github.io,2024:rate-limit")
             .with_title(self.to_string())
             .into_response()
     }

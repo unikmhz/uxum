@@ -67,8 +67,9 @@ impl AuthExtractor for NoOpAuthExtractor {
     #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         // This shuld never get executed for a NoOp extractor
-        error!("tried to generated auth error response for NoOpAuthExtractor");
+        error!("tried to generate auth error response for NoOpAuthExtractor");
         problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_type("tag:uxum.github.io,2024:auth")
             .with_title(err.to_string())
             .into_response()
     }
@@ -115,6 +116,7 @@ impl AuthExtractor for BasicAuthExtractor {
             _ => StatusCode::BAD_REQUEST,
         };
         let mut resp = problemdetails::new(status)
+            .with_type("tag:uxum.github.io,2024:auth")
             .with_title(err.to_string())
             .into_response();
         if status == StatusCode::UNAUTHORIZED {
@@ -122,6 +124,7 @@ impl AuthExtractor for BasicAuthExtractor {
                 Ok(val) => val,
                 Err(err) => {
                     return problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+                        .with_type("tag:uxum.github.io,2024:auth")
                         .with_title("Invalid HTTP Basic realm value")
                         .with_detail(err.to_string())
                         .into_response()
@@ -247,6 +250,7 @@ impl AuthExtractor for HeaderAuthExtractor {
             _ => StatusCode::BAD_REQUEST,
         };
         problemdetails::new(status)
+            .with_type("tag:uxum.github.io,2024:auth")
             .with_title(err.to_string())
             .into_response()
     }

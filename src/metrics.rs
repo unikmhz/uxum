@@ -52,6 +52,7 @@ pub enum MetricsError {
 impl IntoResponse for MetricsError {
     fn into_response(self) -> Response {
         problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_type("tag:uxum.github.io,2024:metrics")
             .with_title(self.to_string())
             .into_response()
     }

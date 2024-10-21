@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     borrow::Borrow,
     collections::{BTreeMap, HashSet},
     convert::Infallible,
@@ -17,8 +18,9 @@ use axum::{
 use hyper::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
-use tower::{builder::ServiceBuilder, util::BoxCloneService};
+use tower::{builder::ServiceBuilder, util::BoxCloneService, ServiceExt};
 use tower_http::{
+    catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
@@ -411,7 +413,8 @@ where
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
                 self.server_header(),
-            ));
+            ))
+            .layer(CatchPanicLayer::custom(panic_handler));
         // TODO: DefaultBodyLimit (configurable).
         rtr.layer(global_layers)
     }
@@ -503,9 +506,9 @@ where
             )
             // CORS layer.
             .option_layer(cors_layer)
-            // TODO: throttle.
+            // Timeout layer.
             .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
-            .service(handler.service())
+            .service(handler.service().map_err(|err| err.into()))
     }
 
     /// Generate a value to be used in HTTP Server header.
@@ -567,7 +570,23 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
         return timeo_err.into_response();
     }
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+        .with_type("tag:uxum.github.io,2024:error")
         .with_title(err.to_string())
+        .into_response()
+}
+
+fn panic_handler(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
+    let details = if let Some(s) = err.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = err.downcast_ref::<&str>() {
+        s.to_string()
+    } else {
+        "Unknown panic format".to_string()
+    };
+    problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+        .with_type("tag:uxum.github.io,2024:panic")
+        .with_title("Encountered panic in handler")
+        .with_detail(details)
         .into_response()
 }
 
