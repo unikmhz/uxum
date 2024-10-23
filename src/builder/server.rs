@@ -156,14 +156,14 @@ impl ServerBuilder {
     pub async fn build(self) -> Result<axum_server::Server, ServerBuilderError> {
         let span = debug_span!("build_server");
         async move {
-            let listener = self.create_listener().await?;
+            let listener = self.create_listener(&self.listen).await?;
             let mut server = axum_server::from_tcp(listener);
 
             let builder = server.http_builder();
             self.configure_http1(builder);
             self.configure_http2(builder);
 
-            info!("finished building server");
+            info!("finished building plain server");
             Ok(server)
         }
         .instrument(span)
@@ -181,20 +181,19 @@ impl ServerBuilder {
     ) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
         let span = debug_span!("build_tls_server");
         async move {
-            let listener = self.create_listener().await?;
             let tls_config = self
                 .tls
                 .as_ref()
-                .ok_or(ServerBuilderError::NoTlsConfig)?
-                .rustls_config()
-                .await?;
-            let mut server = axum_server::from_tcp_rustls(listener, tls_config);
+                .ok_or(ServerBuilderError::NoTlsConfig)?;
+            let listener = self.create_listener(&tls_config.listen).await?;
+            let rustls_config = tls_config.rustls_config().await?;
+            let mut server = axum_server::from_tcp_rustls(listener, rustls_config);
 
             let builder = server.http_builder();
             self.configure_http1(builder);
             self.configure_http2(builder);
 
-            info!("finished building server");
+            info!("finished building TLS server");
             Ok(server)
         }
         .instrument(span)
@@ -206,8 +205,11 @@ impl ServerBuilder {
     /// # Errors
     ///
     /// Returns `Err` when unable to set up some aspect of configured network socket.
-    pub async fn create_listener(&self) -> Result<TcpListener, ServerBuilderError> {
-        let (sock, addr) = socket(&self.listen).await?;
+    pub async fn create_listener<O>(&self, addr_conf: O) -> Result<TcpListener, ServerBuilderError>
+    where
+        O: ToSocketAddrs + ToString,
+    {
+        let (sock, addr) = socket(addr_conf).await?;
         let sref = SockRef::from(&sock);
         if let Some(tos) = self.ip.tos {
             sref.set_tos(tos)
@@ -513,6 +515,9 @@ pub struct Http2KeepaliveConfig {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TlsConfig {
+    /// Host/address and port to listen on when using TLS.
+    #[serde(default = "TlsConfig::default_listen")]
+    pub listen: String,
     /// Path to certificate or certificate chain in PEM format.
     #[serde(alias = "cert", alias = "chain")]
     certificate: Box<Path>,
@@ -522,6 +527,18 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
+    /// Default value for [`Self::listen`].
+    #[must_use]
+    #[inline]
+    fn default_listen() -> String {
+        "localhost:8443".into()
+    }
+
+    /// Generate configuration object for RusTLS.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if provided TLS configuration is invalid.
     pub async fn rustls_config(&self) -> Result<RustlsConfig, ServerBuilderError> {
         RustlsConfig::from_pem_chain_file(&self.certificate, &self.private_key)
             .await

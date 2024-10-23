@@ -83,3 +83,6 @@ auth:
         - maintenance
 server:
   listen: 127.0.0.1:8080
+  tls:
+    cert: examples/advanced_server/tls.crt
+    key: examples/advanced_server/tls.key
