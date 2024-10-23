@@ -26,12 +26,11 @@ axum = {version = "0.7", features = ["macros"]}
 axum-server = {version = "0.7", features = ["tls-rustls"]}
 base64 = "0.22"
 bytes = {version = "1.6", features = ["serde"]}
-# TODO: breaking bump to dashmap 6.0
-dashmap = "5.5"
+dashmap = "6.1"
 forwarded-header-value = "0.1"
 futures = "0.3"
 gettid = "0.1"
-governor = "0.6"
+governor = "0.7"
 humantime-serde = "1.1"
 http = "1.1"
 hyper = {version = "1.4", features = ["http1", "http2", "server"]}
