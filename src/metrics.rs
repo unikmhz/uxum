@@ -21,7 +21,7 @@ use axum::{
 use hyper::{Method, Request};
 use opentelemetry::{
     global,
-    metrics::{Counter, Histogram, MeterProvider, ObservableGauge, Unit, UpDownCounter},
+    metrics::{Counter, Histogram, MeterProvider, ObservableGauge, UpDownCounter},
     KeyValue,
 };
 use opentelemetry_sdk::{
@@ -278,7 +278,7 @@ impl MetricsBuilder {
         // HTTP server metrics.
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
-            .with_unit(Unit::new("s"))
+            .with_unit("s")
             .with_description("The HTTP request latencies in seconds.")
             .init();
         let requests_total = meter
@@ -293,12 +293,12 @@ impl MetricsBuilder {
             .init();
         let request_body_size = meter
             .u64_histogram("http.server.request.body.size")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .with_description("The HTTP request body sizes in bytes.")
             .init();
         let response_body_size = meter
             .u64_histogram("http.server.response.body.size")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .with_description("The HTTP reponse body sizes in bytes.")
             .init();
         let http_server = HttpServerMetrics {
@@ -312,7 +312,7 @@ impl MetricsBuilder {
         // HTTP client metrics
         let request_duration = meter
             .f64_histogram("http.client.request.duration")
-            .with_unit(Unit::new("s"))
+            .with_unit("s")
             .with_description("The HTTP request latencies in seconds.")
             .init();
         let requests_total = meter
@@ -327,12 +327,12 @@ impl MetricsBuilder {
             .init();
         let request_body_size = meter
             .u64_histogram("http.client.request.body.size")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .with_description("The HTTP request body sizes in bytes.")
             .init();
         let response_body_size = meter
             .u64_histogram("http.client.response.body.size")
-            .with_unit(Unit::new("By"))
+            .with_unit("By")
             .with_description("The HTTP reponse body sizes in bytes.")
             .init();
         let http_client = HttpClientMetricsInner {

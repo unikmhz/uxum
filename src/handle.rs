@@ -5,7 +5,8 @@ use std::{net::SocketAddr, time::Duration};
 use axum::Router;
 use axum_server::Handle as AxumHandle;
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
-use opentelemetry_sdk::trace::Tracer;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::trace::{Tracer, TracerProvider};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -53,6 +54,8 @@ pub struct Handle {
     buf_guards: Vec<WorkerGuard>,
     /// Tracing pipeline.
     tracer: Option<Tracer>,
+    /// Tracing provider pipeline.
+    tracer_provider: Option<TracerProvider>,
     /// Internal [`axum_server`] control handle.
     handle: AxumHandle,
     /// Service supervisor notification.
@@ -69,7 +72,7 @@ pub struct Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        if let Some(provider) = self.tracer.as_ref().and_then(|t| t.provider()) {
+        if let Some(provider) = self.tracer_provider.as_ref() {
             for res in provider.force_flush() {
                 if let Err(err) = res {
                     eprintln!("Error flushing spans: {err}");
@@ -247,23 +250,28 @@ impl AppConfig {
     pub fn handle(&mut self) -> Result<Handle, HandleError> {
         let (registry, buf_guards) = self.logging.make_registry()?;
         let otel_res = self.otel_resource();
-        let tracer = if let Some(tcfg) = self.tracing.as_mut() {
-            let tracer = tcfg.build_pipeline(otel_res)?;
+        let (tracer, tracer_provider) = if let Some(tcfg) = self.tracing.as_mut() {
+            let tracer_provider = tcfg.build_pipeline(otel_res)?;
+            let tracer = tracer_provider
+                .tracer_builder("uxum")
+                .with_version(env!("CARGO_PKG_VERSION"))
+                .build();
             let layer = tcfg.build_layer(&tracer);
             registry.with(layer).init();
             opentelemetry::global::set_text_map_propagator(
                 opentelemetry_sdk::propagation::TraceContextPropagator::default(),
             );
-            Some(tracer)
+            (Some(tracer), Some(tracer_provider))
         } else {
             registry.init();
-            None
+            (None, None)
         };
         let handle = AxumHandle::new();
         let notify = ServiceNotifier::new();
         Ok(Handle {
             buf_guards,
             tracer,
+            tracer_provider,
             handle,
             notify,
             service_watchdog: None,

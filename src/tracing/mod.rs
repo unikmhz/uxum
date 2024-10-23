@@ -5,7 +5,7 @@ use std::{num::NonZeroUsize, time::Duration};
 use opentelemetry_otlp::{Protocol, TonicExporterBuilder, WithExportConfig};
 use opentelemetry_sdk::{
     runtime::Tokio,
-    trace::{BatchConfig, BatchConfigBuilder, Config, RandomIdGenerator, Sampler, Tracer},
+    trace::{BatchConfig, BatchConfigBuilder, Config, RandomIdGenerator, Sampler, Tracer, TracerProvider},
     Resource,
 };
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,7 @@ impl TracingConfig {
     /// # Errors
     ///
     /// Returns `Err` if span exporter and/or processor cannot be installed for some reason.
-    pub fn build_pipeline(&self, resource: Resource) -> Result<Tracer, TracingError> {
+    pub fn build_pipeline(&self, resource: Resource) -> Result<TracerProvider, TracingError> {
         let _span = debug_span!("build_tracing_pipeline").entered();
         opentelemetry_otlp::new_pipeline()
             .tracing()

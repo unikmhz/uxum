@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
+use opentelemetry_resource_detectors::{OsResourceDetector, ProcessResourceDetector};
 use opentelemetry_sdk::{
     resource::{
-        EnvResourceDetector, OsResourceDetector, ProcessResourceDetector,
+        EnvResourceDetector,
         SdkProvidedResourceDetector, TelemetryResourceDetector,
     },
     Resource,
