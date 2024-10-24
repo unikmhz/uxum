@@ -271,7 +271,7 @@ impl MetricsBuilder {
             .build();
 
         global::set_meter_provider(provider.clone());
-        let meter = provider.meter("axum-app");
+        let meter = provider.meter("uxum");
 
         // TODO: try_init() and handle errors.
 
@@ -528,6 +528,7 @@ where
         let start = Instant::now();
         let ext = req.extensions();
         let method = req.method().clone();
+        // TODO: fix once https://github.com/tokio-rs/axum/issues/2504 is released.
         let scheme = match req.uri().scheme() {
             Some(sch) => sch.to_string(),
             None => String::new(),

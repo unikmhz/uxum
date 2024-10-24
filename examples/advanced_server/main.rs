@@ -65,27 +65,14 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
         .expect("No tracing HTTP client");
     app_builder
         .with_state(distributed_tracing::TracingState::from(tracing_client))
-        .with_state(counter_state::CounterState::default());
+        .with_state(counter_state::CounterState::default())
+        .with_state(hello::HelloState::new());
     // Build main application router.
     let app = app_builder.build().expect("Unable to build app");
     // Start the service.
     handle
         .run(config.server, app, Some(Duration::from_secs(5)))
         .await
-}
-
-/// Greet the Axum world.
-#[handler(
-    name = "hello_world",
-    path = "/",
-    method = "GET",
-    docs(description = "Some link", url = "http://example.com/hello_world"),
-    tags = ["tag1", "tag2"],
-    permissions = ["perm1"]
-)]
-async fn root_handler() -> &'static str {
-    tracing::info!("Said hello to the Axum world");
-    "Hello Axum world!"
 }
 
 /// Sleep for some time and return response.
@@ -104,48 +91,6 @@ async fn panic() {
 /// Authentication is disabled for this handler.
 #[handler(no_auth)]
 async fn no_op() {}
-
-/// Query parameters.
-#[derive(Deserialize, JsonSchema)]
-struct QueryName {
-    /// Name of the person to greet.
-    #[serde(default = "QueryName::default_name")]
-    name: String,
-}
-
-impl QueryName {
-    fn default_name() -> String {
-        "Jebediah".into()
-    }
-}
-
-/// Greet someone using a name from a query string.
-#[handler]
-async fn name_from_qs(q: Query<QueryName>) -> String {
-    format!("Hello {}!", q.name)
-}
-
-/// Greet someone using a name from a text body.
-#[handler]
-async fn name_from_text_body(body: String) -> String {
-    format!("Hello {}!", body)
-}
-
-/// Greet someone using a name from a binary body.
-#[handler]
-async fn name_from_binary_body(body: bytes::Bytes) -> String {
-    format!("Hello {:?}!", body)
-}
-
-/// Greet someone using a name from a URL path element.
-#[handler(
-    path = "/hello/:name",
-    docs(description = "Another link", url = "http://example.com/hello_name"),
-    path_params(name(description = "Name to greet", allow_empty = true))
-)]
-async fn name_from_path(args: Path<String>) -> String {
-    format!("Hello {}!", args.0)
-}
 
 /// Requested operation.
 #[derive(Clone, Copy, Default, Deserialize, JsonSchema)]
@@ -289,7 +234,7 @@ async fn get_random_number(
     }
 }
 
-/// More complex example for using a shared app state object.
+/// Example of using a shared app state object.
 mod counter_state {
     use std::{
         ops::Deref,
@@ -352,6 +297,99 @@ mod counter_state {
     async fn dec_state(state: State<CounterState>) -> String {
         let old = state.dec();
         format!("Old counter value was {old}")
+    }
+}
+
+/// Sample greeting methods with a custom metric.
+mod hello {
+    use bytes::Bytes;
+    use opentelemetry::{global, metrics::Counter, KeyValue};
+
+    use super::*;
+
+    /// App state used in hello handlers.
+    #[derive(Clone)]
+    pub struct HelloState {
+        /// Metric: number of times each name was greeted.
+        num_greetings: Counter<u64>,
+    }
+
+    impl HelloState {
+        /// Create new instance of hello handlers app state.
+        pub fn new() -> Self {
+            let meter = global::meter("hello");
+            let num_greetings = meter
+                .u64_counter("num_greetings")
+                .with_description("Number of times each name was greeted.")
+                .init();
+            HelloState { num_greetings }
+        }
+
+        pub fn log_name(&self, name: impl AsRef<str>) {
+            self.num_greetings
+                .add(1, &[KeyValue::new("name", name.as_ref().to_string())]);
+        }
+    }
+
+    /// Greet the Axum world.
+    #[handler(
+        name = "hello_world",
+        path = "/",
+        method = "GET",
+        docs(description = "Some link", url = "http://example.com/hello_world"),
+        tags = ["tag1", "tag2"],
+        permissions = ["perm1"]
+    )]
+    async fn root_handler(state: State<HelloState>) -> &'static str {
+        state.log_name("");
+        tracing::info!("Said hello to the Axum world");
+        "Hello Axum world!"
+    }
+
+    /// Query parameters.
+    #[derive(Deserialize, JsonSchema)]
+    struct QueryName {
+        /// Name of the person to greet.
+        #[serde(default = "QueryName::default_name")]
+        name: String,
+    }
+
+    impl QueryName {
+        fn default_name() -> String {
+            "Jebediah".into()
+        }
+    }
+
+    /// Greet someone using a name from a query string.
+    #[handler]
+    async fn name_from_qs(state: State<HelloState>, q: Query<QueryName>) -> String {
+        state.log_name(&q.name);
+        format!("Hello {}!", q.name)
+    }
+
+    /// Greet someone using a name from a text body.
+    #[handler]
+    async fn name_from_text_body(state: State<HelloState>, body: String) -> String {
+        state.log_name(&body);
+        format!("Hello {}!", body)
+    }
+
+    /// Greet someone using a name from a binary body.
+    #[handler]
+    async fn name_from_binary_body(state: State<HelloState>, body: Bytes) -> String {
+        state.log_name(std::str::from_utf8(&body).unwrap_or(""));
+        format!("Hello {:?}!", body)
+    }
+
+    /// Greet someone using a name from a URL path element.
+    #[handler(
+        path = "/hello/:name",
+        docs(description = "Another link", url = "http://example.com/hello_name"),
+        path_params(name(description = "Name to greet", allow_empty = true))
+    )]
+    async fn name_from_path(state: State<HelloState>, args: Path<String>) -> String {
+        state.log_name(&args.0);
+        format!("Hello {}!", args.0)
     }
 }
 

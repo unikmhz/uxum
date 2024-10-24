@@ -181,10 +181,7 @@ impl ServerBuilder {
     ) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
         let span = debug_span!("build_tls_server");
         async move {
-            let tls_config = self
-                .tls
-                .as_ref()
-                .ok_or(ServerBuilderError::NoTlsConfig)?;
+            let tls_config = self.tls.as_ref().ok_or(ServerBuilderError::NoTlsConfig)?;
             let listener = self.create_listener(&tls_config.listen).await?;
             let rustls_config = tls_config.rustls_config().await?;
             let mut server = axum_server::from_tcp_rustls(listener, rustls_config);

@@ -5,7 +5,9 @@ use std::{num::NonZeroUsize, time::Duration};
 use opentelemetry_otlp::{Protocol, TonicExporterBuilder, WithExportConfig};
 use opentelemetry_sdk::{
     runtime::Tokio,
-    trace::{BatchConfig, BatchConfigBuilder, Config, RandomIdGenerator, Sampler, Tracer, TracerProvider},
+    trace::{
+        BatchConfig, BatchConfigBuilder, Config, RandomIdGenerator, Sampler, Tracer, TracerProvider,
+    },
     Resource,
 };
 use serde::{Deserialize, Serialize};
