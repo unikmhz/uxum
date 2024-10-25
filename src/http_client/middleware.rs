@@ -27,8 +27,8 @@ struct ReqwestSpanBackend;
 impl ReqwestOtelSpanBackend for ReqwestSpanBackend {
     fn on_request_start(req: &Request, ext: &mut Extensions) -> Span {
         ext.insert(Instant::now());
-        // TODO: maybe method + path in name?
-        reqwest_otel_span!(name = "http-request", req, elapsed = Empty)
+        let name = format!("{} {}", req.method(), req.url().path());
+        reqwest_otel_span!(name = name, req, elapsed = Empty)
     }
 
     fn on_request_end(span: &Span, outcome: &Result<Response>, ext: &mut Extensions) {
@@ -134,11 +134,24 @@ impl Middleware for MetricsMiddleware {
             Ok(r) => r.content_length().unwrap_or_default(),
             Err(_) => 0,
         };
-        // TODO: record errors.
         let labels = [
             KeyValue::new("http.client", name.to_string()),
             KeyValue::new("http.request.method", method.to_string()),
             KeyValue::new("url.scheme", scheme.clone()),
+        ];
+        if let Err(Error::Middleware(ref err)) = resp {
+            if err.is::<CircuitBreakerRejection>() {
+                metrics.requests_rejected.add(1, &labels);
+            } else {
+                metrics.requests_errored.add(1, &labels);
+            }
+        }
+        let mut labels = labels.into_iter();
+        // SAFETY: labels array is guaranteed to be of size 3.
+        let labels = [
+            labels.next().unwrap(),
+            labels.next().unwrap(),
+            labels.next().unwrap(),
             KeyValue::new("http.response.status_code", status),
         ];
         metrics.requests_total.add(1, &labels);

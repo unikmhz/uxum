@@ -321,6 +321,14 @@ impl MetricsBuilder {
                 "How many HTTP requests processed, partitioned by status code and HTTP method.",
             )
             .init();
+        let requests_rejected = meter
+            .u64_counter("http.client.rejected_requests")
+            .with_description("Rejected requests due to open circuit breaker.")
+            .init();
+        let requests_errored = meter
+            .u64_counter("http.client.errored_requests")
+            .with_description("Other errors when trying to send a request.")
+            .init();
         let requests_active = meter
             .i64_up_down_counter("http.client.active_requests")
             .with_description("The number of active HTTP requests.")
@@ -338,6 +346,8 @@ impl MetricsBuilder {
         let http_client = HttpClientMetricsInner {
             request_duration,
             requests_total,
+            requests_rejected,
+            requests_errored,
             requests_active,
             request_body_size,
             response_body_size,
@@ -423,6 +433,10 @@ pub struct HttpClientMetricsInner {
     pub request_duration: Histogram<f64>,
     /// Lifetime counter of received requests.
     pub requests_total: Counter<u64>,
+    /// Rejected requests due to open circuit breaker.
+    pub requests_rejected: Counter<u64>,
+    /// Other errors when trying to send a request.
+    pub requests_errored: Counter<u64>,
     /// Currently active requests.
     pub requests_active: UpDownCounter<i64>,
     /// Distribution of request body sizes.

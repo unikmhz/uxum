@@ -252,7 +252,6 @@ where
     ///
     /// Returns `Err` if metrics registry or provider could not be initialized.
     pub fn metrics(&mut self) -> Result<&MetricsState, AppBuilderError> {
-        // TODO: export metrics state for application-defined metrics.
         // TODO: make metrics optional.
         match self.metrics {
             Some(ref metrics) => Ok(metrics),
