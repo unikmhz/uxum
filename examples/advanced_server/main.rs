@@ -14,7 +14,7 @@ struct ServiceConfig {
     server: ServerBuilder,
 }
 
-/// Application entry point
+/// Application entry point.
 fn main() -> Result<(), HandleError> {
     // Load configuration from file.
     let mut config: ServiceConfig = Config::builder()

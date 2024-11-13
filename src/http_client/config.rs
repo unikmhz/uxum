@@ -106,7 +106,12 @@ pub struct HttpClientConfig {
     #[serde(default)]
     pub http2: HttpClientHttp2Config,
     /// Circuit breaker configuration.
-    #[serde(default, alias = "breaker", alias = "circuit_breaker")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "breaker",
+        alias = "circuit_breaker"
+    )]
     pub cb: Option<HttpClientCircuitBreakerConfig>,
     /// Short application name.
     #[serde(skip)]

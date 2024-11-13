@@ -1,3 +1,5 @@
+//! Server builder.
+
 use std::{
     net::{SocketAddr, TcpListener},
     num::{NonZeroU32, NonZeroUsize},

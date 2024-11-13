@@ -1,3 +1,5 @@
+//! Misc utility functions and traits.
+
 use std::{
     convert::Infallible,
     future::Future,

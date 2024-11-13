@@ -21,7 +21,7 @@ use axum::{
 use hyper::{Method, Request};
 use opentelemetry::{
     global,
-    metrics::{Counter, Histogram, MeterProvider, ObservableGauge, UpDownCounter},
+    metrics::{Counter, Gauge, Histogram, MeterProvider, UpDownCounter},
     KeyValue,
 };
 use opentelemetry_sdk::{
@@ -82,7 +82,7 @@ pub struct MetricsBuilder {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     labels: HashMap<String, String>,
     /// Optional prefix for metric names.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     prefix: Option<String>,
 }
 
@@ -356,16 +356,21 @@ impl MetricsBuilder {
 
         // Tokio runtime metrics.
         let num_workers = meter
-            .u64_observable_gauge("runtime.workers")
+            .u64_gauge("runtime.workers")
             .with_description("Number of worker threads used by the runtime.")
             .init();
         let num_alive_tasks = meter
-            .u64_observable_gauge("runtime.alive_tasks")
+            .u64_gauge("runtime.alive_tasks")
             .with_description("Current number of alive tasks in the runtime.")
+            .init();
+        let global_queue_depth = meter
+            .u64_gauge("runtime.global_queue_depth")
+            .with_description("Number of tasks currently scheduled in the runtime’s global queue.")
             .init();
         let runtime = RuntimeMetrics {
             num_workers,
             num_alive_tasks,
+            global_queue_depth,
         };
 
         Ok(MetricsState {
@@ -453,11 +458,17 @@ pub(crate) struct RuntimeMetrics {
     ///
     /// The number of workers is set by configuring `worker_threads` on [`tokio::runtime::Builder`].
     /// When using the `current_thread` runtime, the return value is always `1`.
-    num_workers: ObservableGauge<u64>,
+    num_workers: Gauge<u64>,
     /// Current number of alive tasks in the runtime.
     ///
     /// This counter increases when a task is spawned and decreases when a task exits.
-    num_alive_tasks: ObservableGauge<u64>,
+    num_alive_tasks: Gauge<u64>,
+    /// Number of tasks currently scheduled in the runtime’s global queue.
+    ///
+    /// Tasks that are spawned or notified from a non-runtime thread are scheduled using the runtime’s
+    /// global queue. This metric returns the current number of tasks pending in the global queue.
+    /// As such, the returned value may increase or decrease as new tasks are scheduled and processed.
+    global_queue_depth: Gauge<u64>,
 }
 
 impl<S> Layer<S> for MetricsState {
@@ -648,20 +659,24 @@ where
     }
 }
 
-/// Method handler to generate metrics
+/// Method handler to generate metrics.
 async fn get_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
-    // Record runtime metrics just-in-time
+    // Record runtime metrics just-in-time.
     let rt_metrics = tokio::runtime::Handle::current().metrics();
     metrics
         .runtime
         .num_workers
-        .observe(rt_metrics.num_workers() as u64, &[]);
+        .record(rt_metrics.num_workers() as u64, &[]);
     metrics
         .runtime
         .num_alive_tasks
-        .observe(rt_metrics.num_alive_tasks() as u64, &[]);
+        .record(rt_metrics.num_alive_tasks() as u64, &[]);
+    metrics
+        .runtime
+        .global_queue_depth
+        .record(rt_metrics.global_queue_depth() as u64, &[]);
 
-    // Serialize metrics
+    // Serialize metrics.
     let encoder = TextEncoder::new();
     let mut buf = Vec::new();
     encoder.encode(&metrics.registry.gather(), &mut buf)?;

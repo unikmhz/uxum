@@ -1,4 +1,4 @@
-//! Code to generate OpenAPI schema and provide an UI for API discovery and documentation
+//! Code to generate OpenAPI schema and provide a UI for API discovery and documentation
 //! (RapiDoc).
 
 use std::collections::{BTreeMap, HashMap};
@@ -49,29 +49,32 @@ pub struct ApiDocBuilder {
     #[serde(default = "ApiDocBuilder::default_js_path")]
     js_path: String,
     /// Short app name.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     app_name: Option<String>,
     /// App version.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     app_version: Option<String>,
     /// App title for use in UI and documentation.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     app_title: Option<String>,
     /// Top-level description.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     /// Contact name.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     contact_name: Option<String>,
     /// Contact URL.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     contact_url: Option<String>,
     /// Contact email.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     contact_email: Option<String>,
     /// OpenAPI spec tag metadata.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<openapi3::Tag>,
+    /// Server definitions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    servers: Vec<ApiDocServer>,
     /// Whether to install RapiDoc UI endpoints.
     #[serde(default = "crate::util::default_true")]
     enable_ui: bool,
@@ -102,6 +105,7 @@ impl Default for ApiDocBuilder {
             contact_url: None,
             contact_email: None,
             tags: vec![],
+            servers: vec![],
             enable_ui: true,
             inline_subschemas: false,
             rapidoc_attributes: Self::default_rapidoc_attributes(),
@@ -426,7 +430,7 @@ impl ApiDocBuilder {
                 version: self.app_version.clone().unwrap_or("0.0.0".into()),
                 extensions: Map::default(),
             },
-            servers: vec![], // FIXME: read from configuration.
+            servers: self.servers.iter().cloned().map(Into::into).collect(),
             paths,
             components: Some(openapi3::Components {
                 schemas: gen
@@ -457,6 +461,28 @@ impl ApiDocBuilder {
         serde_json::to_vec_pretty(&self.build_spec(auth)?)
             .map(OpenApiSpec)
             .map_err(Into::into)
+    }
+}
+
+/// Server definition for generated OpenAPI spec.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct ApiDocServer {
+    /// Server URL.
+    url: String,
+    /// Server description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+impl From<ApiDocServer> for openapi3::Server {
+    fn from(value: ApiDocServer) -> Self {
+        Self {
+            url: value.url,
+            description: value.description,
+            variables: Map::default(),
+            extensions: Map::default(),
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-//! AAA - user object
+//! AAA - user object.
 
 use std::{
     borrow::{Borrow, BorrowMut},

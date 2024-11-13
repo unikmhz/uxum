@@ -31,13 +31,13 @@ pub struct AppConfig {
     #[serde(default)]
     pub logging: LoggingConfig,
     /// Tracing configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tracing: Option<TracingConfig>,
     /// Individual handler configuration.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub handlers: HashMap<String, HandlerConfig>,
     /// API doc configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_doc: Option<ApiDocBuilder>,
     /// Metrics configuration.
     #[serde(default)]
@@ -52,7 +52,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub auth: AuthConfig,
     /// [`reqwest`] HTTP client configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub http_clients: HashMap<String, HttpClientConfig>,
     /// Short application name.
     #[serde(skip)]
@@ -98,7 +98,7 @@ pub struct HandlerConfig {
     #[serde(default)]
     pub hidden: bool,
     /// Request buffering configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub buffer: Option<HandlerBufferConfig>,
     /// CORS configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]

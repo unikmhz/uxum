@@ -1,3 +1,5 @@
+//! OpenAPI schema generation for handler responses.
+
 use axum::http::StatusCode;
 use okapi::openapi3;
 use schemars::gen::SchemaGenerator;

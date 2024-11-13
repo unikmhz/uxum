@@ -1,3 +1,5 @@
+//! Tokio runtime configuration and setup routines.
+
 use std::{
     num::{NonZeroU32, NonZeroUsize},
     sync::atomic::{AtomicUsize, Ordering},

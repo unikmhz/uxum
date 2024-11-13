@@ -1,3 +1,5 @@
+//! [`axum`] application builder.
+
 use std::{
     any::Any,
     borrow::Borrow,
@@ -559,9 +561,8 @@ impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
     }
 }
 
-// FIXME: write proper handler.
+/// Error handler for uxum-specific error types.
 pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
-    // TODO: generalize, remove all the downcasts.
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();
     }
@@ -574,6 +575,9 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
         .into_response()
 }
 
+/// Catch panics inside handlers and convert them into responses.
+///
+/// Used in [`CatchPanicLayer`].
 fn panic_handler(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
     let details = if let Some(s) = err.downcast_ref::<String>() {
         s.clone()

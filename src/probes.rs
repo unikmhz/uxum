@@ -43,7 +43,7 @@ pub struct ProbeConfig {
     #[serde(default = "ProbeConfig::default_maintenance_off_path")]
     maintenance_off_path: String,
     /// Runtime watchdog configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     watchdog: Option<WatchdogConfig>,
 }
 

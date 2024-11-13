@@ -38,7 +38,7 @@ pub enum LoggingError {
 #[non_exhaustive]
 pub struct LoggingConfig {
     /// List of subscribers defined in configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscribers: Vec<LoggingSubscriberConfig>,
 }
 
@@ -74,7 +74,7 @@ pub struct LoggingSubscriberConfig {
     #[serde(default)]
     pub level: LoggingLevel,
     /// Custom minimum severity levels for span targets.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub targets: BTreeMap<String, LoggingLevel>,
     /// Use ANSI escape sequences for output colors and formatting.
     #[serde(default)]
@@ -467,7 +467,7 @@ pub struct LoggingDirectoryConfig {
     #[serde(default)]
     pub rotate: LogRotation,
     /// Template prefix for file names.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
     /// Template suffix for file names.
     #[serde(default = "LoggingDirectoryConfig::default_suffix")]

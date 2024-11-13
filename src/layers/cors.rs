@@ -1,3 +1,5 @@
+//! CORS [`tower`] layer.
+
 use std::{str::FromStr, time::Duration};
 
 use axum::http::{header, HeaderName, HeaderValue};

@@ -1,3 +1,5 @@
+//! Watchdog to monitor Tokio runtime responsiveness.
+
 use std::{
     future::Future,
     sync::Arc,

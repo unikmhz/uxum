@@ -1,3 +1,5 @@
+//! UNIX signal handling routines.
+
 use thiserror::Error;
 use tokio::signal::unix;
 use tracing::{info, warn};

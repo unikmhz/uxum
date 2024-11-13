@@ -1,3 +1,5 @@
+//! Global OpenTelemetry setup code.
+
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
