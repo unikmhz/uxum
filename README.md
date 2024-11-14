@@ -14,5 +14,5 @@ An opinionated backend service framework based on axum
  * Performance and feature parity with bare axum.
    Straight-up axum without all bells and whistles provided by this framework will always be a bit faster
    and more flexible.
- * HTTP clients, database access layers, connection pools.
+ * Database access layers and connection pools.
    This is out of scope for this project.

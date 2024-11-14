@@ -49,21 +49,21 @@ opentelemetry-otlp = {version = "0.17", features = ["tonic", "metrics", "logs"]}
 opentelemetry-resource-detectors = "0.3"
 opentelemetry_sdk = {version = "0.24", features = ["rt-tokio"]}
 opentelemetry-prometheus = {version = "0.17", features = ["prometheus-encoding"]}
-opentelemetry-semantic-conventions = "0.26"
+opentelemetry-semantic-conventions = "0.27"
 password-hash = {version = "0.5", features = ["alloc"]}
 problemdetails = {version = "0.4", features = ["axum"]}
 prometheus = "0.13"
 recloser = "1.1"
 reqwest = {version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls-native-roots"]}
-reqwest-middleware = {version = "0.3", features = ["multipart", "json"]}
-# TODO: upgrade opentelemetry to 0.26+ once new reqwest-tracing version comes out.
+reqwest-middleware = {version = "0.4", features = ["multipart", "json"]}
+# TODO: upgrade opentelemetry to 0.26+.
 reqwest-tracing = {version = "0.5", features = ["opentelemetry_0_24"]}
 rust-crypto = "0.2"
 schemars = {version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"]}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = {version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"]}
 socket2 = {version = "0.5"}
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = {version = "1.41.1", features = ["full"]}
 tower = {version = "0.5", features = ["buffer", "filter", "limit", "retry", "timeout", "util"]}
 tower-http = {version = "0.6", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "set-header", "trace", "util"]}

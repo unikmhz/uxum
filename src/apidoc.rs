@@ -254,6 +254,20 @@ impl ApiDocBuilder {
         self
     }
 
+    /// Add server definition for OpenAPI.
+    #[must_use]
+    pub fn with_server<T, U>(mut self, url: T, description: Option<U>) -> Self
+    where
+        T: ToString,
+        U: ToString,
+    {
+        self.servers.push(ApiDocServer {
+            url: url.to_string(),
+            description: description.map(|d| d.to_string()),
+        });
+        self
+    }
+
     /// Disable RapiDoc UI.
     #[must_use]
     pub fn without_ui(mut self) -> Self {

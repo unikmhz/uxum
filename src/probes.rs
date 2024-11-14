@@ -146,7 +146,7 @@ impl Default for ProbeState {
 }
 
 impl ProbeState {
-    /// Create new [`ProbeState`] with optional [`Watchdog`].
+    /// Create new [`ProbeState`] with optional [`WatchdogConfig`].
     #[must_use]
     pub fn new(watchdog: Option<&WatchdogConfig>) -> Self {
         Self(Arc::new(ProbeStateInner {

@@ -121,6 +121,7 @@ pub struct ComputeRequest {
 /// Result of computation.
 #[derive(JsonSchema, Serialize)]
 pub struct ComputeResponse {
+    /// Computed value.
     result: i64,
 }
 
