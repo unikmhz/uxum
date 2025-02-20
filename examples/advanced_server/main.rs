@@ -1,28 +1,15 @@
 use std::{net::SocketAddr, time::Duration};
 
-use config::{Config, File};
 use serde::{Deserialize, Serialize};
 use uxum::{prelude::*, GetResponseSchemas, ResponseSchema};
-
-/// Root container for app configuration.
-#[derive(Deserialize)]
-struct ServiceConfig {
-    /// Application configuration.
-    #[serde(flatten)]
-    app: AppConfig,
-    /// Server configuration.
-    server: ServerBuilder,
-}
 
 /// Application entry point.
 fn main() -> Result<(), HandleError> {
     // Load configuration from file.
-    let mut config: ServiceConfig = Config::builder()
-        .add_source(File::with_name("examples/advanced_server/config.yaml"))
+    let mut config = ServiceConfig::builder()
+        .with_file("examples/advanced_server/config.yaml")
         .build()
-        .expect("Unable to load configuration")
-        .try_deserialize()
-        .expect("Error deserializing configuration");
+        .expect("Unable to load configuration");
     // Add some hard-coded values to [`AppConfig`].
     let app_cfg = config
         .app

@@ -14,7 +14,7 @@ pub(crate) fn extract_path_params(path: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// Reformat [`axum`] route path with path parameters for use in OpenAPI.
+/// Reformat [`axum`](../axum) route path with path parameters for use in OpenAPI.
 #[must_use]
 pub(crate) fn format_path_for_spec(path: &str) -> String {
     path_segments(path)

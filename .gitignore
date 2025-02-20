@@ -16,3 +16,4 @@ config/.env
 
 .gdb_history
 *.log
+codecov.json

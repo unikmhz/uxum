@@ -110,6 +110,8 @@ impl MakeSpan<Body> for CustomMakeSpan {
 ///
 /// This is lifted verbatim from [`opentelemetry_http`] crate due to [`http`] crate version
 /// incompatibilities.
+///
+/// [`opentelemetry_http`]: https://docs.rs/opentelemetry-http
 // TODO: move back to standard extractor when everyone synchronizes their version of http crate.
 pub(crate) struct HeaderExtractor<'a>(pub(crate) &'a http::HeaderMap);
 

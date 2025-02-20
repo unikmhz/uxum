@@ -14,5 +14,5 @@ pub use crate::{
         schemars::{self, JsonSchema},
         tracing,
     },
-    AppBuilder, AppConfig, Handle, HandleError, ServerBuilder,
+    AppBuilder, AppConfig, Handle, HandleError, ServerBuilder, ServiceConfig,
 };

@@ -132,7 +132,7 @@ impl JsonKeyNames {
 
 /// Extensible JSON format.
 ///
-/// Similar to [`tracing_subscriber::fmt::format::json::Json`], but with extra features.
+/// Similar to [`tracing_subscriber::fmt::format::Json`], but with extra features.
 #[derive(Clone, Debug)]
 pub(crate) struct ExtensibleJsonFormat<T = SystemTime> {
     /// Time formatter.
@@ -309,10 +309,10 @@ impl<T> ExtensibleJsonFormat<T> {
     /// [`time` crate] to provide more sophisticated timestamp formatting
     /// options.
     ///
-    /// [`timer`]: super::time::FormatTime
-    /// [`time` module]: mod@super::time
-    /// [`UtcTime`]: super::time::UtcTime
-    /// [`LocalTime`]: super::time::LocalTime
+    /// [`timer`]: tracing_subscriber::fmt::time::FormatTime
+    /// [`time` module]: mod@tracing_subscriber::fmt::time
+    /// [`UtcTime`]: tracing_subscriber::fmt::time::UtcTime
+    /// [`LocalTime`]: tracing_subscriber::fmt::time::LocalTime
     /// [`time` crate]: https://docs.rs/time/0.3
     #[allow(dead_code)]
     pub(crate) fn with_timer<T2>(self, timer: T2) -> ExtensibleJsonFormat<T2> {
@@ -392,7 +392,7 @@ impl<T> ExtensibleJsonFormat<T> {
     /// Sets whether or not an event's [source code file path][file] is
     /// displayed.
     ///
-    /// [file]: tracing_core::Metadata::file
+    /// [file]: tracing::Metadata::file
     pub(crate) fn with_file(self, display_filename: bool) -> Self {
         Self {
             display_filename,
@@ -403,7 +403,7 @@ impl<T> ExtensibleJsonFormat<T> {
     /// Sets whether or not an event's [source code line number][line] is
     /// displayed.
     ///
-    /// [line]: tracing_core::Metadata::line
+    /// [line]: tracing::Metadata::line
     pub(crate) fn with_line_number(self, display_line_number: bool) -> Self {
         Self {
             display_line_number,

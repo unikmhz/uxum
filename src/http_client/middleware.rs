@@ -25,6 +25,7 @@ use crate::{
 struct ReqwestSpanBackend;
 
 impl ReqwestOtelSpanBackend for ReqwestSpanBackend {
+    #[allow(unexpected_cfgs)]
     fn on_request_start(req: &Request, ext: &mut Extensions) -> Span {
         ext.insert(Instant::now());
         let name = format!("{} {}", req.method(), req.url().path());

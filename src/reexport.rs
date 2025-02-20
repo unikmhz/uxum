@@ -2,6 +2,7 @@
 
 pub use axum;
 pub use axum_server;
+pub use config;
 pub use http;
 pub use hyper;
 pub use inventory;

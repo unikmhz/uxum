@@ -13,6 +13,7 @@ categories = ["asynchronous", "network-programming", "web-programming::http-serv
 exclude = [".gitignore"]
 
 [workspace]
+resolver = "2"
 members = ["uxum-macros"]
 
 [dependencies]
@@ -26,6 +27,7 @@ axum = {version = "0.7", features = ["macros"]}
 axum-server = {version = "0.7", features = ["tls-rustls"]}
 base64 = "0.22"
 bytes = {version = "1.6", features = ["serde"]}
+config = {version = "0.15", features = ["yaml"]}
 dashmap = "6.1"
 forwarded-header-value = "0.1"
 futures = "0.3"
@@ -72,12 +74,11 @@ tracing-appender = "0.2"
 tracing-log = "0.2"
 tracing-opentelemetry = "0.25"
 tracing-serde = "0.1"
-tracing-subscriber = {version = "0.3", features = ["tracing-log", "env-filter", "json", "parking_lot"]}
+tracing-subscriber = {version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"]}
 url = {version = "2.5", features = ["serde"]}
 
 [dev-dependencies]
-config = {version = "0.14", features = ["yaml"]}
-rand = "0.8"
+rand = "0.9"
 
 [[example]]
 name = "minimal"

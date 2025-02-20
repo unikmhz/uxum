@@ -1,12 +1,14 @@
 //! Application configuration structures.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{
     apidoc::ApiDocBuilder,
     auth::AuthConfig,
+    builder::server::ServerBuilder,
     http_client::HttpClientConfig,
     layers::{
         buffer::HandlerBufferConfig, cors::CorsConfig, rate::HandlerRateLimitConfig,
@@ -19,6 +21,109 @@ use crate::{
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
 };
+
+/// Root container for app configuration.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+pub struct ServiceConfig<C = ()>
+where
+    C: Clone + std::fmt::Debug + PartialEq,
+{
+    /// Application configuration.
+    #[serde(flatten)]
+    pub app: AppConfig,
+    /// Server configuration.
+    #[serde(default)]
+    pub server: ServerBuilder,
+    /// Service-specific configuration.
+    #[serde(flatten)]
+    pub service: C,
+}
+
+impl<C> ServiceConfig<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq,
+{
+    /// Create builder for service configuration.
+    pub fn builder() -> ServiceConfigBuilder<C> {
+        ServiceConfigBuilder::new()
+    }
+}
+
+/// Top-level service configuration error type.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ServiceConfigError {
+    /// Configuration builder error
+    #[error(transparent)]
+    Config(#[from] config::ConfigError),
+}
+
+/// Builder for service configuration.
+#[must_use]
+pub struct ServiceConfigBuilder<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq,
+{
+    builder: config::ConfigBuilder<config::builder::DefaultState>,
+    _type: PhantomData<C>,
+}
+
+impl<C> ServiceConfigBuilder<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq,
+{
+    /// Alternative method to construct a service configuration builder.
+    pub fn new() -> Self {
+        Self {
+            builder: config::Config::builder(),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<C> ServiceConfigBuilder<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq + for<'de> Deserialize<'de>,
+{
+    /// Try to build configuration object from preconfigured sources.
+    ///
+    /// This method will do all the I/O necessary to load the configuration.
+    ///
+    /// See [`config::builder::ConfigBuilder::build`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some configuration loading was unsuccessful.
+    pub fn build(self) -> Result<ServiceConfig<C>, ServiceConfigError> {
+        self.builder.build()?.try_deserialize().map_err(Into::into)
+    }
+
+    /// Add a custom object implementing [`Source`] trait as a source of service configuration.
+    ///
+    /// [`Source`]: config::Source
+    pub fn with_source<T>(mut self, source: T) -> Self
+    where
+        T: config::Source + Send + Sync + 'static,
+    {
+        self.builder = self.builder.add_source(source);
+        self
+    }
+
+    /// Add file as a source of service configuration.
+    pub fn with_file(self, name: impl AsRef<str>) -> Self {
+        self.with_source(config::File::with_name(name.as_ref()))
+    }
+
+    /// Add environment variables as a source of service configuration.
+    pub fn with_env(self, prefix: impl AsRef<str>) -> Self {
+        self.with_source(
+            config::Environment::with_prefix(prefix.as_ref())
+                .separator("_")
+                .prefix_separator("__"),
+        )
+    }
+}
 
 /// Top-level application configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

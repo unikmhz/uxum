@@ -32,7 +32,7 @@ pub struct HttpClientCircuitBreakerConfig {
     /// Default is 10.
     #[serde(
         default = "HttpClientCircuitBreakerConfig::default_half_open_len",
-        alias = "half_open_lenth"
+        alias = "half_open_length"
     )]
     pub half_open_len: usize,
     /// Time that CB stays open after being tripped. During this time no error rate analysis is
