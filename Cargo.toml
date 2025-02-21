@@ -14,7 +14,13 @@ exclude = [".gitignore"]
 
 [workspace]
 resolver = "2"
-members = ["uxum-macros"]
+members = [
+    "examples/advanced_server",
+    "examples/basic_server",
+    "examples/inner_service",
+    "examples/minimal",
+    "uxum-macros",
+]
 
 [dependencies]
 uxum-macros = {path = "uxum-macros"}
@@ -76,21 +82,6 @@ tracing-opentelemetry = "0.25"
 tracing-serde = "0.1"
 tracing-subscriber = {version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"]}
 url = {version = "2.5", features = ["serde"]}
-
-[dev-dependencies]
-rand = "0.9"
-
-[[example]]
-name = "minimal"
-
-[[example]]
-name = "basic_server"
-
-[[example]]
-name = "advanced_server"
-
-[[example]]
-name = "inner_service"
 
 [package.metadata.release]
 publish = false

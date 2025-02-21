@@ -1,7 +1,14 @@
+//! Kitchen sink service which demonstrates use of various advanced features.
+//! Loads configuration from a YAML file.
+
 use std::{net::SocketAddr, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use uxum::{prelude::*, GetResponseSchemas, ResponseSchema};
+use uxum::{
+    prelude::*,
+    reexport::{problemdetails, reqwest, reqwest_middleware, tokio},
+    GetResponseSchemas, ResponseSchema,
+};
 
 /// Application entry point.
 fn main() -> Result<(), HandleError> {
@@ -290,8 +297,10 @@ mod counter_state {
 
 /// Sample greeting methods with a custom metric.
 mod hello {
-    use bytes::Bytes;
-    use opentelemetry::{global, metrics::Counter, KeyValue};
+    use uxum::reexport::{
+        bytes::Bytes,
+        opentelemetry::{global, metrics::Counter, KeyValue},
+    };
 
     use super::*;
 

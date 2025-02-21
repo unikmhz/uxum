@@ -22,7 +22,9 @@ impl ToTokens for RequestBody {
         let media_type = self.media_type();
         let schema = match self {
             Self::String => quote! { gen.subschema_for::<String>().into_object() },
-            Self::Bytes => quote! { gen.subschema_for::<bytes::Bytes>().into_object() },
+            Self::Bytes => {
+                quote! { gen.subschema_for::<::uxum::reexport::bytes::Bytes>().into_object() }
+            }
             Self::Form => return, // TODO: write this.
             Self::Json(path) => quote! { gen.subschema_for::<#path>().into_object() },
         };

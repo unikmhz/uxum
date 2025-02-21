@@ -1,29 +1,15 @@
 use std::net::SocketAddr;
 
-use config::{Config, File};
-use serde::Deserialize;
 use uxum::prelude::*;
-
-/// Root container for app configuration
-#[derive(Deserialize)]
-struct ServiceConfig {
-    /// Application configuration
-    #[serde(flatten)]
-    app: AppConfig,
-    /// Server configuration
-    server: ServerBuilder,
-}
 
 /// Application entry point
 #[tokio::main]
 async fn main() {
     // Load configuration from file
-    let mut config: ServiceConfig = Config::builder()
-        .add_source(File::with_name("examples/inner_service/config.yaml"))
+    let mut config: ServiceConfig = ServiceConfig::builder()
+        .with_file("examples/inner_service/config.yaml")
         .build()
-        .expect("Unable to load configuration")
-        .try_deserialize()
-        .expect("Error deserializing configuration");
+        .expect("Unable to load configuration");
     // Add some hard-coded values to [`AppConfig`]
     let app_cfg = config
         .app

@@ -1,8 +1,12 @@
 //! Very basic example of using uxum builders to quickly set up a service.
 //! No configuration is provided.
 
-use uxum::prelude::*;
+use uxum::{
+    prelude::*,
+    reexport::{tokio, tracing_subscriber},
+};
 
+/// Application entry point.
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -17,6 +21,7 @@ async fn main() {
         .expect("Server error");
 }
 
+/// Sample request handler.
 #[handler(
     name = "hello_world",
     path = "/",
@@ -27,10 +32,12 @@ async fn root_handler() -> &'static str {
     "Hello Axum world!"
 }
 
-// This handler has no metadata, so everything is deduced from function signature.
-// Handler name is taken from function name.
-// Path is composed by prepending '/' to handler name.
-// Method is POST if some request body extractor is provided, otherwise it is GET.
+/// Bare request handler.
+///
+/// This handler has no metadata, so everything is deduced from function signature.
+/// Handler name is taken from function name.
+/// Path is composed by prepending '/' to handler name.
+/// Method is POST if some request body extractor is provided, otherwise it is GET.
 #[handler]
 async fn other() -> &'static str {
     "Another handler"

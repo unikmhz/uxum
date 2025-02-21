@@ -1,0 +1,60 @@
+---
+name: Continuous Integration
+on:
+  push:
+    branches: [ main, init ]
+  pull_request:
+    branches: [ main, init ]
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: -Dwarnings
+jobs:
+  check:
+    name: CI checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Package cache
+        uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --verbose --workspace --all-features
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check clippy
+        run: cargo clippy --workspace --all-features -- -D warnings
+      - name: Build docs
+        run: cargo doc --document-private-items --workspace --all-features --no-deps
+      - name: Check semver
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Package cache
+        uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test --verbose --all
+  cov:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Package cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install coverage tool
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.6
+      - name: Generate code coverage
+        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+      - name: Upload coverage to CodeCov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: codecov.json
+          fail_ci_if_error: true

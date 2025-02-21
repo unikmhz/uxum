@@ -79,7 +79,6 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
 
     quote! {
         #[::uxum::reexport::tracing::instrument(name = "handler", skip_all, fields(name = #handler_name))]
-        #[::uxum::reexport::axum::debug_handler]
         #input
 
         #[doc(hidden)]

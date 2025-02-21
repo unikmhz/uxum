@@ -1,0 +1,24 @@
+---
+name: Continuous Deployment
+on:
+  release:
+    types: [ published ]
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install release tool
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-release@0.25
+      - name: Log in to crates.io
+        run: cargo login "$CRATES_IO_TOKEN"
+        env:
+          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+      - name: Publish crates
+        run: cargo release publish --no-confirm --allow-branch "*" --workspace --all-features --execute

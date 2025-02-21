@@ -1,0 +1,13 @@
+[package]
+name = "basic_server"
+version = "0.1.0"
+authors = ["Alex Unigovsky <unik@devrandom.ru>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+rust-version = "1.79"
+repository = "https://github.com/unikmhz/uxum"
+description = "UXUM framework - basic service example"
+publish = false
+
+[dependencies]
+uxum = { path = "../.." }

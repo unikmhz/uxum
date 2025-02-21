@@ -1,0 +1,16 @@
+[package]
+name = "inner_service"
+version = "0.1.0"
+authors = ["Alex Unigovsky <unik@devrandom.ru>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+rust-version = "1.79"
+repository = "https://github.com/unikmhz/uxum"
+description = "UXUM framework - simple service to demonstrate distributed tracing"
+publish = false
+
+[dependencies]
+axum-server = {version = "0.7", features = ["tls-rustls"]}
+serde = {version = "1.0", features = ["derive"]}
+tokio = {version = "1.41.1", features = ["full"]}
+uxum = { path = "../.." }
