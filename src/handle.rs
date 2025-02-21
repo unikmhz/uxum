@@ -32,6 +32,9 @@ pub enum HandleError {
     /// Error running HTTP server.
     #[error("HTTP server error: {0}")]
     Server(IoError),
+    /// Error initializing crypto provider.
+    #[error("Error initializing crypto provider")]
+    InitTls,
     /// Error running HTTPS server.
     #[error("HTTPS server error: {0}")]
     TlsServer(IoError),
@@ -102,6 +105,10 @@ impl Handle {
     ) -> Result<(), HandleError> {
         let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
         if server.has_tls_config() {
+            // TODO: make this call not fail on subsequent starts.
+            rustls::crypto::aws_lc_rs::default_provider()
+                .install_default()
+                .map_err(|_| HandleError::InitTls)?;
             self.https_task = Some(tokio::spawn(
                 server
                     .clone()

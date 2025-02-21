@@ -38,7 +38,7 @@ dashmap = "6.1"
 forwarded-header-value = "0.1"
 futures = "0.3"
 gettid = "0.1"
-governor = "0.7"
+governor = "0.8"
 humantime-serde = "1.1"
 http = "1.1"
 hyper = {version = "1.4", features = ["http1", "http2", "server"]}
@@ -67,6 +67,7 @@ reqwest-middleware = {version = "0.4", features = ["multipart", "json"]}
 # TODO: upgrade opentelemetry to 0.26+.
 reqwest-tracing = {version = "0.5", features = ["opentelemetry_0_24"]}
 rust-crypto = "0.2"
+rustls = {version = "0.23", features = ["std", "aws_lc_rs", "custom-provider"]}
 schemars = {version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"]}
 serde = {version = "1.0", features = ["derive"]}
 serde_json = {version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"]}
@@ -79,7 +80,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-log = "0.2"
 tracing-opentelemetry = "0.25"
-tracing-serde = "0.1"
+tracing-serde = "0.2"
 tracing-subscriber = {version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"]}
 url = {version = "2.5", features = ["serde"]}
 

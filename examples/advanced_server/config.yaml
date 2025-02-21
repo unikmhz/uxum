@@ -84,5 +84,6 @@ auth:
 server:
   listen: 127.0.0.1:8080
   tls:
+    listen: 127.0.0.1:8443
     cert: examples/advanced_server/tls.crt
     key: examples/advanced_server/tls.key
