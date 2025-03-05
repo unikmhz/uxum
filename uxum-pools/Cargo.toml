@@ -1,0 +1,29 @@
+[package]
+name = "uxum-pools"
+version = "0.1.0"
+authors = ["Alex Unigovsky <unik@devrandom.ru>"]
+license = "MIT OR Apache-2.0"
+edition = "2021"
+rust-version = "1.80"
+repository = "https://github.com/unikmhz/uxum"
+description = "Generic instrumented resource pools for use in uxum framework"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+async-trait = {version = "0.1", optional = true}
+deadpool = {version = "0.12", optional = true}
+opentelemetry = {version = "0.24", features = ["metrics"]}
+parking_lot = "0.12"
+r2d2 = {version = "0.8", optional = true}
+thiserror = "2.0"
+tracing = "0.1"
+
+[features]
+default = ["async"]
+
+async = ["dep:async-trait"]
+deadpool = ["async", "deadpool/managed"]
+r2d2 = ["dep:r2d2"]

@@ -323,6 +323,8 @@ mod hello {
         }
 
         pub fn log_name(&self, name: impl AsRef<str>) {
+            // NOTE: you should definitely NOT use client-supplied values as labels in production,
+            // as it may lead to cardinality explosion inside your monitoring infrastructure.
             self.num_greetings
                 .add(1, &[KeyValue::new("name", name.as_ref().to_string())]);
         }

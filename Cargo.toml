@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
-rust-version = "1.79"
+rust-version = "1.80"
 repository = "https://github.com/unikmhz/uxum"
 description = "Opinionated backend service framework based on axum"
 readme = "README.md"
@@ -20,6 +20,7 @@ members = [
     "examples/inner_service",
     "examples/minimal",
     "uxum-macros",
+    "uxum-pools",
 ]
 
 [dependencies]
