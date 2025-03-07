@@ -1,13 +1,13 @@
 # UXUM
 
-An opinionated backend service framework based on axum
+An opinionated backend service framework based on axum.
 
 ## Project goals
 
  * Minimum boilerplate code.
  * Minimal performance impact from features not in use.
  * Metrics, tracing, OpenAPI and common service support features available out of the box.
- * Ready to be deployed on a local server, VM or container, on the cloud.
+ * Ready to be deployed on a local server, VM or container, or in the cloud.
 
 ## Project non-goals
 

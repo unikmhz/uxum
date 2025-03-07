@@ -7,23 +7,35 @@ edition = "2021"
 rust-version = "1.80"
 repository = "https://github.com/unikmhz/uxum"
 description = "Generic instrumented resource pools for use in uxum framework"
+readme = "README.md"
 
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
+[package.metadata.release]
+publish = false
+push = false
+pre-release-commit-message = "uxum-pools {{version}}"
+sign-commit = true
+sign-tag = true
+tag-message = "uxum-pools {{version}}"
+
 [dependencies]
 async-trait = {version = "0.1", optional = true}
+bb8 = {version = "0.9", optional = true}
 deadpool = {version = "0.12", optional = true}
 opentelemetry = {version = "0.24", features = ["metrics"]}
 parking_lot = "0.12"
 r2d2 = {version = "0.8", optional = true}
 thiserror = "2.0"
+tokio = {version = "1.43", optional = true}
 tracing = "0.1"
 
 [features]
 default = ["async"]
 
 async = ["dep:async-trait"]
+bb8 = ["async", "dep:bb8", "tokio/time"]
 deadpool = ["async", "deadpool/managed"]
 r2d2 = ["dep:r2d2"]

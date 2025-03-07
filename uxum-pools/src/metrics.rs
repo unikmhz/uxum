@@ -1,15 +1,22 @@
-use std::{borrow::Cow, sync::{Arc, LazyLock}};
+use std::{
+    borrow::Cow,
+    sync::{Arc, LazyLock},
+};
 
-use opentelemetry::{global, metrics::{Gauge, Histogram}, Key, KeyValue, StringValue, Value};
+use opentelemetry::{
+    global,
+    metrics::{Gauge, Histogram},
+    Key, KeyValue, StringValue, Value,
+};
 
 /// Central metrics singleton for instrumented pool metrics.
-pub static POOL_METRICS: LazyLock<Arc<Metrics>> = LazyLock::new(|| Arc::new(Metrics::new()));
+pub(crate) static POOL_METRICS: LazyLock<Arc<Metrics>> = LazyLock::new(|| Arc::new(Metrics::new()));
 
 const KEY_POOL_NAME: Key = Key::from_static_str("db.client.connection.pool.name");
 const KEY_STATE: Key = Key::from_static_str("db.client.connection.state");
 
 /// Storage for pool metrics.
-pub struct Metrics {
+pub(crate) struct Metrics {
     /// The number of connections that are currently in state described by the state attribute.
     pub conn_count: Gauge<u64>,
     /// The time it took to obtain an open connection from the pool.
@@ -30,7 +37,7 @@ impl Metrics {
     /// Create new storage for pool metrics.
     ///
     /// You probably don't need this, as all pools use a central metrics singleton for storage.
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let meter = global::meter("uxum-pools");
         // db.client.connection.pool.name (string)
         // db.client.connection.state (idle / used)
@@ -49,7 +56,9 @@ impl Metrics {
         let use_time = meter
             .f64_histogram("db.client.connection.use_time")
             .with_unit("s")
-            .with_description("The time between borrowing a connection and returning it to the pool.")
+            .with_description(
+                "The time between borrowing a connection and returning it to the pool.",
+            )
             .init();
         // db.system.name (string, DB type)
         // db.collection.name (string, table)
@@ -98,7 +107,7 @@ impl Metrics {
         }
     }
 
-    pub fn record_state(&self, label: &[KeyValue], state: PoolState) {
+    pub(crate) fn record_state(&self, label: &[KeyValue], state: PoolState) {
         if let Some(max_size) = state.max_size {
             self.conn_max.record(max_size as u64, label);
         }
@@ -123,15 +132,24 @@ impl Metrics {
     }
 }
 
-pub fn pool_kv(name: Option<Cow<'static, str>>) -> [KeyValue; 1] {
+impl Default for Metrics {
+    fn default() -> Self {
+        Metrics::new()
+    }
+}
+
+pub(crate) fn pool_kv(name: Option<Cow<'static, str>>) -> [KeyValue; 1] {
     match name {
         Some(n) => [KeyValue::new(KEY_POOL_NAME, n)],
         None => [KeyValue::new(KEY_POOL_NAME, "default")],
     }
 }
 
-pub fn status_kv(name: KeyValue, status: &'static str) -> [KeyValue; 2] {
-    [name, KeyValue::new(KEY_STATE, Value::String(StringValue::from(status)))]
+pub(crate) fn status_kv(name: KeyValue, status: &'static str) -> [KeyValue; 2] {
+    [
+        name,
+        KeyValue::new(KEY_STATE, Value::String(StringValue::from(status))),
+    ]
 }
 
 /// State of a pool object.
