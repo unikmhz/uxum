@@ -1,16 +1,21 @@
 [package]
-name = "advanced_server"
+name = "redis-kv"
 version = "0.1.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 rust-version = "1.80"
 repository = "https://github.com/unikmhz/uxum"
-description = "UXUM framework - example kitchen sink service with advanced features"
+description = "UXUM framework - example Redis KV getter/setter API service"
 publish = false
 
 [dependencies]
-rand = "0.9"
+anyhow = "1.0"
+bb8 = "0.9"
+bb8-redis = "0.21"
+clap = {version = "4.5", features = ["derive", "env"]}
+humantime-serde = "1.1"
 serde = {version = "1.0", features = ["derive"]}
 thiserror = "2.0"
 uxum = {path = "../.."}
+uxum-pools = {path = "../../uxum-pools", features = ["bb8"]}

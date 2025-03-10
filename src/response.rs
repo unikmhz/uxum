@@ -76,7 +76,22 @@ mod impls {
         }
     }
 
-    impl<'a, T> GetResponseSchemas for &'a T
+    impl GetResponseSchemas for () {
+        type ResponseIter = [ResponseSchema; 1];
+
+        #[must_use]
+        fn get_response_schemas(_gen: &mut SchemaGenerator) -> Self::ResponseIter {
+            [ResponseSchema {
+                status: StatusCode::OK,
+                response: openapi3::Response {
+                    description: "Empty response body".into(),
+                    ..Default::default()
+                },
+            }]
+        }
+    }
+
+    impl<T> GetResponseSchemas for &'_ T
     where
         T: GetResponseSchemas + ?Sized,
     {

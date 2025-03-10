@@ -25,7 +25,7 @@ use opentelemetry::{
     KeyValue,
 };
 use opentelemetry_sdk::{
-    metrics::{new_view, Aggregation, Instrument, MeterProviderBuilder, Stream},
+    metrics::{new_view, Aggregation, Instrument, InstrumentKind, MeterProviderBuilder, Stream},
     Resource,
 };
 use pin_project::pin_project;
@@ -105,8 +105,8 @@ impl MetricsBuilder {
     #[inline]
     fn default_duration_buckets() -> Vec<f64> {
         [
-            0.0_f64, 0.0025_f64, 0.005_f64, 0.01_f64, 0.025_f64, 0.05_f64, 0.075_f64, 0.1_f64,
-            0.25_f64, 0.5_f64, 0.75_f64, 1.0_f64, 2.5_f64, 5.0_f64, 7.5_f64, 10.0_f64, 30.0_f64,
+            0.0_f64, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0,
+            2.5, 5.0, 7.5, 10.0, 30.0,
         ]
         .into()
     }
@@ -120,24 +120,24 @@ impl MetricsBuilder {
 
         [
             0.0_f64,
-            64.0_f64,
-            128.0_f64,
-            256.0_f64,
-            512.0_f64,
-            1.0_f64 * KB,
-            2.0_f64 * KB,
-            4.0_f64 * KB,
-            8.0_f64 * KB,
-            16.0_f64 * KB,
-            32.0_f64 * KB,
-            64.0_f64 * KB,
-            128.0_f64 * KB,
-            256.0_f64 * KB,
-            512.0_f64 * KB,
-            1.0_f64 * MB,
-            2.0_f64 * MB,
-            4.0_f64 * MB,
-            8.0_f64 * MB,
+            64.0,
+            128.0,
+            256.0,
+            512.0,
+            1.0 * KB,
+            2.0 * KB,
+            4.0 * KB,
+            8.0 * KB,
+            16.0 * KB,
+            32.0 * KB,
+            64.0 * KB,
+            128.0 * KB,
+            256.0 * KB,
+            512.0 * KB,
+            1.0 * MB,
+            2.0 * MB,
+            4.0 * MB,
+            8.0 * MB,
         ]
         .into()
     }
@@ -244,16 +244,11 @@ impl MetricsBuilder {
         let exporter = opentelemetry_prometheus::exporter()
             .with_registry(registry.clone())
             .build()?;
+        let mut all_hist = Instrument::new().name("*");
+        all_hist.kind = Some(InstrumentKind::Histogram);
         let provider = MeterProviderBuilder::default()
             .with_resource(resource)
             .with_reader(exporter)
-            .with_view(new_view(
-                Instrument::new().name("*http.server.request.duration"),
-                Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
-                    boundaries: self.duration_buckets.clone(),
-                    record_min_max: true,
-                }),
-            )?)
             .with_view(new_view(
                 Instrument::new().name("*http.server.request.body.size"),
                 Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
@@ -265,6 +260,13 @@ impl MetricsBuilder {
                 Instrument::new().name("*http.server.response.body.size"),
                 Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
                     boundaries: self.size_buckets.clone(),
+                    record_min_max: true,
+                }),
+            )?)
+            .with_view(new_view(
+                all_hist,
+                Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
+                    boundaries: self.duration_buckets.clone(),
                     record_min_max: true,
                 }),
             )?)

@@ -82,6 +82,15 @@ where
     }
 }
 
+impl<C> Default for ServiceConfigBuilder<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<C> ServiceConfigBuilder<C>
 where
     C: Clone + std::fmt::Debug + PartialEq + for<'de> Deserialize<'de>,

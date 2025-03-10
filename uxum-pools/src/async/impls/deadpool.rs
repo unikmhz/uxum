@@ -9,19 +9,24 @@ impl<'p, M, W> InstrumentablePool<'p> for Pool<M, W>
 where
     M: Manager,
     M::Error: std::error::Error + 'static,
-    W: From<Object<M>>,
+    W: From<Object<M>> + 'p,
 {
     type Resource = W;
+    type Error = M::Error;
 
-    async fn get(&'p self) -> Result<Self::Resource, Error> {
+    async fn get(&'p self) -> Result<Self::Resource, Error<Self::Error>> {
         Pool::get(self).await.map_err(|e| match e {
             // TODO: further specializee timeout types
             PoolError::Timeout(_) => Error::AcquireTimeout,
-            err => Error::Pool(err.into()),
+            PoolError::Backend(err) => Error::Pool(err),
+            _ => Error::PoolExhausted,
         })
     }
 
-    async fn get_timeout(&'p self, timeout: Duration) -> Result<Self::Resource, Error> {
+    async fn get_timeout(
+        &'p self,
+        timeout: Duration,
+    ) -> Result<Self::Resource, Error<Self::Error>> {
         let timeouts = Timeouts {
             wait: Some(timeout),
             create: Some(timeout),
@@ -32,11 +37,12 @@ where
             .map_err(|e| match e {
                 // TODO: further specializee timeout types
                 PoolError::Timeout(_) => Error::AcquireTimeout,
-                err => Error::Pool(err.into()),
+                PoolError::Backend(err) => Error::Pool(err),
+                _ => Error::PoolExhausted,
             })
     }
 
-    fn get_state(&'p self) -> Result<PoolState, Error> {
+    fn get_state(&'p self) -> Result<PoolState, Error<Self::Error>> {
         let inner = Pool::status(self);
         Ok(PoolState {
             max_size: Some(inner.max_size),

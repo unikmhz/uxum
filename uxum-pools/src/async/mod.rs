@@ -11,10 +11,12 @@ pub use crate::{error::Error, metrics::PoolState, r#async::pool::InstrumentedPoo
 #[async_trait::async_trait]
 pub trait InstrumentablePool<'p> {
     /// Resource type contained in the pool.
-    type Resource;
+    type Resource: 'p;
+    /// Error type use by the pool.
+    type Error: std::error::Error + Send + 'static;
 
     /// Acquire a resource from the pool.
-    async fn get(&'p self) -> Result<Self::Resource, Error>;
+    async fn get(&'p self) -> Result<Self::Resource, Error<Self::Error>>;
 
     /// Instantly acquire a resource from the pool.
     ///
@@ -22,7 +24,7 @@ pub trait InstrumentablePool<'p> {
     ///
     /// Returns `Err` if blocking is required, or if this operation is not implemented for this
     /// pool type.
-    fn try_get(&'p self) -> Result<Self::Resource, Error> {
+    fn try_get(&'p self) -> Result<Self::Resource, Error<Self::Error>> {
         Err(Error::NotImplemented)
     }
 
@@ -33,14 +35,22 @@ pub trait InstrumentablePool<'p> {
     /// Must return [`Error::AcquireTimeout`] if waiting time was exhaused.
     ///
     /// Returns [`Error::NotImplemented`] if this operation is not implemented for this pool type.
-    async fn get_timeout(&'p self, _timeout: Duration) -> Result<Self::Resource, Error> {
+    async fn get_timeout(
+        &'p self,
+        _timeout: Duration,
+    ) -> Result<Self::Resource, Error<Self::Error>> {
         Err(Error::NotImplemented)
     }
 
     /// Get various internal pool counts and metrics.
     ///
     /// This is in turn used to update OpenTelemetry metrics.
-    fn get_state(&'p self) -> Result<PoolState, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there was a problem collecting pool state, or [`Error::NotImplemented`] if
+    /// state collection is not implemented for this pool type.
+    fn get_state(&'p self) -> Result<PoolState, Error<Self::Error>> {
         Err(Error::NotImplemented)
     }
 }

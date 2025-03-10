@@ -2,7 +2,7 @@
 
 /// Generalized error type used by any instrumented pool.
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub enum Error<E: std::error::Error + Send + 'static> {
     /// Pool operation not supported.
     #[error("operation not supported")]
     NotImplemented,
@@ -18,5 +18,5 @@ pub enum Error {
     /// Pool implementation-specific error.
     // TODO: convert dyn to generic type
     #[error("pool error: {0}")]
-    Pool(Box<dyn std::error::Error>),
+    Pool(E),
 }

@@ -19,6 +19,7 @@ members = [
     "examples/basic_server",
     "examples/inner_service",
     "examples/minimal",
+    "examples/redis-kv",
     "uxum-macros",
     "uxum-pools",
 ]

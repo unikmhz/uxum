@@ -453,7 +453,7 @@ where
     Span: for<'lookup> LookupSpan<'lookup>,
     N: for<'writer> FormatFields<'writer> + 'static;
 
-impl<'a, 'b, Span, N> Serialize for SerializableSpan<'a, 'b, Span, N>
+impl<Span, N> Serialize for SerializableSpan<'_, '_, Span, N>
 where
     Span: for<'lookup> LookupSpan<'lookup>,
     N: for<'writer> FormatFields<'writer> + 'static,
@@ -524,7 +524,7 @@ impl<'a> JsonWriter<'a> {
     }
 }
 
-impl<'a> io::Write for JsonWriter<'a> {
+impl io::Write for JsonWriter<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let s =
             std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -533,7 +533,7 @@ impl<'a> io::Write for JsonWriter<'a> {
             .write_str(s)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        Ok(s.as_bytes().len())
+        Ok(s.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {

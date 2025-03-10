@@ -138,7 +138,7 @@ mod serde_impls {
     #[doc(hidden)]
     struct HashedPasswordVisitor;
 
-    impl<'de> de::Visitor<'de> for HashedPasswordVisitor {
+    impl de::Visitor<'_> for HashedPasswordVisitor {
         type Value = HashedPassword;
 
         fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -7,8 +7,19 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 use tracing::trace;
+
+use crate::errors::IoError;
+
+/// Error type returned when building a runtime.
+#[derive(Debug, Error)]
+pub enum RuntimeError {
+    /// Error building Tokio runtime.
+    #[error("Error building Tokio runtime: {0}")]
+    Build(IoError),
+}
 
 /// Runtime scheduler to use.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -141,7 +152,9 @@ impl RuntimeConfig {
     /// # Errors
     ///
     /// Returns `Err` if some driver inside the runtime failed to initialize.
-    pub fn build(&self) -> Result<Runtime, std::io::Error> {
-        self.builder().build()
+    pub fn build(&self) -> Result<Runtime, RuntimeError> {
+        self.builder()
+            .build()
+            .map_err(|e| RuntimeError::Build(e.into()))
     }
 }

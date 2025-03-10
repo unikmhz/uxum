@@ -9,22 +9,26 @@ where
     M::Error: std::error::Error,
 {
     type Resource = PooledConnection<'p, M>;
+    type Error = M::Error;
 
-    async fn get(&'p self) -> Result<Self::Resource, Error> {
+    async fn get(&'p self) -> Result<Self::Resource, Error<Self::Error>> {
         Pool::get(self).await.map_err(|e| match e {
             RunError::TimedOut => Error::AcquireTimeout,
-            RunError::User(e) => Error::Pool(e.into()),
+            RunError::User(e) => Error::Pool(e),
         })
     }
 
-    async fn get_timeout(&'p self, timeout: Duration) -> Result<Self::Resource, Error> {
+    async fn get_timeout(
+        &'p self,
+        timeout: Duration,
+    ) -> Result<Self::Resource, Error<Self::Error>> {
         match tokio::time::timeout(timeout, <Self as InstrumentablePool<'p>>::get(self)).await {
             Ok(res) => res,
             Err(_) => Err(Error::AcquireTimeout),
         }
     }
 
-    fn get_state(&'p self) -> Result<PoolState, Error> {
+    fn get_state(&'p self) -> Result<PoolState, Error<Self::Error>> {
         let inner = Pool::state(self);
         Ok(PoolState {
             max_size: None,

@@ -72,26 +72,22 @@ impl Metrics {
         // network.peer.port (int, remote port)
         // server.address (string, name of DB host)
         // db.query.text (string, query without binds, dubious)
-        // TODO: unused
         let op_duration = meter
             .f64_histogram("db.client.operation.duration")
             .with_unit("s")
             .with_description("Duration of database client operations.")
             .init();
         // db.client.connection.pool.name (string)
-        // TODO: unused
         let idle_max = meter
             .u64_gauge("db.client.connection.idle.max")
             .with_description("The maximum number of idle open connections allowed.")
             .init();
         // db.client.connection.pool.name (string)
-        // TODO: unused
         let idle_min = meter
             .u64_gauge("db.client.connection.idle.min")
             .with_description("The minimum number of idle open connections allowed.")
             .init();
         // db.client.connection.pool.name (string)
-        // TODO: unused
         let conn_max = meter
             .u64_gauge("db.client.connection.max")
             .with_description("The maximum number of open connections allowed.")
@@ -157,9 +153,9 @@ pub(crate) fn status_kv(name: KeyValue, status: &'static str) -> [KeyValue; 2] {
 /// If pool type doesn't support some metrics, these metrics must be left as `None`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PoolState {
-    /// Maximum total (idle + in_use) number of resources in the pool.
+    /// Maximum total (`idle` + `in_use`) number of resources in the pool.
     pub max_size: Option<usize>,
-    /// Current total (idle + in_use) number of resources in the pool.
+    /// Current total (`idle` + `in_use`) number of resources in the pool.
     pub size: Option<usize>,
     /// Current number of idle (not acquired) resources.
     pub idle: Option<usize>,

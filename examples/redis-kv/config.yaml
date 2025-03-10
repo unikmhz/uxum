@@ -1,0 +1,32 @@
+redis:
+  url: redis://localhost
+  max_size: 8
+  min_idle: 2
+  idle_timeout: 300s
+logging:
+  subscribers:
+    - format: compact
+      level: DEBUG
+tracing:
+  endpoint: http://localhost:4317
+  include:
+    location: true
+    exception_from_error_fields: true
+    exception_from_error_events: true
+    status_from_error_events: true
+    inactivity: true
+    thread_info: true
+  level: TRACE
+auth:
+  users:
+    test:
+      password: test
+      roles:
+        - kw_rw
+  roles:
+    kw_rw:
+      permissions:
+        - get
+        - set
+server:
+  listen: 127.0.0.1:8080

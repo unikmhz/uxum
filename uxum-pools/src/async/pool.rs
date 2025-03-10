@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    fmt::{Debug, Display},
     ops::{Deref, DerefMut},
     sync::Arc,
     time::{Duration, Instant},
@@ -30,12 +31,20 @@ pub struct InstrumentedPool<P> {
     pool: P,
 }
 
-impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
+impl<P, E> InstrumentedPool<P>
+where
+    P: for<'p> InstrumentablePool<'p, Error = E> + Sync,
+    E: std::error::Error + Send + 'static,
+{
     /// Instrument provided resource pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there was a problem collecting pool state.
     pub fn instrument<L: Into<Cow<'static, str>>>(
         label: Option<L>,
         pool: P,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, Error<E>> {
         let label = pool_kv(label.map(Into::into));
         let metrics = POOL_METRICS.deref().clone();
         metrics.record_state(&label, pool.get_state()?);
@@ -51,7 +60,11 @@ impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
     ///
     /// Normally you wouldn't need to call this directly, as metrics collection occurs
     /// automatically as you use the pool.
-    pub fn update_metrics(&self) -> Result<(), Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there was a problem collecting pool state.
+    pub fn update_metrics(&self) -> Result<(), Error<E>> {
         // TODO: configure periodic state gathering interval
         const PROBE_INTERVAL: Duration = Duration::from_secs(15);
         let mut last_gathered_at = self.last_gathered_at.lock();
@@ -66,7 +79,7 @@ impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
 
     /// Internal method to record metrics after resource acquisition.
     #[inline]
-    fn measure_acquire(&self, before: Instant) -> Result<(), Error> {
+    fn measure_acquire(&self, before: Instant) -> Result<(), Error<E>> {
         self.metrics
             .wait_time
             .record(before.elapsed().as_secs_f64(), &self.label);
@@ -74,9 +87,13 @@ impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
     }
 
     /// Acquire instrumented resource from resource pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if there was a problem acquiring a resource from the pool.
     pub async fn get(
         &self,
-    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error> {
+    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error<E>> {
         let now = Instant::now();
         let span = debug_span!("pool_acquire", name = self.label[0].value.as_str().as_ref());
         let resource = self.pool.get().instrument(span).await?;
@@ -96,7 +113,7 @@ impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
     /// pool type.
     pub fn try_get(
         &self,
-    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error> {
+    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error<E>> {
         let now = Instant::now();
         let span = debug_span!(
             "pool_try_acquire",
@@ -123,7 +140,7 @@ impl<P: for<'p> InstrumentablePool<'p> + Sync> InstrumentedPool<P> {
     pub async fn get_timeout(
         &self,
         timeout: Duration,
-    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error> {
+    ) -> Result<InstrumentedResource<<P as InstrumentablePool<'_>>::Resource>, Error<E>> {
         let now = Instant::now();
         let span = debug_span!(
             "pool_timed_acquire",
@@ -176,4 +193,14 @@ impl<P: Clone> Clone for InstrumentedPool<P> {
     }
 }
 
-// TODO: Debug, Display
+impl<P: Debug> Debug for InstrumentedPool<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.pool.fmt(f)
+    }
+}
+
+impl<P: Display> Display for InstrumentedPool<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.pool.fmt(f)
+    }
+}

@@ -73,7 +73,7 @@ pub use self::{
     notify::ServiceNotifier,
     probes::{ProbeConfig, ProbeState},
     response::{GetResponseSchemas, ResponseSchema},
-    runtime::RuntimeConfig,
+    runtime::{RuntimeConfig, RuntimeError},
     signal::{SignalError, SignalStream},
     telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,

@@ -27,6 +27,7 @@ bb8 = {version = "0.9", optional = true}
 deadpool = {version = "0.12", optional = true}
 opentelemetry = {version = "0.24", features = ["metrics"]}
 parking_lot = "0.12"
+pin-project = "1.1"
 r2d2 = {version = "0.8", optional = true}
 thiserror = "2.0"
 tokio = {version = "1.43", optional = true}
