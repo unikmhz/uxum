@@ -139,9 +139,9 @@ async fn compute(req: Json<ComputeRequest>) -> Json<ComputeResponse> {
 ///
 /// This is an example of returning Result from a handler.
 ///
-/// Be aware that standard [`axum::IntoResponse`] implementation is used
-/// here, which means error responses do not automatically get 4xx or 5xx
-/// HTTP statuses.
+/// Be aware that standard [`axum::response::IntoResponse`] implementation
+/// is used here, which means error responses do not automatically get 4xx
+/// or 5xx HTTP statuses.
 ///
 /// For proper error response generation, see [`get_random_number`].
 #[handler]
