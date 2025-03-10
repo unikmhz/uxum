@@ -8,7 +8,7 @@ rust-version = "1.80"
 repository = "https://github.com/unikmhz/uxum"
 description = "Opinionated backend service framework based on axum"
 readme = "README.md"
-keywords = ["uxum", "axum", "http", "web", "framework", "server"]
+keywords = ["axum", "http", "web", "framework", "server"]
 categories = ["asynchronous", "network-programming", "web-programming::http-server"]
 exclude = [".gitignore"]
 
@@ -37,7 +37,7 @@ sign-tag = true
 tag-message = "uxum {{version}}"
 
 [dependencies]
-uxum-macros = {path = "uxum-macros"}
+uxum-macros = {path = "uxum-macros", version = "0.1"}
 
 argon2 = "0.5"
 askama = "0.12"

@@ -1,4 +1,7 @@
-#![doc = include_str!("../../README.md")]
+//! # uxum-macros
+//!
+//! Procedural macros for use with UXUM framework.
+
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
 
