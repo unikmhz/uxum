@@ -38,23 +38,3 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Run tests
         run: cargo test --verbose --all
-  cov:
-    name: Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Package cache
-        uses: Swatinem/rust-cache@v2
-      - name: Install coverage tool
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov@0.6
-      - name: Generate code coverage
-        run: cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
-      - name: Upload coverage to CodeCov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: codecov.json
-          fail_ci_if_error: true
