@@ -63,9 +63,11 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
         .with_state(hello::HelloState::new());
     // Build main application router.
     let app = app_builder.build().expect("Unable to build app");
+    // Convert into service.
+    let svc = app.into_make_service_with_connect_info::<SocketAddr>();
     // Start the service.
     handle
-        .run(config.server, app, Some(Duration::from_secs(5)))
+        .run(config.server, svc, Some(Duration::from_secs(5)))
         .await
 }
 
