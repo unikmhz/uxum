@@ -43,6 +43,20 @@ pub enum HandleError {
     /// No server is currently running.
     #[error("No server is currently running")]
     NotRunning,
+    /// Custom error from application initialization.
+    #[error("Custom error: {0}")]
+    Custom(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl HandleError {
+    /// Wrap custom application initialization error.
+    #[must_use]
+    pub fn custom<T>(err: T) -> Self
+    where
+        T: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        Self::Custom(err.into())
+    }
 }
 
 /// Handle for starting and controlling the server.

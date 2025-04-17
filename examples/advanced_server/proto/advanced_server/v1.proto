@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package advanced_server.v1;
+
+message SayHelloRequest {
+    string name = 1;
+}
+
+message SayHelloResponse {
+    string line = 1;
+}
+
+service HelloService {
+    rpc SayHello(SayHelloRequest) returns (SayHelloResponse);
+}

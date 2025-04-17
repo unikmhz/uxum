@@ -17,10 +17,18 @@ use axum::{
     routing::{MethodRouter, Router},
     BoxError,
 };
-use hyper::{Request, Response};
+use http::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
+#[cfg(feature = "grpc")]
+use tonic::{
+    body::BoxBody as GrpcBody,
+    server::NamedService,
+    service::{Routes as GrpcRoutes, RoutesBuilder as GrpcRoutesBuilder},
+};
 use tower::{builder::ServiceBuilder, util::BoxCloneService, ServiceExt};
+#[cfg(feature = "grpc")]
+use tower::Service;
 use tower_http::{
     catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
@@ -87,6 +95,9 @@ pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> 
     config: AppConfig,
     /// Metrics container object.
     metrics: Option<MetricsState>,
+    /// Container of configured [`tonic`] GRPC services.
+    #[cfg(feature = "grpc")]
+    grpc_services: GrpcRoutesBuilder,
 }
 
 impl From<AppConfig> for AppBuilder {
@@ -96,6 +107,8 @@ impl From<AppConfig> for AppBuilder {
             auth_extractor: NoOpAuthExtractor,
             config: value,
             metrics: None,
+            #[cfg(feature = "grpc")]
+            grpc_services: GrpcRoutes::builder(),
         }
     }
 }
@@ -107,6 +120,8 @@ impl Default for AppBuilder<NoOpAuthProvider, NoOpAuthExtractor> {
             auth_extractor: NoOpAuthExtractor,
             config: AppConfig::default(),
             metrics: None,
+            #[cfg(feature = "grpc")]
+            grpc_services: GrpcRoutes::builder(),
         }
     }
 }
@@ -140,6 +155,8 @@ where
             auth_extractor: BasicAuthExtractor::default(),
             config: self.config,
             metrics: self.metrics,
+            #[cfg(feature = "grpc")]
+            grpc_services: self.grpc_services,
         }
     }
 
@@ -151,6 +168,8 @@ where
             auth_extractor: HeaderAuthExtractor::default(),
             config: self.config,
             metrics: self.metrics,
+            #[cfg(feature = "grpc")]
+            grpc_services: self.grpc_services,
         }
     }
 
@@ -165,6 +184,8 @@ where
             auth_extractor,
             config: self.config,
             metrics: self.metrics,
+            #[cfg(feature = "grpc")]
+            grpc_services: self.grpc_services,
         }
     }
 
@@ -176,6 +197,8 @@ where
             auth_extractor: self.auth_extractor,
             config: self.config,
             metrics: self.metrics,
+            #[cfg(feature = "grpc")]
+            grpc_services: self.grpc_services,
         }
     }
 
@@ -313,6 +336,12 @@ where
             }
         }
 
+        // Register GRPC services.
+        #[cfg(feature = "grpc")]
+        {
+            rtr = rtr.merge(self.grpc_services.clone().routes().into_axum_router());
+        }
+
         // Add RapiDoc and/or OpenAPI specification generator if enabled.
         if let Some(ref mut api_doc) = self.config.api_doc {
             let disabled = self
@@ -397,6 +426,7 @@ where
             .layer(RecordRequestIdLayer::new())
             .sensitive_headers([header::AUTHORIZATION])
             .layer(
+                // TODO: factor out tracing for GRPC.
                 TraceLayer::new_for_http()
                     // TODO: allow customizing level() / include_headers().
                     .make_span_with(CustomMakeSpan::new().include_headers(true))
@@ -527,6 +557,18 @@ where
         } else {
             HeaderValue::from_str(UXUM_PRODUCT).ok()
         }
+    }
+
+    /// Embed [`tonic`] GRPC service into Axum application.
+    #[cfg(feature = "grpc")]
+    pub fn with_grpc_service<S>(&mut self, svc: S) -> &mut Self
+    where
+        S: Service<Request<GrpcBody>, Response = Response<GrpcBody>, Error = Infallible> + NamedService + Clone + Send + 'static,
+        S::Response: IntoResponse,
+        S::Future: Send + 'static,
+    {
+        self.grpc_services.add_service(svc);
+        self
     }
 }
 

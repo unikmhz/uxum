@@ -21,3 +21,7 @@ An opinionated backend service framework based on axum.
    and more flexible.
  * Database access layers and connection pools.
    This is out of scope for this project.
+
+## Supported crate features
+
+ * `grpc`: support nesting Tonic GRPC services inside Axum server instance.
