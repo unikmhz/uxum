@@ -15,9 +15,9 @@ pub use problemdetails;
 pub use prost;
 pub use reqwest;
 pub use reqwest_middleware;
+pub use tokio;
 #[cfg(feature = "grpc")]
 pub use tonic;
-pub use tokio;
 pub use tower;
 pub use tower_http;
 pub use tracing;

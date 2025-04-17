@@ -409,20 +409,21 @@ mod hello {
                 tonic::include_file_descriptor_set!("advanced_server");
         }
 
+        pub use advanced_server::hello_service_server::HelloServiceServer;
         use advanced_server::{
-            hello_service_server::HelloService,
-            SayHelloRequest,
-            SayHelloResponse,
+            hello_service_server::HelloService, SayHelloRequest, SayHelloResponse,
         };
         use tonic::{Request, Response, Status};
-        pub use advanced_server::hello_service_server::HelloServiceServer;
 
         #[derive(Debug)]
         pub struct Hello;
 
         #[tonic::async_trait]
         impl HelloService for Hello {
-            async fn say_hello(&self, req: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, Status> {
+            async fn say_hello(
+                &self,
+                req: Request<SayHelloRequest>,
+            ) -> Result<Response<SayHelloResponse>, Status> {
                 Ok(Response::new(SayHelloResponse {
                     line: format!("Hello, {}", req.get_ref().name),
                 }))

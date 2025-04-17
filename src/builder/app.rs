@@ -26,9 +26,9 @@ use tonic::{
     server::NamedService,
     service::{Routes as GrpcRoutes, RoutesBuilder as GrpcRoutesBuilder},
 };
-use tower::{builder::ServiceBuilder, util::BoxCloneService, ServiceExt};
 #[cfg(feature = "grpc")]
 use tower::Service;
+use tower::{builder::ServiceBuilder, util::BoxCloneService, ServiceExt};
 use tower_http::{
     catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
@@ -563,7 +563,11 @@ where
     #[cfg(feature = "grpc")]
     pub fn with_grpc_service<S>(&mut self, svc: S) -> &mut Self
     where
-        S: Service<Request<GrpcBody>, Response = Response<GrpcBody>, Error = Infallible> + NamedService + Clone + Send + 'static,
+        S: Service<Request<GrpcBody>, Response = Response<GrpcBody>, Error = Infallible>
+            + NamedService
+            + Clone
+            + Send
+            + 'static,
         S::Response: IntoResponse,
         S::Future: Send + 'static,
     {
