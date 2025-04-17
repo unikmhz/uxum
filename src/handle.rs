@@ -2,8 +2,7 @@
 
 use std::{net::SocketAddr, time::Duration};
 
-use axum::Router;
-use axum_server::Handle as AxumHandle;
+use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::{Tracer, TracerProvider};
@@ -44,6 +43,20 @@ pub enum HandleError {
     /// No server is currently running.
     #[error("No server is currently running")]
     NotRunning,
+    /// Custom error from application initialization.
+    #[error("Custom error: {0}")]
+    Custom(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl HandleError {
+    /// Wrap custom application initialization error.
+    #[must_use]
+    pub fn custom<T>(err: T) -> Self
+    where
+        T: Into<Box<dyn std::error::Error + Send + Sync>>,
+    {
+        Self::Custom(err.into())
+    }
 }
 
 /// Handle for starting and controlling the server.
@@ -98,12 +111,17 @@ impl Handle {
     }
 
     /// Start axum server tasks.
-    async fn start_servers(
-        &mut self,
-        server: ServerBuilder,
-        app: Router,
-    ) -> Result<(), HandleError> {
-        let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
+    async fn start_servers<A>(&mut self, server: ServerBuilder, app: A) -> Result<(), HandleError>
+    where
+        A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
+            + tower::Service<SocketAddr>
+            + Clone
+            + Send
+            + 'static,
+        A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
+        A::MakeFuture: Send,
+    {
+        //let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
         if server.has_tls_config() {
             // TODO: make this call not fail on subsequent starts.
             rustls::crypto::aws_lc_rs::default_provider()
@@ -115,7 +133,7 @@ impl Handle {
                     .build_tls()
                     .await?
                     .handle(self.handle.clone())
-                    .serve(make_service.clone())
+                    .serve(app.clone())
                     .map_err(|err| HandleError::TlsServer(err.into())),
             ));
         }
@@ -124,7 +142,7 @@ impl Handle {
                 .build()
                 .await?
                 .handle(self.handle.clone())
-                .serve(make_service)
+                .serve(app)
                 .map_err(|err| HandleError::Server(err.into())),
         ));
         Ok(())
@@ -135,7 +153,16 @@ impl Handle {
     /// # Errors
     ///
     /// Returns `Err` if caught an error when initializing server tasks.
-    pub async fn start(&mut self, server: ServerBuilder, app: Router) -> Result<(), HandleError> {
+    pub async fn start<A>(&mut self, server: ServerBuilder, app: A) -> Result<(), HandleError>
+    where
+        A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
+            + tower::Service<SocketAddr>
+            + Clone
+            + Send
+            + 'static,
+        A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
+        A::MakeFuture: Send,
+    {
         self.prepare(&server)?;
         self.start_servers(server, app).await?;
         self.notify.on_ready();
@@ -199,12 +226,21 @@ impl Handle {
     /// Returns `Err` if:
     /// * Caught an error when initializing server tasks.
     /// * One of server tasks finished with an error.
-    pub async fn run(
+    pub async fn run<A>(
         &mut self,
         server: ServerBuilder,
-        app: Router,
+        app: A,
         graceful: Option<Duration>,
-    ) -> Result<(), HandleError> {
+    ) -> Result<(), HandleError>
+    where
+        A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
+            + tower::Service<SocketAddr>
+            + Clone
+            + Send
+            + 'static,
+        A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
+        A::MakeFuture: Send,
+    {
         self.start(server, app).await?;
         self.wait(graceful).await
     }

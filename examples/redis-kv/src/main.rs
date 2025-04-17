@@ -1,7 +1,7 @@
 //! More realistic example of a simple service using UXUM framework.
 //! Also utilizes [`bb8`] and [`uxum_pools`] for Redis connection pooling.
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{net::SocketAddr, ops::Deref, sync::Arc, time::Duration};
 
 use bb8_redis::{bb8, redis::AsyncCommands, RedisConnectionManager};
 use clap::Parser;
@@ -197,9 +197,11 @@ async fn run(args: Args, mut config: ServiceConfig<LocalConfig>) -> Result<(), a
     app_builder.with_state(state);
     // Build main application router.
     let app = app_builder.build()?;
+    // Convert into service.
+    let svc = app.into_make_service_with_connect_info::<SocketAddr>();
     // Start the service.
     handle
-        .run(config.server, app, Some(Duration::from_secs(5)))
+        .run(config.server, svc, Some(Duration::from_secs(5)))
         .await
         .map_err(Into::into)
 }

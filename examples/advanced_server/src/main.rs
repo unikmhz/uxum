@@ -61,11 +61,21 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
         .with_state(distributed_tracing::TracingState::from(tracing_client))
         .with_state(counter_state::CounterState::default())
         .with_state(hello::HelloState::new());
+    // Add GRPC services.
+    let reflect = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(hello::grpc::advanced_server::FILE_DESCRIPTOR_SET)
+        .build_v1alpha()
+        .map_err(HandleError::custom)?;
+    app_builder
+        .with_grpc_service(reflect)
+        .with_grpc_service(hello::grpc::HelloServiceServer::new(hello::grpc::Hello));
     // Build main application router.
     let app = app_builder.build().expect("Unable to build app");
+    // Convert into service.
+    let svc = app.into_make_service_with_connect_info::<SocketAddr>();
     // Start the service.
     handle
-        .run(config.server, app, Some(Duration::from_secs(5)))
+        .run(config.server, svc, Some(Duration::from_secs(5)))
         .await
 }
 
@@ -389,6 +399,36 @@ mod hello {
     async fn name_from_path(state: State<HelloState>, args: Path<String>) -> String {
         state.log_name(&args.0);
         format!("Hello {}!", args.0)
+    }
+
+    pub mod grpc {
+        pub mod advanced_server {
+            tonic::include_proto!("advanced_server.v1");
+
+            pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
+                tonic::include_file_descriptor_set!("advanced_server");
+        }
+
+        pub use advanced_server::hello_service_server::HelloServiceServer;
+        use advanced_server::{
+            hello_service_server::HelloService, SayHelloRequest, SayHelloResponse,
+        };
+        use tonic::{Request, Response, Status};
+
+        #[derive(Debug)]
+        pub struct Hello;
+
+        #[tonic::async_trait]
+        impl HelloService for Hello {
+            async fn say_hello(
+                &self,
+                req: Request<SayHelloRequest>,
+            ) -> Result<Response<SayHelloResponse>, Status> {
+                Ok(Response::new(SayHelloResponse {
+                    line: format!("Hello, {}", req.get_ref().name),
+                }))
+            }
+        }
     }
 }
 

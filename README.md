@@ -1,5 +1,10 @@
 # UXUM
 
+[![crates.io](https://img.shields.io/crates/v/uxum.svg)](https://crates.io/crates/uxum)
+[![build status](https://img.shields.io/github/actions/workflow/status/unikmhz/uxum/ci.yml?branch=main&logo=github)](https://github.com/unikmhz/uxum/actions)
+[![license](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue)](#license)
+[![documentation](https://docs.rs/uxum/badge.svg)](https://docs.rs/uxum/)
+
 An opinionated backend service framework based on axum.
 
 ## Project goals
@@ -16,3 +21,7 @@ An opinionated backend service framework based on axum.
    and more flexible.
  * Database access layers and connection pools.
    This is out of scope for this project.
+
+## Supported crate features
+
+ * `grpc`: support nesting Tonic GRPC services inside Axum server instance.

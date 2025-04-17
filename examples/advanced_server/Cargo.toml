@@ -10,7 +10,13 @@ description = "UXUM framework - example kitchen sink service with advanced featu
 publish = false
 
 [dependencies]
+prost = "0.13"
 rand = "0.9"
 serde = {version = "1.0", features = ["derive"]}
 thiserror = "2.0"
-uxum = {path = "../.."}
+tonic = "0.12"
+tonic-reflection = "0.12"
+uxum = {path = "../..", features = ["grpc"]}
+
+[build-dependencies]
+tonic-build = "0.12"

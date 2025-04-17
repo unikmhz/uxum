@@ -11,9 +11,13 @@ pub use mime;
 pub use okapi::{self, openapi3, schemars};
 pub use opentelemetry;
 pub use problemdetails;
+#[cfg(feature = "grpc")]
+pub use prost;
 pub use reqwest;
 pub use reqwest_middleware;
 pub use tokio;
+#[cfg(feature = "grpc")]
+pub use tonic;
 pub use tower;
 pub use tower_http;
 pub use tracing;
