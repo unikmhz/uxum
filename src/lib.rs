@@ -75,7 +75,6 @@ pub use self::{
     response::{GetResponseSchemas, ResponseSchema},
     runtime::{RuntimeConfig, RuntimeError},
     signal::{SignalError, SignalStream},
-    telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
     util::ResponseExtension,
     watchdog::WatchdogConfig,

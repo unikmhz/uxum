@@ -328,7 +328,7 @@ mod hello {
             let num_greetings = meter
                 .u64_counter("num_greetings")
                 .with_description("Number of times each name was greeted.")
-                .init();
+                .build();
             HelloState { num_greetings }
         }
 

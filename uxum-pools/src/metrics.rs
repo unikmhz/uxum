@@ -45,13 +45,13 @@ impl Metrics {
         let conn_count = meter
             .u64_gauge("db.client.connection.count")
             .with_description("The number of connections that are currently in state described by the state attribute.")
-            .init();
+            .build();
         // db.client.connection.pool.name (string)
         let wait_time = meter
             .f64_histogram("db.client.connection.wait_time")
             .with_unit("s")
             .with_description("The time it took to obtain an open connection from the pool.")
-            .init();
+            .build();
         // db.client.connection.pool.name (string)
         let use_time = meter
             .f64_histogram("db.client.connection.use_time")
@@ -59,7 +59,7 @@ impl Metrics {
             .with_description(
                 "The time between borrowing a connection and returning it to the pool.",
             )
-            .init();
+            .build();
         // db.system.name (string, DB type)
         // db.collection.name (string, table)
         // db.namespace (string, database/schema, fully qualified)
@@ -76,22 +76,22 @@ impl Metrics {
             .f64_histogram("db.client.operation.duration")
             .with_unit("s")
             .with_description("Duration of database client operations.")
-            .init();
+            .build();
         // db.client.connection.pool.name (string)
         let idle_max = meter
             .u64_gauge("db.client.connection.idle.max")
             .with_description("The maximum number of idle open connections allowed.")
-            .init();
+            .build();
         // db.client.connection.pool.name (string)
         let idle_min = meter
             .u64_gauge("db.client.connection.idle.min")
             .with_description("The minimum number of idle open connections allowed.")
-            .init();
+            .build();
         // db.client.connection.pool.name (string)
         let conn_max = meter
             .u64_gauge("db.client.connection.max")
             .with_description("The maximum number of open connections allowed.")
-            .init();
+            .build();
         Metrics {
             conn_count,
             wait_time,

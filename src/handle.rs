@@ -5,7 +5,7 @@ use std::{net::SocketAddr, time::Duration};
 use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::trace::{Tracer, TracerProvider};
+use opentelemetry_sdk::trace::{Tracer, SdkTracerProvider};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -71,7 +71,7 @@ pub struct Handle {
     /// Tracing pipeline.
     tracer: Option<Tracer>,
     /// Tracing provider pipeline.
-    tracer_provider: Option<TracerProvider>,
+    tracer_provider: Option<SdkTracerProvider>,
     /// Internal [`axum_server`] control handle.
     handle: AxumHandle,
     /// Service supervisor notification.
@@ -89,10 +89,11 @@ pub struct Handle {
 impl Drop for Handle {
     fn drop(&mut self) {
         if let Some(provider) = self.tracer_provider.as_ref() {
-            for res in provider.force_flush() {
-                if let Err(err) = res {
-                    eprintln!("Error flushing spans: {err}");
-                }
+            if let Err(err) = provider.force_flush() {
+                eprintln!("Error flushing spans: {err}");
+            }
+            if let Err(err) = provider.shutdown() {
+                eprintln!("Error shutting down OTel provider: {err}")
             }
         }
     }
@@ -295,10 +296,7 @@ impl AppConfig {
         let otel_res = self.otel_resource();
         let (tracer, tracer_provider) = if let Some(tcfg) = self.tracing.as_mut() {
             let tracer_provider = tcfg.build_pipeline(otel_res)?;
-            let tracer = tracer_provider
-                .tracer_builder("uxum")
-                .with_version(env!("CARGO_PKG_VERSION"))
-                .build();
+            let tracer = tracer_provider.tracer("uxum");
             let layer = tcfg.build_layer(&tracer);
             registry.with(layer).init();
             opentelemetry::global::set_text_map_propagator(
