@@ -46,7 +46,7 @@ pub enum MetricsError {
     Prometheus(#[from] prometheus::Error),
     /// OpenTelemetry metrics error.
     #[error("OTel metrics error: {0}")]
-    OpenTelemetry(#[from] opentelemetry::metrics::MetricsError),
+    OpenTelemetry(#[from] opentelemetry_sdk::metrics::MetricError),
 }
 
 impl IntoResponse for MetricsError {
@@ -275,34 +275,32 @@ impl MetricsBuilder {
         global::set_meter_provider(provider.clone());
         let meter = provider.meter("uxum");
 
-        // TODO: try_init() and handle errors.
-
         // HTTP server metrics.
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
             .with_unit("s")
             .with_description("The HTTP request latencies in seconds.")
-            .init();
+            .build();
         let requests_total = meter
             .u64_counter("http.server.requests")
             .with_description(
                 "How many HTTP requests processed, partitioned by status code and HTTP method.",
             )
-            .init();
+            .build();
         let requests_active = meter
             .i64_up_down_counter("http.server.active_requests")
             .with_description("The number of active HTTP requests.")
-            .init();
+            .build();
         let request_body_size = meter
             .u64_histogram("http.server.request.body.size")
             .with_unit("By")
             .with_description("The HTTP request body sizes in bytes.")
-            .init();
+            .build();
         let response_body_size = meter
             .u64_histogram("http.server.response.body.size")
             .with_unit("By")
             .with_description("The HTTP reponse body sizes in bytes.")
-            .init();
+            .build();
         let http_server = HttpServerMetrics {
             request_duration,
             requests_total,
@@ -316,35 +314,35 @@ impl MetricsBuilder {
             .f64_histogram("http.client.request.duration")
             .with_unit("s")
             .with_description("The HTTP request latencies in seconds.")
-            .init();
+            .build();
         let requests_total = meter
             .u64_counter("http.client.requests")
             .with_description(
                 "How many HTTP requests processed, partitioned by status code and HTTP method.",
             )
-            .init();
+            .build();
         let requests_rejected = meter
             .u64_counter("http.client.rejected_requests")
             .with_description("Rejected requests due to open circuit breaker.")
-            .init();
+            .build();
         let requests_errored = meter
             .u64_counter("http.client.errored_requests")
             .with_description("Other errors when trying to send a request.")
-            .init();
+            .build();
         let requests_active = meter
             .i64_up_down_counter("http.client.active_requests")
             .with_description("The number of active HTTP requests.")
-            .init();
+            .build();
         let request_body_size = meter
             .u64_histogram("http.client.request.body.size")
             .with_unit("By")
             .with_description("The HTTP request body sizes in bytes.")
-            .init();
+            .build();
         let response_body_size = meter
             .u64_histogram("http.client.response.body.size")
             .with_unit("By")
             .with_description("The HTTP reponse body sizes in bytes.")
-            .init();
+            .build();
         let http_client = HttpClientMetricsInner {
             request_duration,
             requests_total,
@@ -360,15 +358,15 @@ impl MetricsBuilder {
         let num_workers = meter
             .u64_gauge("runtime.workers")
             .with_description("Number of worker threads used by the runtime.")
-            .init();
+            .build();
         let num_alive_tasks = meter
             .u64_gauge("runtime.alive_tasks")
             .with_description("Current number of alive tasks in the runtime.")
-            .init();
+            .build();
         let global_queue_depth = meter
             .u64_gauge("runtime.global_queue_depth")
             .with_description("Number of tasks currently scheduled in the runtime’s global queue.")
-            .init();
+            .build();
         let runtime = RuntimeMetrics {
             num_workers,
             num_alive_tasks,

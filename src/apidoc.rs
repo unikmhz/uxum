@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use askama::Template;
 use axum::{
     extract::State,
-    http::header,
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::{self, Router},
     Extension,
@@ -515,7 +515,20 @@ async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
 
 /// Handler to serve RapiDoc UI page.
 async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
-    api_doc.0.into_response()
+    let mut buf = bytes::BytesMut::with_capacity(512);
+    match api_doc.0.render_into(&mut buf) {
+        Ok(_) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, mime::TEXT_HTML.as_ref())],
+            buf,
+        )
+            .into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error rendering index: {err}"),
+        )
+            .into_response(),
+    }
 }
 
 /// Handler to serve RapiDoc code as minified javascript.

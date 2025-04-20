@@ -328,7 +328,7 @@ mod hello {
             let num_greetings = meter
                 .u64_counter("num_greetings")
                 .with_description("Number of times each name was greeted.")
-                .init();
+                .build();
             HelloState { num_greetings }
         }
 
@@ -392,7 +392,7 @@ mod hello {
 
     /// Greet someone using a name from a URL path element.
     #[handler(
-        path = "/hello/:name",
+        path = "/hello/{name}",
         docs(description = "Another link", url = "http://example.com/hello_name"),
         path_params(name(description = "Name to greet", allow_empty = true))
     )]

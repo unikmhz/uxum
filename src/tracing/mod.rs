@@ -2,11 +2,10 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use opentelemetry_otlp::{Protocol, TonicExporterBuilder, WithExportConfig};
+use opentelemetry_otlp::{ExporterBuildError, Protocol, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
-    runtime::Tokio,
     trace::{
-        BatchConfig, BatchConfigBuilder, Config, RandomIdGenerator, Sampler, Tracer, TracerProvider,
+        BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
     },
     Resource,
 };
@@ -27,9 +26,12 @@ use crate::logging::LoggingLevel;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TracingError {
+    // Exporter builder error.
+    #[error("OTel span exporter builder error: {0}")]
+    ExporterBuilder(#[from] ExporterBuildError),
     // OTel tracing error.
     #[error("OTel tracing error: {0}")]
-    OpenTelemetry(#[from] opentelemetry::trace::TraceError),
+    Tracing(#[from] opentelemetry_sdk::trace::TraceError),
 }
 
 /// OpenTelemetry tracing configuration.
@@ -91,30 +93,18 @@ impl TracingConfig {
     #[must_use]
     #[inline]
     fn default_timeout() -> Duration {
-        Duration::from_secs(opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT)
+        opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT
     }
 
     /// Build internal protocol exporter.
-    fn build_exporter(&self) -> TonicExporterBuilder {
+    fn build_exporter(&self) -> Result<SpanExporter, ExporterBuildError> {
         // TODO: allow adding metadata.
-        opentelemetry_otlp::new_exporter()
-            .tonic()
+        SpanExporter::builder()
+            .with_tonic()
             .with_protocol(self.protocol.into())
             .with_endpoint(self.endpoint.to_string())
             .with_timeout(self.timeout)
-    }
-
-    /// Build OpenTelemetry SDK configuration.
-    fn build_config(&self, resource: Resource) -> Config {
-        Config::default()
-            .with_sampler::<Sampler>(self.sample.into())
-            .with_id_generator(RandomIdGenerator::default())
-            .with_max_events_per_span(self.limits.max_events_per_span)
-            .with_max_attributes_per_span(self.limits.max_attributes_per_span)
-            .with_max_links_per_span(self.limits.max_links_per_span)
-            .with_max_attributes_per_event(self.limits.max_attributes_per_event)
-            .with_max_attributes_per_link(self.limits.max_attributes_per_link)
-            .with_resource(resource)
+            .build()
     }
 
     /// Build OpenTelemetry SDK batch configuration.
@@ -127,15 +117,22 @@ impl TracingConfig {
     /// # Errors
     ///
     /// Returns `Err` if span exporter and/or processor cannot be installed for some reason.
-    pub fn build_pipeline(&self, resource: Resource) -> Result<TracerProvider, TracingError> {
+    pub fn build_pipeline(&self, resource: Resource) -> Result<SdkTracerProvider, TracingError> {
         let _span = debug_span!("build_tracing_pipeline").entered();
-        opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(self.build_exporter())
-            .with_trace_config(self.build_config(resource))
+        let exporter = self.build_exporter()?;
+        let processor = BatchSpanProcessor::builder(exporter)
             .with_batch_config(self.build_batch_config())
-            .install_batch(Tokio)
-            .map_err(Into::into)
+            .build();
+        Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
+            .with_span_processor(processor)
+            .with_resource(resource)
+            .with_sampler(Sampler::from(self.sample))
+            .with_max_events_per_span(self.limits.max_events_per_span)
+            .with_max_attributes_per_span(self.limits.max_attributes_per_span)
+            .with_max_links_per_span(self.limits.max_links_per_span)
+            .with_max_attributes_per_event(self.limits.max_attributes_per_event)
+            .with_max_attributes_per_link(self.limits.max_attributes_per_link)
+            .build())
     }
 
     /// Build OpenTelemetry layer for [`tracing`].
@@ -308,18 +305,6 @@ struct TracingBatchConfig {
     /// of spans one batch after the other without any delay. The default value is 512.
     #[serde(default = "TracingBatchConfig::default_max_export_batch_size")]
     max_export_batch_size: NonZeroUsize,
-    /// The maximum duration to export a batch of data.
-    ///
-    /// Default value is 30 seconds.
-    #[serde(default = "TracingBatchConfig::default_max_export_timeout")]
-    max_export_timeout: Duration,
-    /// Maximum number of concurrent exports.
-    ///
-    /// Limits the number of spawned tasks for exports and thus memory consumed
-    /// by an exporter. A value of 1 will cause exports to be performed
-    /// synchronously on the `BatchSpanProcessor` task. The default value is 1.
-    #[serde(default = "TracingBatchConfig::default_max_concurrent_exports")]
-    max_concurrent_exports: NonZeroUsize,
 }
 
 impl Default for TracingBatchConfig {
@@ -328,8 +313,6 @@ impl Default for TracingBatchConfig {
             max_queue_size: Self::default_max_queue_size(),
             scheduled_delay: Self::default_scheduled_delay(),
             max_export_batch_size: Self::default_max_export_batch_size(),
-            max_export_timeout: Self::default_max_export_timeout(),
-            max_concurrent_exports: Self::default_max_concurrent_exports(),
         }
     }
 }
@@ -358,21 +341,6 @@ impl TracingBatchConfig {
         NonZeroUsize::new(512).unwrap()
     }
 
-    /// Default value for [`Self::max_export_timeout`].
-    #[must_use]
-    #[inline]
-    fn default_max_export_timeout() -> Duration {
-        Duration::from_secs(30)
-    }
-
-    /// Default value for [`Self::max_concurrent_exports`].
-    #[must_use]
-    #[inline]
-    fn default_max_concurrent_exports() -> NonZeroUsize {
-        // SAFETY: 1 is always non-zero
-        NonZeroUsize::new(1).unwrap()
-    }
-
     /// Create OpenTelemetry batch config builder.
     #[must_use]
     fn to_builder(&self) -> BatchConfigBuilder {
@@ -380,7 +348,5 @@ impl TracingBatchConfig {
             .with_max_queue_size(self.max_queue_size.get())
             .with_scheduled_delay(self.scheduled_delay)
             .with_max_export_batch_size(self.max_export_batch_size.get())
-            .with_max_export_timeout(self.max_export_timeout)
-            .with_max_concurrent_exports(self.max_concurrent_exports.get())
     }
 }

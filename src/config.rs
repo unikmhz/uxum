@@ -18,7 +18,6 @@ use crate::{
     metrics::MetricsBuilder,
     probes::ProbeConfig,
     runtime::RuntimeConfig,
-    telemetry::OpenTelemetryConfig,
     tracing::TracingConfig,
 };
 
@@ -159,9 +158,6 @@ pub struct AppConfig {
     /// Probes and maintenance mode configuration.
     #[serde(default)]
     pub probes: ProbeConfig,
-    /// Common OpenTelemetry configuration.
-    #[serde(default)]
-    pub otel: OpenTelemetryConfig,
     /// Authentication and authorization back-end configuration.
     #[serde(default)]
     pub auth: AuthConfig,
