@@ -392,7 +392,7 @@ mod hello {
 
     /// Greet someone using a name from a URL path element.
     #[handler(
-        path = "/hello/:name",
+        path = "/hello/{name}",
         docs(description = "Another link", url = "http://example.com/hello_name"),
         path_params(name(description = "Name to greet", allow_empty = true))
     )]

@@ -22,13 +22,13 @@ use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
 #[cfg(feature = "grpc")]
 use tonic::{
-    body::BoxBody as GrpcBody,
+    body::Body as GrpcBody,
     server::NamedService,
     service::{Routes as GrpcRoutes, RoutesBuilder as GrpcRoutesBuilder},
 };
 #[cfg(feature = "grpc")]
 use tower::Service;
-use tower::{builder::ServiceBuilder, util::BoxCloneService, ServiceExt};
+use tower::{builder::ServiceBuilder, util::BoxCloneSyncService, ServiceExt};
 use tower_http::{
     catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
@@ -503,7 +503,7 @@ where
     fn handler_service(
         &self,
         handler: &dyn HandlerExt,
-    ) -> BoxCloneService<Request<Body>, Response<Body>, BoxError> {
+    ) -> BoxCloneSyncService<Request<Body>, Response<Body>, BoxError> {
         let name = handler.name();
         let _span = info_span!("handler_service", name, method = ?handler.method()).entered();
         let service_cfg = self.config.handlers.get(name);
@@ -518,7 +518,7 @@ where
                 }
             });
         ServiceBuilder::new()
-            .boxed_clone()
+            .layer(BoxCloneSyncService::layer())
             .layer(ResponseExtension(HandlerName::new(name)))
             // Authentication layer.
             .option_layer(match handler.no_auth() {
@@ -563,10 +563,11 @@ where
     #[cfg(feature = "grpc")]
     pub fn with_grpc_service<S>(&mut self, svc: S) -> &mut Self
     where
-        S: Service<Request<GrpcBody>, Response = Response<GrpcBody>, Error = Infallible>
+        S: Service<Request<GrpcBody>, Error = Infallible>
             + NamedService
             + Clone
             + Send
+            + Sync
             + 'static,
         S::Response: IntoResponse,
         S::Future: Send + 'static,
@@ -661,7 +662,7 @@ pub trait HandlerExt: Sync {
     /// Skip authentication for this handler.
     fn no_auth(&self) -> bool;
     /// Return handler function packaged as a [`tower`] service.
-    fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible>;
+    fn service(&self) -> BoxCloneSyncService<Request<Body>, Response<Body>, Infallible>;
     /// Generate OpenAPI specification object for handler.
     fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
 }

@@ -1,6 +1,6 @@
 [package]
 name = "uxum-pools"
-version = "0.1.0"
+version = "0.3.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -14,11 +14,11 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.release]
-publish = false
-push = false
+publish = true
+push = true
 pre-release-commit-message = "uxum-pools {{version}}"
-sign-commit = true
-sign-tag = true
+sign-commit = false
+sign-tag = false
 tag-message = "uxum-pools {{version}}"
 
 [dependencies]

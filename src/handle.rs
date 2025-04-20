@@ -5,7 +5,7 @@ use std::{net::SocketAddr, time::Duration};
 use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::trace::{Tracer, SdkTracerProvider};
+use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tracing_appender::non_blocking::WorkerGuard;

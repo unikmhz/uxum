@@ -5,7 +5,7 @@ use std::{num::NonZeroUsize, time::Duration};
 use opentelemetry_otlp::{ExporterBuildError, Protocol, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
     trace::{
-        BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer
+        BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
     },
     Resource,
 };

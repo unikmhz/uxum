@@ -20,7 +20,6 @@ use crate::{
     handler::{
         body::detect_request_body,
         data::{HandlerData, HandlerMethod},
-        path::format_path_for_spec,
         state::detect_state,
     },
 };
@@ -49,7 +48,6 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let handler_name = data.name.unwrap_or_else(|| input.sig.ident.to_string());
     let handler_path = data.path.unwrap_or_else(|| format!("/{handler_name}"));
-    let handler_spec_path = format_path_for_spec(&handler_path);
     let request_body = detect_request_body(&input);
     let handler_method = match data.method {
         Some(method) => method,
@@ -101,7 +99,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                     okapi,
                     openapi3,
                     schemars,
-                    tower::util::BoxCloneService,
+                    tower::util::BoxCloneSyncService,
                 },
                 HandlerExt,
             };
@@ -127,7 +125,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                 #[inline]
                 #[must_use]
                 fn spec_path(&self) -> &'static str {
-                    #handler_spec_path
+                    #handler_path
                 }
 
                 #[inline]
@@ -150,8 +148,8 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 #[inline]
                 #[must_use]
-                fn service(&self) -> BoxCloneService<Request<Body>, Response<Body>, Infallible> {
-                    BoxCloneService::new(#into_service)
+                fn service(&self) -> BoxCloneSyncService<Request<Body>, Response<Body>, Infallible> {
+                    BoxCloneSyncService::new(#into_service)
                 }
 
                 #[inline]
