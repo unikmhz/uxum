@@ -72,7 +72,7 @@ opentelemetry_sdk = {version = "0.29", features = ["rt-tokio", "spec_unstable_me
 opentelemetry-prometheus = {version = "0.29", features = ["prometheus-encoding"]}
 opentelemetry-semantic-conventions = "0.29"
 password-hash = {version = "0.5", features = ["alloc"]}
-problemdetails = {version = "0.5", features = ["axum"]}
+problemdetails = {version = "0.6", features = ["axum"]}
 prometheus = "0.14"
 prost = {version = "0.13", optional = true}
 recloser = "1.1"
