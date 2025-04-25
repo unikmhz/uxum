@@ -22,3 +22,18 @@ impl fmt::Display for IoError {
         Ok(())
     }
 }
+
+/// Tag URI for uxum 404 bodies.
+pub(crate) const TAG_UXUM_NOT_FOUND: &str = "tag:uxum.github.io,2024:not_found";
+/// Tag URI for uxum error bodies.
+pub(crate) const TAG_UXUM_ERROR: &str = "tag:uxum.github.io,2024:error";
+/// Tag URI for uxum panic bodies.
+pub(crate) const TAG_UXUM_PANIC: &str = "tag:uxum.github.io,2024:panic";
+/// Tag URI for uxum rate-limiting result.
+pub(crate) const TAG_UXUM_RATE_LIMIT: &str = "tag:uxum.github.io,2024:rate-limit";
+/// Tag URI for uxum auth error bodies.
+pub(crate) const TAG_UXUM_AUTH: &str = "tag:uxum.github.io,2024:auth";
+/// Tag URI for uxum timeout error bodies.
+pub(crate) const TAG_UXUM_TIMEOUT: &str = "tag:uxum.github.io,2024:timeout";
+/// Tag URI for uxum metrics error bodies.
+pub(crate) const TAG_UXUM_METRICS: &str = "tag:uxum.github.io,2024:metrics";

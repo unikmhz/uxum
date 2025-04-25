@@ -346,7 +346,7 @@ mod hello {
     /// Greet the Axum world.
     #[handler(
         name = "hello_world",
-        path = "/",
+        path = "/hello",
         method = "GET",
         docs(description = "Some link", url = "http://example.com/hello_world"),
         tags = ["tag1", "tag2"],

@@ -28,8 +28,11 @@ use thiserror::Error;
 use tower::{BoxError, Layer, Service};
 use tracing::{trace_span, warn};
 
-use crate::layers::util::{
-    ExtractionError, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor, UserIdKeyExtractor,
+use crate::{
+    errors,
+    layers::util::{
+        ExtractionError, KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor, UserIdKeyExtractor,
+    },
 };
 
 /// Error type returned by rate-limiting layer.
@@ -61,10 +64,13 @@ impl RateLimitError {
 
 impl IntoResponse for RateLimitError {
     fn into_response(self) -> Response<Body> {
-        problemdetails::new(self.http_status())
-            .with_type("tag:uxum.github.io,2024:rate-limit")
-            .with_title(self.to_string())
-            .into_response()
+        let mut resp = problemdetails::new(self.http_status())
+            .with_type(errors::TAG_UXUM_RATE_LIMIT)
+            .with_title(self.to_string());
+        if let Self::LimitReached { remaining_seconds } = self {
+            resp = resp.with_value("retry_after", remaining_seconds);
+        }
+        resp.into_response()
     }
 }
 

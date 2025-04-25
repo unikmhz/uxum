@@ -9,6 +9,7 @@ use std::{
 
 use axum::{
     body::Body,
+    extract::OriginalUri,
     http::{
         header::{self, HeaderValue},
         StatusCode,
@@ -45,6 +46,7 @@ use crate::{
         HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
+    errors,
     http_client::{HttpClientConfig, HttpClientError},
     layers::{
         ext::HandlerName, rate::RateLimitError, request_id::RecordRequestIdLayer,
@@ -339,6 +341,7 @@ where
         // Register GRPC services.
         #[cfg(feature = "grpc")]
         {
+            // TODO: filter GRPC handlers on request content-type.
             rtr = rtr.merge(self.grpc_services.clone().routes().into_axum_router());
         }
 
@@ -358,6 +361,9 @@ where
             let auth = self.auth_extractor.security_schemes();
             rtr = rtr.merge(api_doc.build_router(auth)?);
         }
+
+        // TODO: allow customizing fallback handler.
+        rtr = rtr.fallback(fallback_handler);
 
         // Wrap router in global layers.
         let final_rtr = self.wrap_global_layers(rtr, metrics_state);
@@ -622,8 +628,17 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
         return timeo_err.into_response();
     }
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-        .with_type("tag:uxum.github.io,2024:error")
+        .with_type(errors::TAG_UXUM_ERROR)
         .with_title(err.to_string())
+        .into_response()
+}
+
+/// Error handler for when no handler is found by application router.
+pub(crate) async fn fallback_handler(OriginalUri(uri): OriginalUri) -> Response<Body> {
+    problemdetails::new(StatusCode::NOT_FOUND)
+        .with_type(errors::TAG_UXUM_NOT_FOUND)
+        .with_title("Resource not found")
+        .with_value("uri", uri.to_string())
         .into_response()
 }
 
@@ -639,7 +654,7 @@ fn panic_handler(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
         "Unknown panic format".to_string()
     };
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-        .with_type("tag:uxum.github.io,2024:panic")
+        .with_type(errors::TAG_UXUM_PANIC)
         .with_title("Encountered panic in handler")
         .with_detail(details)
         .into_response()

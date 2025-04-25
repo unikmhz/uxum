@@ -25,7 +25,7 @@ use tokio::{
 use tower::{BoxError, Layer, Service};
 use tracing::warn;
 
-use crate::layers::ext::Deadline;
+use crate::{errors, layers::ext::Deadline};
 
 tokio::task_local! {
     /// Deadline of currently executing request, if any.
@@ -53,7 +53,7 @@ impl TimeoutError {
 impl IntoResponse for TimeoutError {
     fn into_response(self) -> Response<Body> {
         problemdetails::new(self.http_status())
-            .with_type("tag:uxum.github.io,2024:timeout")
+            .with_type(errors::TAG_UXUM_TIMEOUT)
             .with_title(self.to_string())
             .into_response()
     }

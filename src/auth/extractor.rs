@@ -14,7 +14,10 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use okapi::{openapi3, Map};
 use tracing::error;
 
-use crate::auth::{errors::AuthError, user::UserId};
+use crate::{
+    auth::{errors::AuthError, user::UserId},
+    errors,
+};
 
 /// Authentication extractor (front-end) trait.
 pub trait AuthExtractor: Clone + Send {
@@ -68,7 +71,7 @@ impl AuthExtractor for NoOpAuthExtractor {
         // This shuld never get executed for a NoOp extractor
         error!("tried to generate auth error response for NoOpAuthExtractor");
         problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-            .with_type("tag:uxum.github.io,2024:auth")
+            .with_type(errors::TAG_UXUM_AUTH)
             .with_title(err.to_string())
             .into_response()
     }
@@ -114,7 +117,7 @@ impl AuthExtractor for BasicAuthExtractor {
             _ => StatusCode::BAD_REQUEST,
         };
         let mut resp = problemdetails::new(status)
-            .with_type("tag:uxum.github.io,2024:auth")
+            .with_type(errors::TAG_UXUM_AUTH)
             .with_title(err.to_string())
             .into_response();
         if status == StatusCode::UNAUTHORIZED {
@@ -122,7 +125,7 @@ impl AuthExtractor for BasicAuthExtractor {
                 Ok(val) => val,
                 Err(err) => {
                     return problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-                        .with_type("tag:uxum.github.io,2024:auth")
+                        .with_type(errors::TAG_UXUM_AUTH)
                         .with_title("Invalid HTTP Basic realm value")
                         .with_detail(err.to_string())
                         .into_response()
@@ -246,7 +249,7 @@ impl AuthExtractor for HeaderAuthExtractor {
             _ => StatusCode::BAD_REQUEST,
         };
         problemdetails::new(status)
-            .with_type("tag:uxum.github.io,2024:auth")
+            .with_type(errors::TAG_UXUM_AUTH)
             .with_title(err.to_string())
             .into_response()
     }
