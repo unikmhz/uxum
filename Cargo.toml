@@ -65,7 +65,7 @@ okapi = {version = "0.7", features = ["preserve_order"]}
 once_cell = "1.21"
 parking_lot = "0.12"
 pin-project = "1.1"
-opentelemetry = {version = "0.29", features = ["metrics"]}
+opentelemetry = {version = "0.30", features = ["metrics"]}
 opentelemetry-otlp = {version = "0.29", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"]}
 opentelemetry-resource-detectors = "0.8"
 opentelemetry_sdk = {version = "0.29", features = ["rt-tokio", "spec_unstable_metrics_views"]}
