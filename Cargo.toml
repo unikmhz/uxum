@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -58,7 +58,6 @@ hyper = {version = "1.6", features = ["http1", "http2", "server"]}
 hyper-util = {version = "0.1", features = ["http1", "http2", "server"]}
 inventory = "0.3"
 iso8601-duration = "0.2"
-libsystemd = "0.7"
 maplit = "1.0"
 mime = "0.3"
 okapi = {version = "0.7", features = ["preserve_order"]}
@@ -79,7 +78,7 @@ recloser = "1.1"
 reqwest = {version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls-native-roots"]}
 reqwest-middleware = {version = "0.4", features = ["multipart", "json"]}
 reqwest-tracing = {version = "0.5.7", features = ["opentelemetry_0_29"]}
-rust-crypto = "0.2"
+subtle = "2.5"
 rustls = {version = "0.23", features = ["std", "aws_lc_rs", "custom-provider"]}
 schemars = {version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"]}
 serde = {version = "1.0", features = ["derive"]}
@@ -101,3 +100,7 @@ url = {version = "2.5", features = ["serde"]}
 [features]
 default = []
 grpc = ["prost", "tonic"]
+systemd = ["libsystemd"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libsystemd = {version = "0.7", optional = true}
