@@ -2,6 +2,7 @@
 
 use std::{future::Future, time::Duration};
 
+#[cfg(all(target_os = "linux", feature = "systemd"))]
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
 use tracing::{error, info, trace, trace_span, warn, Instrument};
@@ -25,7 +26,10 @@ impl ServiceNotifier {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            #[cfg(all(target_os = "linux", feature = "systemd"))]
             has_systemd: daemon::booted(),
+            #[cfg(not(all(target_os = "linux", feature = "systemd")))]
+            has_systemd: false,
         }
     }
 
@@ -34,10 +38,14 @@ impl ServiceNotifier {
     /// Returns [`None`] if watchdog is not enabled or not running under `systemd`.
     #[must_use]
     fn watchdog_interval(&self) -> Option<Duration> {
-        match self.has_systemd {
-            true => daemon::watchdog_enabled(true).map(|dur| dur / 2),
-            false => None,
+        if !self.has_systemd {
+            return None;
         }
+
+        #[cfg(all(target_os = "linux", feature = "systemd"))]
+        return daemon::watchdog_enabled(true).map(|dur| dur / 2);
+        #[cfg(not(all(target_os = "linux", feature = "systemd")))]
+        return None;
     }
 
     /// Notify that the service is ready to accept requests.
@@ -45,6 +53,8 @@ impl ServiceNotifier {
         if !self.has_systemd {
             return;
         }
+
+        #[cfg(all(target_os = "linux", feature = "systemd"))]
         match daemon::notify(false, &[NotifyState::Ready]) {
             Ok(true) => info!("supervisor notified: service ready"),
             Ok(false) => warn!("supervisor unavailable: service ready"),
@@ -57,6 +67,8 @@ impl ServiceNotifier {
         if !self.has_systemd {
             return;
         }
+
+        #[cfg(all(target_os = "linux", feature = "systemd"))]
         match daemon::notify(false, &[NotifyState::Reloading]) {
             Ok(true) => info!("supervisor notified: service reloading"),
             Ok(false) => warn!("supervisor unavailable: service reloading"),
@@ -69,6 +81,8 @@ impl ServiceNotifier {
         if !self.has_systemd {
             return;
         }
+
+        #[cfg(all(target_os = "linux", feature = "systemd"))]
         match daemon::notify(false, &[NotifyState::Stopping]) {
             Ok(true) => info!("supervisor notified: service stopping"),
             Ok(false) => warn!("supervisor unavailable: service stopping"),
@@ -91,10 +105,13 @@ impl ServiceNotifier {
                     loop {
                         // TODO: cancellation token?
                         tokio::select! {
-                            _ = timer.tick() => match daemon::notify(false, &[NotifyState::Watchdog]) {
-                                Ok(true) => trace!("supervisor notified: watchdog tick"),
-                                Ok(false) => warn!("supervisor unavailable: watchdog tick"),
-                                Err(err) => error!(%err, "watchdog notification error"),
+                            _ = timer.tick() => {
+                                #[cfg(all(target_os = "linux", feature = "systemd"))]
+                                match daemon::notify(false, &[NotifyState::Watchdog]) {
+                                    Ok(true) => trace!("supervisor notified: watchdog tick"),
+                                    Ok(false) => warn!("supervisor unavailable: watchdog tick"),
+                                    Err(err) => error!(%err, "watchdog notification error"),
+                                }
                             }
                         }
                     }

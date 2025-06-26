@@ -16,7 +16,8 @@ serde = {version = "1.0", features = ["derive"]}
 thiserror = "2.0"
 tonic = "0.13"
 tonic-reflection = "0.13"
-uxum = {path = "../..", features = ["grpc"]}
+uxum = {path = "../..", features = ["grpc", "systemd"]}
+tracing = {version = "0.1", features = ["std"]}
 
 [build-dependencies]
 tonic-build = "0.13"

@@ -8,6 +8,7 @@ use std::{
 use argon2::{Argon2, PasswordVerifier};
 use password_hash::PasswordHashString;
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
 
 /// User configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -45,7 +46,7 @@ pub enum UserPassword {
 impl PartialEq<&str> for UserPassword {
     fn eq(&self, other: &&str) -> bool {
         match self {
-            Self::Plaintext(pwd) => crypto::util::fixed_time_eq(pwd.as_bytes(), other.as_bytes()),
+            Self::Plaintext(pwd) => pwd.as_bytes().ct_eq(other.as_bytes()).into(),
             // FIXME: generalize hash verification.
             Self::Hashed(pwd) => Argon2::default()
                 .verify_password(other.as_bytes(), &pwd.password_hash())

@@ -11,3 +11,4 @@ publish = false
 
 [dependencies]
 uxum = { path = "../.." }
+tracing = {version = "0.1", features = ["std"]}

@@ -19,3 +19,4 @@ serde = {version = "1.0", features = ["derive"]}
 thiserror = "2.0"
 uxum = {path = "../.."}
 uxum-pools = {path = "../../uxum-pools", features = ["bb8"]}
+tracing = {version = "0.1", features = ["std"]}
