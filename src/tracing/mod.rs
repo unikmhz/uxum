@@ -2,7 +2,9 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use opentelemetry_otlp::{ExporterBuildError, Protocol, SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{
+    ExporterBuildError, Protocol, SpanExporter, WithExportConfig, WithTonicConfig,
+};
 use opentelemetry_sdk::{
     trace::{
         BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
@@ -11,6 +13,7 @@ use opentelemetry_sdk::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tonic_012::transport::ClientTlsConfig;
 use tracing::{debug_span, Level, Subscriber};
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{
@@ -104,6 +107,7 @@ impl TracingConfig {
             .with_protocol(self.protocol.into())
             .with_endpoint(self.endpoint.to_string())
             .with_timeout(self.timeout)
+            .with_tls_config(ClientTlsConfig::new().with_native_roots())
             .build()
     }
 
