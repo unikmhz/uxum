@@ -42,7 +42,7 @@ uxum-macros = { path = "uxum-macros", version = "0.4" }
 argon2 = "0.5"
 askama = "0.13"
 async-trait = "0.1"
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros"], optional = true }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 base64 = "0.22"
 bytes = { version = "1.10", features = ["serde"] }
@@ -102,6 +102,7 @@ url = { version = "2.5", features = ["serde"] }
 default = []
 grpc = ["prost", "tonic"]
 systemd = ["libsystemd"]
+axum-multipart = ["axum/multipart"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libsystemd = { version = "0.7", optional = true }
