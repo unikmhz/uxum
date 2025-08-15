@@ -3,6 +3,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{ItemFn, ReturnType, Type};
 
 /// Detected response type.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ResponseTemplate {
     /// No response in function.
     Default,
