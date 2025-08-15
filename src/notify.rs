@@ -5,6 +5,8 @@ use std::{future::Future, time::Duration};
 #[cfg(all(target_os = "linux", feature = "systemd"))]
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
+#[cfg(all(target_os = "linux", feature = "systemd"))]
+use tracing::{error, info, trace, warn};
 use tracing::{trace_span, Instrument};
 
 /// Interact with service supervisor.
