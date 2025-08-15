@@ -5,7 +5,9 @@ use std::{future::Future, time::Duration};
 #[cfg(all(target_os = "linux", feature = "systemd"))]
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
-use tracing::{error, info, trace, trace_span, warn, Instrument};
+#[cfg(all(target_os = "linux", feature = "systemd"))]
+use tracing::{error, info, trace, warn};
+use tracing::{trace_span, Instrument};
 
 /// Interact with service supervisor.
 ///
@@ -50,6 +52,7 @@ impl ServiceNotifier {
 
     /// Notify that the service is ready to accept requests.
     pub fn on_ready(&self) {
+        #[allow(clippy::needless_return)]
         if !self.has_systemd {
             return;
         }
@@ -64,6 +67,7 @@ impl ServiceNotifier {
 
     /// Notify that the service is reloading itself.
     pub fn on_reload(&self) {
+        #[allow(clippy::needless_return)]
         if !self.has_systemd {
             return;
         }
@@ -78,6 +82,7 @@ impl ServiceNotifier {
 
     /// Notify that the service is stopping.
     pub fn on_shutdown(&self) {
+        #[allow(clippy::needless_return)]
         if !self.has_systemd {
             return;
         }

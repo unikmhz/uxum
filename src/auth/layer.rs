@@ -112,7 +112,7 @@ where
 {
     type Response = S::Response;
     type Error = BoxError;
-    type Future = AuthFuture<S::Future>;
+    type Future = AuthFuture<S::Future, AuthExt::User>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         match self.inner.poll_ready(cx) {
@@ -153,22 +153,24 @@ where
             }
         }
         // Add user ID as an extension into request.
-        req.extensions_mut().insert(user);
+        req.extensions_mut().insert(user.clone());
         drop(span);
         AuthFuture::Positive {
             inner: self.inner.call(req),
+            user_id: user,
         }
     }
 }
 
 /// Authentication and authorization [`tower`] service future.
 #[pin_project(project = ProjectedOutcome)]
-pub enum AuthFuture<F> {
+pub enum AuthFuture<F, U> {
     /// Happy path, calling inner service.
     Positive {
         /// Inner future.
         #[pin]
         inner: F,
+        user_id: U,
     },
     /// Authentication error or failure.
     Negative {
@@ -177,17 +179,19 @@ pub enum AuthFuture<F> {
     },
 }
 
-impl<F, E> Future for AuthFuture<F>
+impl<F, E, U> Future for AuthFuture<F, U>
 where
     F: Future<Output = Result<Response<Body>, E>>,
     E: Into<BoxError>,
+    U: Send + Sync + Clone + 'static,
 {
     type Output = Result<Response<Body>, BoxError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
-            ProjectedOutcome::Positive { inner } => {
-                let resp = ready!(inner.poll(cx).map_err(Into::into))?;
+            ProjectedOutcome::Positive { inner, user_id } => {
+                let mut resp = ready!(inner.poll(cx).map_err(Into::into))?;
+                resp.extensions_mut().insert(user_id.clone());
                 Poll::Ready(Ok(resp))
             }
             ProjectedOutcome::Negative { error_response } => Poll::Ready(Ok(error_response
