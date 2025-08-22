@@ -380,14 +380,14 @@ mod hello {
     #[handler]
     async fn name_from_text_body(state: State<HelloState>, body: String) -> String {
         state.log_name(&body);
-        format!("Hello {}!", body)
+        format!("Hello {body}!")
     }
 
     /// Greet someone using a name from a binary body.
     #[handler]
     async fn name_from_binary_body(state: State<HelloState>, body: Bytes) -> String {
         state.log_name(std::str::from_utf8(&body).unwrap_or(""));
-        format!("Hello {:?}!", body)
+        format!("Hello {body:?}!")
     }
 
     /// Greet someone using a name from a URL path element.
