@@ -162,7 +162,6 @@ pub(crate) struct ExtensibleJsonFormat<T = SystemTime> {
 }
 
 impl Default for ExtensibleJsonFormat {
-    #[must_use]
     fn default() -> Self {
         Self {
             timer: SystemTime,

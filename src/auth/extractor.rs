@@ -64,7 +64,6 @@ impl AuthExtractor for NoOpAuthExtractor {
         Ok(((), ()))
     }
 
-    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         // This shuld never get executed for a NoOp extractor
         error!("tried to generate auth error response for NoOpAuthExtractor");
@@ -106,7 +105,6 @@ impl AuthExtractor for BasicAuthExtractor {
         }
     }
 
-    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         let status = match err {
             AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed => {
@@ -135,7 +133,6 @@ impl AuthExtractor for BasicAuthExtractor {
         resp
     }
 
-    #[must_use]
     fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
         maplit::btreemap! {
             "basic".into() => openapi3::SecurityScheme {
@@ -240,7 +237,6 @@ impl AuthExtractor for HeaderAuthExtractor {
         Ok((user, tokens))
     }
 
-    #[must_use]
     fn error_response(&self, err: AuthError) -> Response<Body> {
         let status = match err {
             AuthError::NoAuthProvided
@@ -255,7 +251,6 @@ impl AuthExtractor for HeaderAuthExtractor {
             .into_response()
     }
 
-    #[must_use]
     fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
         maplit::btreemap! {
             "api-name".into() => openapi3::SecurityScheme {

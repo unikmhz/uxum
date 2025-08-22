@@ -49,7 +49,6 @@ mod impls {
     impl GetResponseSchemas for String {
         type ResponseIter = [ResponseSchema; 1];
 
-        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
@@ -70,7 +69,6 @@ mod impls {
     impl GetResponseSchemas for str {
         type ResponseIter = [ResponseSchema; 1];
 
-        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             <String as GetResponseSchemas>::get_response_schemas(gen)
         }
@@ -79,7 +77,6 @@ mod impls {
     impl GetResponseSchemas for () {
         type ResponseIter = [ResponseSchema; 1];
 
-        #[must_use]
         fn get_response_schemas(_gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
@@ -107,7 +104,6 @@ mod impls {
     {
         type ResponseIter = T::ResponseIter;
 
-        #[must_use]
         fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
             T::get_response_schemas(gen)
         }
@@ -119,7 +115,6 @@ mod impls {
     {
         type ResponseIter = [ResponseSchema; 1];
 
-        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
@@ -144,7 +139,6 @@ mod impls {
     {
         type ResponseIter = Vec<ResponseSchema>;
 
-        #[must_use]
         fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
             T::get_response_schemas(gen)
                 .into_iter()
