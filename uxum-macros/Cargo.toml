@@ -1,6 +1,6 @@
 [package]
 name = "uxum-macros"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"

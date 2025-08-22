@@ -37,7 +37,7 @@ sign-tag = false
 tag-message = "uxum {{version}}"
 
 [dependencies]
-uxum-macros = { path = "uxum-macros", version = "0.4" }
+uxum-macros = { path = "uxum-macros", version = "=0.4.1" }
 
 argon2 = "0.5"
 askama = "0.13"
