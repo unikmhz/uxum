@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.6.2"
+version = "0.7.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
