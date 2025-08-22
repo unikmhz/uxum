@@ -162,7 +162,6 @@ pub(crate) struct ExtensibleJsonFormat<T = SystemTime> {
 }
 
 impl Default for ExtensibleJsonFormat {
-    #[must_use]
     fn default() -> Self {
         Self {
             timer: SystemTime,
@@ -507,7 +506,7 @@ where
             // If we *aren't* in debug mode, it's probably best not
             // crash the program, but let's at least make sure it's clear
             // that the fields are not supposed to be missing.
-            Err(e) => serializer.serialize_entry("field_error", &format!("{}", e))?,
+            Err(e) => serializer.serialize_entry("field_error", &format!("{e}"))?,
         };
         serializer.serialize_entry("name", self.0.metadata().name())?;
         serializer.end()

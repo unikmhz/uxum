@@ -152,7 +152,7 @@ mod serde_impls {
         {
             PasswordHashString::new(v)
                 .map(Into::into)
-                .map_err(|err| E::custom(format!("unable to parse PHC format: {}", err)))
+                .map_err(|err| E::custom(format!("unable to parse PHC format: {err}")))
         }
     }
 }

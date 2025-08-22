@@ -142,8 +142,7 @@ mod serde_impls {
             match v.to_ascii_lowercase().as_str() {
                 "any" => Ok(AnyOr::Any),
                 other => Err(E::custom(format_args!(
-                    "expecting string 'any', got '{}'",
-                    other
+                    "expecting string 'any', got '{other}'"
                 ))),
             }
         }

@@ -6,6 +6,7 @@ use crate::util::quote_option;
 
 /// Available service endpoint.
 #[derive(Debug, FromMeta)]
+#[allow(dead_code)]
 pub(crate) struct OpenApiServer {
     /// Server URL.
     url: String,

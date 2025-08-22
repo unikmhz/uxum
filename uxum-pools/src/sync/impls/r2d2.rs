@@ -28,13 +28,7 @@ impl<'p, M: ManageConnection> InstrumentablePool<'p> for Pool<M> {
             max_size: Some(Pool::max_size(self) as usize),
             size: Some(inner.connections as usize),
             idle: Some(inner.idle_connections as usize),
-            in_use: Some({
-                if inner.connections > inner.idle_connections {
-                    (inner.connections - inner.idle_connections) as usize
-                } else {
-                    0
-                }
-            }),
+            in_use: Some(inner.connections.saturating_sub(inner.idle_connections) as usize),
             min_idle: Pool::min_idle(self).map(|i| i as usize),
             max_idle: None,
         })

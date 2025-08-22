@@ -48,13 +48,7 @@ where
             max_size: Some(inner.max_size),
             size: Some(inner.size),
             idle: Some(inner.available),
-            in_use: Some({
-                if inner.size > inner.available {
-                    inner.size - inner.available
-                } else {
-                    0
-                }
-            }),
+            in_use: Some(inner.size.saturating_sub(inner.available)),
             min_idle: None,
             max_idle: None,
         })

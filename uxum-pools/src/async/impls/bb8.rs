@@ -34,13 +34,7 @@ where
             max_size: None,
             size: Some(inner.connections as usize),
             idle: Some(inner.idle_connections as usize),
-            in_use: Some({
-                if inner.connections > inner.idle_connections {
-                    (inner.connections - inner.idle_connections) as usize
-                } else {
-                    0
-                }
-            }),
+            in_use: Some(inner.connections.saturating_sub(inner.idle_connections) as usize),
             min_idle: None,
             max_idle: None,
         })

@@ -45,6 +45,8 @@ pub struct ProbeConfig {
     /// Runtime watchdog configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     watchdog: Option<WatchdogConfig>,
+    #[serde(default)]
+    start_in_maintenance: bool,
 }
 
 impl Default for ProbeConfig {
@@ -55,6 +57,7 @@ impl Default for ProbeConfig {
             maintenance_on_path: Self::default_maintenance_on_path(),
             maintenance_off_path: Self::default_maintenance_off_path(),
             watchdog: Some(WatchdogConfig::default()),
+            start_in_maintenance: false,
         }
     }
 }
@@ -102,7 +105,7 @@ impl ProbeConfig {
     {
         // TODO: add toggle for probes, and possibly for maintenance mode.
         let _span = debug_span!("build_probes").entered();
-        let state = ProbeState::new(self.watchdog.as_ref());
+        let state = ProbeState::new(self.start_in_maintenance, self.watchdog.as_ref());
         Router::new()
             .route(&self.readiness_path, routing::get(readiness_probe))
             .route(&self.liveness_path, routing::get(liveness_probe))
@@ -148,9 +151,9 @@ impl Default for ProbeState {
 impl ProbeState {
     /// Create new [`ProbeState`] with optional [`WatchdogConfig`].
     #[must_use]
-    pub fn new(watchdog: Option<&WatchdogConfig>) -> Self {
+    pub fn new(in_maint: bool, watchdog: Option<&WatchdogConfig>) -> Self {
         Self(Arc::new(ProbeStateInner {
-            in_maintenance: AtomicBool::new(true),
+            in_maintenance: AtomicBool::new(in_maint),
             watchdog: watchdog.map(|wc| {
                 let mut watchdog: Watchdog = wc.clone().into();
                 watchdog.start();

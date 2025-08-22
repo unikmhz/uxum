@@ -30,7 +30,6 @@ where
 {
     type Service = RecordRequestIdService<S>;
 
-    #[must_use]
     fn layer(&self, inner: S) -> Self::Service {
         RecordRequestIdService::new(inner)
     }
