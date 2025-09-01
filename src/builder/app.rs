@@ -421,6 +421,12 @@ where
     /// Wrap router in global [`tower`] layers.
     fn wrap_global_layers(&self, rtr: Router, metrics: MetricsState) -> Router {
         // [`tower`] layers that are executed for any request.
+        let tracing_config = self.config.tracing.as_ref();
+        let include_headers = tracing_config.map_or(false, |t| t.include_headers());
+        let request_level =
+            tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
+        let response_level =
+            tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
@@ -428,13 +434,12 @@ where
             .layer(
                 // TODO: factor out tracing for GRPC.
                 TraceLayer::new_for_http()
-                    // TODO: allow customizing level() / include_headers().
-                    .make_span_with(CustomMakeSpan::new().include_headers(true))
-                    .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
+                    .make_span_with(CustomMakeSpan::new().include_headers(include_headers))
+                    .on_request(DefaultOnRequest::new().level(request_level))
                     .on_response(
                         DefaultOnResponse::new()
-                            .level(tracing::Level::INFO)
-                            .include_headers(true)
+                            .level(response_level)
+                            .include_headers(include_headers)
                             .latency_unit(LatencyUnit::Micros),
                     ),
             )

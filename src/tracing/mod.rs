@@ -65,6 +65,15 @@ pub struct TracingConfig {
     /// Batch span processor configuration.
     #[serde(default)]
     batch: TracingBatchConfig,
+    /// Include HTTP headers in tracing spans and responses.
+    #[serde(default = "crate::util::default_false")]
+    include_headers: bool,
+    /// Logging level for request tracing.
+    #[serde(default = "TracingConfig::default_request_level")]
+    request_level: LoggingLevel,
+    /// Logging level for response tracing.
+    #[serde(default = "TracingConfig::default_response_level")]
+    response_level: LoggingLevel,
 }
 
 impl Default for TracingConfig {
@@ -78,6 +87,9 @@ impl Default for TracingConfig {
             limits: TracingSpanLimits::default(),
             include: TracingIncludes::default(),
             batch: TracingBatchConfig::default(),
+            include_headers: false,
+            request_level: Self::default_request_level(),
+            response_level: Self::default_response_level(),
         }
     }
 }
@@ -164,6 +176,38 @@ impl TracingConfig {
                     .with_target("h2", Level::WARN)
                     .with_default(self.level),
             )
+    }
+
+    /// Get the value of `include_headers` configuration.
+    #[must_use]
+    pub fn include_headers(&self) -> bool {
+        self.include_headers
+    }
+
+    /// Default value for [`Self::request_level`].
+    #[must_use]
+    #[inline]
+    fn default_request_level() -> LoggingLevel {
+        LoggingLevel::Debug
+    }
+
+    /// Default value for [`Self::response_level`].
+    #[must_use]
+    #[inline]
+    fn default_response_level() -> LoggingLevel {
+        LoggingLevel::Info
+    }
+
+    /// Get the value of `request_level` configuration.
+    #[must_use]
+    pub fn request_level(&self) -> LoggingLevel {
+        self.request_level
+    }
+
+    /// Get the value of `response_level` configuration.
+    #[must_use]
+    pub fn response_level(&self) -> LoggingLevel {
+        self.response_level
     }
 }
 

@@ -24,6 +24,15 @@ pub(crate) fn default_true() -> bool {
     true
 }
 
+/// Helper function used for default boolean values in [`serde`].
+///
+/// Always returns `false`.
+#[must_use]
+#[inline]
+pub(crate) fn default_false() -> bool {
+    false
+}
+
 /// Response layer for adding an extension.
 #[derive(Debug, Clone, Copy, Default)]
 #[must_use]

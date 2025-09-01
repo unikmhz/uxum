@@ -12,6 +12,12 @@ use uxum::{
 
 /// Application entry point.
 fn main() -> Result<(), HandleError> {
+    // Setting up default crypto provider is required, because there are several
+    // of them available in the project.
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to set default crypto provider");
+
     // Load configuration from file.
     let mut config = ServiceConfig::builder()
         .with_file("examples/advanced_server/config.yaml")
