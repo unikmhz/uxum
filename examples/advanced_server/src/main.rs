@@ -3,6 +3,7 @@
 
 use std::{net::SocketAddr, time::Duration};
 
+use prometheus::register_counter_with_registry;
 use serde::{Deserialize, Serialize};
 use uxum::{
     prelude::*,
@@ -28,6 +29,7 @@ fn main() -> Result<(), HandleError> {
         .app
         .with_app_name("advanced_server")
         .with_app_version("1.2.3");
+
     // Build and start Tokio runtime.
     app_cfg
         .runtime
@@ -58,6 +60,15 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
+
+    // Registering custom metric directly in Prometheus registry.
+    let metrics = app_builder.metrics().expect("Failed to build metrics");
+    let registry = metrics.get_registry();
+    let opts = prometheus::Opts::new("custom_metric", "Custom metric");
+    let custom_metric =
+        register_counter_with_registry!(opts, registry).expect("Failed to register custom metric");
+    custom_metric.inc();
+
     // Initialize required states.
     let tracing_client = app_builder
         .http_client_or_default("tracing")

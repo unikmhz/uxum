@@ -499,6 +499,13 @@ impl MetricsState {
             metrics: self.http_client.clone(),
         }
     }
+
+    /// Get Prometheus registry. Can be used to add custom Prometheus metrics
+    /// in case OTel metrics are not suitable (i.e. external library only supports Prometheus).
+    #[must_use]
+    pub fn get_registry(&self) -> &Registry {
+        &self.registry
+    }
 }
 
 /// HTTP client metrics state object.
