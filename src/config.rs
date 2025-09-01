@@ -127,7 +127,7 @@ where
     pub fn with_env(self, prefix: impl AsRef<str>) -> Self {
         self.with_source(
             config::Environment::with_prefix(prefix.as_ref())
-                .separator("_")
+                .separator("__")
                 .prefix_separator("__"),
         )
     }
