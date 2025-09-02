@@ -157,6 +157,8 @@ pub(crate) struct ExtensibleJsonFormat<T = SystemTime> {
     display_current_span: bool,
     /// Static fields to add to output.
     static_fields: BTreeMap<String, Value>,
+    /// Parse environment variables in static fields
+    parse_env_in_static: bool,
     /// Custom names to use for JSON object keys.
     key_names: JsonKeyNames,
 }
@@ -175,6 +177,7 @@ impl Default for ExtensibleJsonFormat {
             flatten_event: false,
             display_current_span: true,
             static_fields: BTreeMap::new(),
+            parse_env_in_static: true,
             key_names: JsonKeyNames::default(),
         }
     }
@@ -279,7 +282,17 @@ where
             }
 
             for (key, val) in &self.static_fields {
-                ser.serialize_entry(key, val)?;
+                if !self.parse_env_in_static {
+                    ser.serialize_entry(key, val)?;
+                } else {
+                    match val.as_str() {
+                        Some(value) => {
+                            let value = std::env::var(value).unwrap_or(value.into());
+                            ser.serialize_entry(key, &value)?;
+                        }
+                        None => ser.serialize_entry(key, val)?
+                    }
+                }
             }
 
             ser.end()
@@ -327,6 +340,7 @@ impl<T> ExtensibleJsonFormat<T> {
             flatten_event: self.flatten_event,
             display_current_span: self.display_current_span,
             static_fields: self.static_fields,
+            parse_env_in_static: self.parse_env_in_static,
             key_names: self.key_names,
         }
     }
@@ -346,6 +360,7 @@ impl<T> ExtensibleJsonFormat<T> {
             flatten_event: self.flatten_event,
             display_current_span: self.display_current_span,
             static_fields: self.static_fields,
+            parse_env_in_static: self.parse_env_in_static,
             key_names: self.key_names,
         }
     }
@@ -444,6 +459,11 @@ impl<T> ExtensibleJsonFormat<T> {
     /// Set custom JSON field names.
     pub(crate) fn with_key_names(self, key_names: JsonKeyNames) -> Self {
         Self { key_names, ..self }
+    }
+
+    /// Sets whether formatter will attempt to parse values in static fields as env.
+    pub(crate) fn with_parse_env_in_static(self, parse_env_in_static: bool) -> Self {
+        Self { parse_env_in_static, ..self }
     }
 }
 

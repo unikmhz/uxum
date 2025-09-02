@@ -21,9 +21,10 @@ logging:
       flatten_metadata: true
       current_span: true
       static_fields:
-        env: dev
+        path: PATH
         something: something
         other: 42
+      parse_env_in_static: true
 metrics:
   labels:
     env: example
