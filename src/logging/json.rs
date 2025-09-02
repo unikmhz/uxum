@@ -286,11 +286,12 @@ where
                     ser.serialize_entry(key, val)?;
                 } else {
                     match val.as_str() {
-                        Some(value) => {
+                        Some(value) if value.starts_with('$') => {
+                            let value = value.strip_prefix('$').unwrap_or_default();
                             let value = std::env::var(value).unwrap_or(value.into());
                             ser.serialize_entry(key, &value)?;
                         }
-                        None => ser.serialize_entry(key, val)?,
+                        _ => ser.serialize_entry(key, val)?,
                     }
                 }
             }
