@@ -290,7 +290,7 @@ where
                             let value = std::env::var(value).unwrap_or(value.into());
                             ser.serialize_entry(key, &value)?;
                         }
-                        None => ser.serialize_entry(key, val)?
+                        None => ser.serialize_entry(key, val)?,
                     }
                 }
             }
@@ -463,7 +463,10 @@ impl<T> ExtensibleJsonFormat<T> {
 
     /// Sets whether formatter will attempt to parse values in static fields as env.
     pub(crate) fn with_parse_env_in_static(self, parse_env_in_static: bool) -> Self {
-        Self { parse_env_in_static, ..self }
+        Self {
+            parse_env_in_static,
+            ..self
+        }
     }
 }
 

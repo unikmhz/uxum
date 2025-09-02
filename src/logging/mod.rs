@@ -159,7 +159,7 @@ impl LoggingSubscriberConfig {
                 current_span,
                 ref static_fields,
                 ref key_names,
-                parse_env_in_static
+                parse_env_in_static,
             } => {
                 let json_fmt = ExtensibleJsonFormat::new()
                     .with_target(self.print.target)
