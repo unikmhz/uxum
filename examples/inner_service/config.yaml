@@ -21,8 +21,8 @@ logging:
       flatten_metadata: true
       current_span: true
       static_fields:
-        path: $PATH
-        something: something
+        user: $USER
+        something: $PATH, lol $KEK and $USER ($USER) 
         other: 42
       parse_env_in_static: true
 metrics:
