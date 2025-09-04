@@ -3,9 +3,9 @@
 
 use std::{net::SocketAddr, time::Duration};
 
-use prometheus::register_counter_with_registry;
 use serde::{Deserialize, Serialize};
 use uxum::{
+    crypto::ensure_default_crypto_provider,
     prelude::*,
     reexport::{problemdetails, reqwest, reqwest_middleware, tokio},
     GetResponseSchemas, ResponseSchema,
@@ -13,11 +13,7 @@ use uxum::{
 
 /// Application entry point.
 fn main() -> Result<(), HandleError> {
-    // Setting up default crypto provider is required, because there are several
-    // of them available in the project.
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .expect("Failed to set default crypto provider");
+    ensure_default_crypto_provider();
 
     // Load configuration from file.
     let mut config = ServiceConfig::builder()
@@ -29,7 +25,6 @@ fn main() -> Result<(), HandleError> {
         .app
         .with_app_name("advanced_server")
         .with_app_version("1.2.3");
-
     // Build and start Tokio runtime.
     app_cfg
         .runtime
@@ -60,15 +55,6 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
             .with_tag("tag1", Some("Some tag"), Some("http://example.com/tag1"))
             .with_tag("tag2", Some("Some other tag"), None::<&str>)
     });
-
-    // Registering custom metric directly in Prometheus registry.
-    let metrics = app_builder.metrics().expect("Failed to build metrics");
-    let registry = metrics.get_registry();
-    let opts = prometheus::Opts::new("custom_metric", "Custom metric");
-    let custom_metric =
-        register_counter_with_registry!(opts, registry).expect("Failed to register custom metric");
-    custom_metric.inc();
-
     // Initialize required states.
     let tracing_client = app_builder
         .http_client_or_default("tracing")

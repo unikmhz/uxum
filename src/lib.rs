@@ -26,6 +26,7 @@ mod apidoc;
 mod auth;
 mod builder;
 mod config;
+pub mod crypto;
 mod errors;
 mod handle;
 mod http_client;

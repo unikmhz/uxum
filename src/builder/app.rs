@@ -422,7 +422,7 @@ where
     fn wrap_global_layers(&self, rtr: Router, metrics: MetricsState) -> Router {
         // [`tower`] layers that are executed for any request.
         let tracing_config = self.config.tracing.as_ref();
-        let include_headers = tracing_config.map_or(false, |t| t.include_headers());
+        let include_headers = tracing_config.is_some_and(|t| t.include_headers());
         let request_level =
             tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
         let response_level =
