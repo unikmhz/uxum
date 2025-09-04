@@ -1,7 +1,8 @@
 //! Custom JSON formatter and writer for use in logging.
 
-use std::{borrow::Cow, collections::BTreeMap, fmt, io, marker::PhantomData};
+use std::{borrow::Cow, collections::BTreeMap, env, fmt, io, marker::PhantomData, sync::LazyLock};
 
+use regex::Regex;
 use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
 use serde_json::{Serializer as JsonSerializer, Value};
 use tracing::{Event, Subscriber};
@@ -15,6 +16,9 @@ use tracing_subscriber::{
     },
     registry::{LookupSpan, SpanRef},
 };
+
+static ENV_VAR_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
 
 /// Custom names JSON keys.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -434,7 +438,28 @@ impl<T> ExtensibleJsonFormat<T> {
     }
 
     /// Add static fields to generated JSON objects.
-    pub(crate) fn with_static_fields(self, static_fields: BTreeMap<String, Value>) -> Self {
+    pub(crate) fn with_static_fields(
+        self,
+        mut static_fields: BTreeMap<String, Value>,
+        parse_env: bool,
+    ) -> Self {
+        if parse_env {
+            let expand_env_vars = |input: &str| -> Value {
+                ENV_VAR_REGEX
+                    .replace_all(input, |caps: &regex::Captures<'_>| {
+                        let var_name = &caps[1];
+                        env::var(var_name).unwrap_or_else(|_| format!("${}", var_name))
+                    })
+                    .into()
+            };
+
+            for val in static_fields.values_mut() {
+                if let Some(value) = val.as_str() {
+                    *val = expand_env_vars(value);
+                }
+            }
+        }
+
         Self {
             static_fields,
             ..self

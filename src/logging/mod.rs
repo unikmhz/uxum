@@ -159,6 +159,7 @@ impl LoggingSubscriberConfig {
                 current_span,
                 ref static_fields,
                 ref key_names,
+                parse_env_in_static,
             } => {
                 let json_fmt = ExtensibleJsonFormat::new()
                     .with_target(self.print.target)
@@ -169,7 +170,7 @@ impl LoggingSubscriberConfig {
                     .with_thread_ids(self.print.thread_id)
                     .flatten_event(flatten_metadata)
                     .with_current_span(current_span)
-                    .with_static_fields(static_fields.clone())
+                    .with_static_fields(static_fields.clone(), parse_env_in_static)
                     .with_key_names(*key_names.clone());
                 layer.json().event_format(json_fmt).boxed()
             }
@@ -230,6 +231,9 @@ pub enum LoggingFormat {
         /// Custom names for JSON keys.
         #[serde(default)]
         key_names: Box<JsonKeyNames>,
+        /// Parse environment variables in static fields
+        #[serde(default)]
+        parse_env_in_static: bool,
     },
 }
 

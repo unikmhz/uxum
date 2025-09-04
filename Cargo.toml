@@ -75,6 +75,7 @@ problemdetails = { version = "0.5", features = ["axum"] }
 prometheus = "0.14"
 prost = { version = "0.13", optional = true }
 recloser = "1.1"
+regex = "1.11.2"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls-native-roots"] }
 reqwest-middleware = { version = "0.4", features = ["multipart", "json"] }
 reqwest-tracing = { version = "0.5.7", features = ["opentelemetry_0_29"] }
