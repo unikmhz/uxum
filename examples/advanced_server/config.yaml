@@ -46,6 +46,13 @@ tracing:
     inactivity: true
     thread_info: true
   level: TRACE
+  # Whether to include HTTP headers in tracing spans and logs. Can be helpful
+  # if sensitive data is present in headers (i.e. authentication data).
+  include_headers: false
+  # Level at which request start log is emitted
+  request_level: WARN
+  # Level at which request finish log is emitted
+  response_level: INFO
 http_clients:
   tracing:
     connect_timeout: 100ms

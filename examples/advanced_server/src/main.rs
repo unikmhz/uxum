@@ -5,6 +5,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use uxum::{
+    crypto::ensure_default_crypto_provider,
     prelude::*,
     reexport::{problemdetails, reqwest, reqwest_middleware, tokio},
     GetResponseSchemas, ResponseSchema,
@@ -12,6 +13,8 @@ use uxum::{
 
 /// Application entry point.
 fn main() -> Result<(), HandleError> {
+    ensure_default_crypto_provider();
+
     // Load configuration from file.
     let mut config = ServiceConfig::builder()
         .with_file("examples/advanced_server/config.yaml")

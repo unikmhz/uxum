@@ -287,6 +287,19 @@ impl From<LoggingLevel> for LevelFilter {
     }
 }
 
+impl From<LoggingLevel> for tracing::Level {
+    fn from(value: LoggingLevel) -> Self {
+        match value {
+            LoggingLevel::Off => tracing::Level::ERROR, // Map Off to ERROR as a reasonable default
+            LoggingLevel::Error => tracing::Level::ERROR,
+            LoggingLevel::Warn => tracing::Level::WARN,
+            LoggingLevel::Info => tracing::Level::INFO,
+            LoggingLevel::Debug => tracing::Level::DEBUG,
+            LoggingLevel::Trace => tracing::Level::TRACE,
+        }
+    }
+}
+
 /// Additional information to include in output.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]

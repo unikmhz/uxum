@@ -12,7 +12,8 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
-    builder::server::ServerBuilder, config::AppConfig, errors::IoError, notify::ServiceNotifier,
+    builder::server::ServerBuilder, config::AppConfig, crypto::ensure_default_crypto_provider,
+    errors::IoError, notify::ServiceNotifier,
 };
 
 /// Error type returned by uxum handle.
@@ -124,10 +125,7 @@ impl Handle {
     {
         //let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
         if server.has_tls_config() {
-            // TODO: make this call not fail on subsequent starts.
-            rustls::crypto::aws_lc_rs::default_provider()
-                .install_default()
-                .map_err(|_| HandleError::InitTls)?;
+            ensure_default_crypto_provider();
             self.https_task = Some(tokio::spawn(
                 server
                     .clone()
