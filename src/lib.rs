@@ -30,6 +30,8 @@ pub mod crypto;
 mod errors;
 mod handle;
 mod http_client;
+#[cfg(feature = "kafka")]
+mod kafka;
 mod layers;
 mod logging;
 mod metrics;
@@ -80,3 +82,6 @@ pub use self::{
     util::ResponseExtension,
     watchdog::WatchdogConfig,
 };
+
+#[cfg(feature = "kafka")]
+pub use self::kafka::{KafkaLogAppender, KafkaProducerConfig, LogProducerContext};

@@ -25,4 +25,5 @@ An opinionated backend service framework based on axum.
 ## Supported crate features
 
  * `grpc`: support nesting Tonic GRPC services inside Axum server instance.
+ * `kafka`: support writing logs to a Kafka topic.
  * `systemd`: enable systemd integration for service notifications and watchdog support (Linux only).
