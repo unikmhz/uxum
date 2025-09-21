@@ -1,5 +1,6 @@
 //! Centralized place to re-export dependency crates
 
+pub use askama;
 pub use axum;
 pub use axum_server;
 pub use bytes;

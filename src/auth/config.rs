@@ -3,20 +3,22 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::{Deref, DerefMut},
+    sync::OnceLock,
 };
 
-use argon2::{Argon2, PasswordVerifier};
-use password_hash::PasswordHashString;
+use password_hash::{PasswordHashString, PasswordVerifier};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
+
+static VERIFIERS: OnceLock<Vec<Box<dyn PasswordVerifier + Send + Sync>>> = OnceLock::new();
 
 /// User configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct UserConfig {
     /// User password value.
-    #[serde(flatten)]
-    pub password: UserPassword,
+    #[serde(default, flatten, skip_serializing_if = "Option::is_none")]
+    pub password: Option<UserPassword>,
     /// Roles that are granted to this user.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub roles: BTreeSet<String>,
@@ -43,14 +45,23 @@ pub enum UserPassword {
     Hashed(HashedPassword),
 }
 
-impl PartialEq<&str> for UserPassword {
-    fn eq(&self, other: &&str) -> bool {
+impl PartialEq<str> for UserPassword {
+    fn eq(&self, other: &str) -> bool {
         match self {
-            Self::Plaintext(pwd) => pwd.as_bytes().ct_eq(other.as_bytes()).into(),
-            // FIXME: generalize hash verification.
-            Self::Hashed(pwd) => Argon2::default()
-                .verify_password(other.as_bytes(), &pwd.password_hash())
-                .is_ok(),
+            Self::Plaintext(pwd) => other.as_bytes().ct_eq(pwd.as_bytes()).into(),
+            // FIXME: pre-parse hashes from configuration.
+            Self::Hashed(pwd) => {
+                let verifiers = VERIFIERS.get_or_init(|| vec![
+                    #[cfg(feature = "hash_argon2")]
+                    Box::new(argon2::Argon2::default()),
+                    #[cfg(feature = "hash_pbkdf2")]
+                    Box::new(pbkdf2::Pbkdf2),
+                    #[cfg(feature = "hash_scrypt")]
+                    Box::new(scrypt::Scrypt),
+                ]);
+                let verifiers = verifiers.iter().map(|v| v.as_ref() as &dyn PasswordVerifier).collect::<Vec<_>>();
+                pwd.password_hash().verify_password(verifiers.as_slice(), other.as_bytes()).is_ok()
+            }
         }
     }
 }

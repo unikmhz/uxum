@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use uxum::prelude::*;
+use uxum::{prelude::*, reexport::{axum_server::Handle, tokio}};
 
 /// Application entry point
 #[tokio::main]
@@ -36,7 +36,7 @@ async fn main() {
     // Build main application router
     let app = app_builder.build().expect("Unable to build app");
     // Create server handle
-    let handle = axum_server::Handle::new();
+    let handle = Handle::new();
     // Spawn signal handler
     config
         .server
