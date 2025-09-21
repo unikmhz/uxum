@@ -18,9 +18,9 @@ use tracing_subscriber::{
     registry::Registry,
 };
 
-use crate::logging::json::{ExtensibleJsonFormat, JsonKeyNames};
 #[cfg(feature = "kafka")]
 use crate::kafka::{KafkaLogAppender, KafkaProducerConfig};
+use crate::logging::json::{ExtensibleJsonFormat, JsonKeyNames};
 
 type LoggingRegistry = Layered<Vec<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
 

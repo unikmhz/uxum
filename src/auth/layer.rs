@@ -126,8 +126,8 @@ where
 
     fn call(&mut self, mut req: Request<Body>) -> Self::Future {
         let span = trace_span!("auth").entered();
-        // Extract user and/or auth tokens from request.
-        let (user, tokens) = match self.auth_extractor.extract_auth(&req) {
+        // Extract user and/or auth token from request.
+        let (user, token) = match self.auth_extractor.extract_auth(&req) {
             Ok(pair) => pair,
             Err(error) => {
                 warn!(cause = %error, "auth extraction error");
@@ -137,10 +137,7 @@ where
             }
         };
         // Authenticate user.
-        if let Err(error) = self
-            .auth_provider
-            .authenticate(user.as_ref(), &tokens)
-        {
+        if let Err(error) = self.auth_provider.authenticate(user.as_ref(), &token) {
             warn!(cause = %error, "authentication error");
             return AuthFuture::Negative {
                 error_response: Some(self.auth_extractor.error_response(error)),

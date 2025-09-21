@@ -1,6 +1,9 @@
 use std::net::SocketAddr;
 
-use uxum::{prelude::*, reexport::{axum_server::Handle, tokio}};
+use uxum::{
+    prelude::*,
+    reexport::{axum_server::Handle, tokio},
+};
 
 /// Application entry point
 #[tokio::main]

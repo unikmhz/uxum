@@ -18,14 +18,16 @@ use crate::auth::{
 static VERIFIERS: OnceLock<Vec<Box<dyn PasswordVerifier + Send + Sync>>> = OnceLock::new();
 
 fn get_verifiers() -> &'static Vec<Box<dyn PasswordVerifier + Send + Sync>> {
-    VERIFIERS.get_or_init(|| vec![
-        #[cfg(feature = "hash_argon2")]
-        Box::new(argon2::Argon2::default()),
-        #[cfg(feature = "hash_scrypt")]
-        Box::new(scrypt::Scrypt),
-        #[cfg(feature = "hash_pbkdf2")]
-        Box::new(pbkdf2::Pbkdf2),
-    ])
+    VERIFIERS.get_or_init(|| {
+        vec![
+            #[cfg(feature = "hash_argon2")]
+            Box::new(argon2::Argon2::default()),
+            #[cfg(feature = "hash_scrypt")]
+            Box::new(scrypt::Scrypt),
+            #[cfg(feature = "hash_pbkdf2")]
+            Box::new(pbkdf2::Pbkdf2),
+        ]
+    })
 }
 
 /// User configuration.
@@ -71,7 +73,9 @@ impl PartialEq<str> for UserPassword {
                     .iter()
                     .map(|v| v.as_ref() as &dyn PasswordVerifier)
                     .collect::<Vec<_>>();
-                pwd.password_hash().verify_password(verifiers.as_slice(), other.as_bytes()).is_ok()
+                pwd.password_hash()
+                    .verify_password(verifiers.as_slice(), other.as_bytes())
+                    .is_ok()
             }
         }
     }
@@ -136,9 +140,13 @@ impl ExtractorConfig {
         match self {
             Self::NoOp => Box::new(NoOpAuthExtractor),
             Self::Basic { realm } => Box::new(BasicAuthExtractor::new(realm.as_deref())),
-            Self::Header { user_header, token_header } => {
-                Box::new(HeaderAuthExtractor::new(user_header.as_deref(), token_header.as_deref()))
-            }
+            Self::Header {
+                user_header,
+                token_header,
+            } => Box::new(HeaderAuthExtractor::new(
+                user_header.as_deref(),
+                token_header.as_deref(),
+            )),
             Self::Jwt => todo!("JWT auth unimplemented"),
             Self::Stacked { .. } => todo!("Stacked auth unimplemented"),
         }

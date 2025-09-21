@@ -282,14 +282,10 @@ impl AppBuilder {
         }
 
         // Add probes and management mode API.
-        rtr = rtr.merge(
-            self.config
-                .probes
-                .build_router(
-                    clone_box(self.auth_provider.as_ref()),
-                    clone_box(self.auth_extractor.as_ref()),
-                ),
-        );
+        rtr = rtr.merge(self.config.probes.build_router(
+            clone_box(self.auth_provider.as_ref()),
+            clone_box(self.auth_extractor.as_ref()),
+        ));
 
         // A set to ensure uniqueness of handler names.
         let mut handler_names = HashSet::new();

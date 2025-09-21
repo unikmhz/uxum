@@ -9,7 +9,7 @@ mod token;
 mod user;
 
 pub use self::{
-    config::{AuthConfig, ExtractorConfig, RoleConfig, UserConfig, UserPassword},
+    config::{AuthConfig, ExtractorConfig, ProviderConfig, RoleConfig, UserConfig, UserPassword},
     errors::AuthError,
     extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
     layer::AuthLayer,

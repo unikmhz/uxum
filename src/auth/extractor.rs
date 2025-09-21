@@ -27,10 +27,7 @@ pub trait AuthExtractor: std::fmt::Debug + DynClone + Send + Sync + 'static {
     /// # Errors
     ///
     /// Returns `Err` if any preconditions for auth data extraction have not been met.
-    fn extract_auth(
-        &self,
-        req: &Request<Body>,
-    ) -> Result<(Option<UserId>, AuthToken), AuthError>;
+    fn extract_auth(&self, req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError>;
 
     /// Format error response from [`AuthError`].
     ///
@@ -50,10 +47,7 @@ pub trait AuthExtractor: std::fmt::Debug + DynClone + Send + Sync + 'static {
 pub struct NoOpAuthExtractor;
 
 impl AuthExtractor for NoOpAuthExtractor {
-    fn extract_auth(
-        &self,
-        _req: &Request<Body>,
-    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
+    fn extract_auth(&self, _req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError> {
         Ok((None, AuthToken::Absent))
     }
 
@@ -85,12 +79,11 @@ impl Default for BasicAuthExtractor {
 }
 
 impl AuthExtractor for BasicAuthExtractor {
-    fn extract_auth(
-        &self,
-        req: &Request<Body>,
-    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
+    fn extract_auth(&self, req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError> {
         match req.headers().get(AUTHORIZATION) {
-            Some(header) => Self::parse_header(header).map(|(user, pwd)| (Some(user.into()), pwd.into())),
+            Some(header) => {
+                Self::parse_header(header).map(|(user, pwd)| (Some(user.into()), pwd.into()))
+            }
             None => Err(AuthError::NoAuthProvided),
         }
     }
@@ -212,10 +205,7 @@ impl Default for HeaderAuthExtractor {
 }
 
 impl AuthExtractor for HeaderAuthExtractor {
-    fn extract_auth(
-        &self,
-        req: &Request<Body>,
-    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
+    fn extract_auth(&self, req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError> {
         let headers = req.headers();
         let user = match headers.get(self.user_header.as_ref()) {
             Some(header) => match header.to_str() {
@@ -272,7 +262,10 @@ impl AuthExtractor for HeaderAuthExtractor {
 
 impl HeaderAuthExtractor {
     /// Create new extractor, passing optional parameters.
-    pub fn new(user_header: Option<impl AsRef<str>>, token_header: Option<impl AsRef<str>>) -> Self {
+    pub fn new(
+        user_header: Option<impl AsRef<str>>,
+        token_header: Option<impl AsRef<str>>,
+    ) -> Self {
         let mut extractor = Self::default();
         if let Some(header) = user_header {
             extractor.user_header = Cow::Owned(header.as_ref().to_string());

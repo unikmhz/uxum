@@ -1,3 +1,5 @@
+//! AAA - authentication token object.
+
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Autoentication tokens to verify.
@@ -11,18 +13,6 @@ pub enum AuthToken {
     /// Plaintext password to compare with auth data provider.
     PlainPassword(String),
     // TODO: HashedPassword, SaltedHashedPassword, HmacPassword, CRAM/SCRAM/Digest?
-}
-
-impl AuthToken {
-    ///
-    pub fn compare_plaintext(&self, other: impl AsRef<str>) -> bool {
-        let other = other.as_ref();
-        match self {
-            Self::Absent => false,
-            Self::ExternallyVerified => true,
-            Self::PlainPassword(pwd) => pwd == other,
-        }
-    }
 }
 
 impl From<String> for AuthToken {

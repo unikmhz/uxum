@@ -1,9 +1,6 @@
 //! AAA - providers.
 
-use std::{
-    borrow::Borrow,
-    sync::Arc,
-};
+use std::{borrow::Borrow, sync::Arc};
 
 use dyn_clone::DynClone;
 
@@ -35,15 +32,15 @@ pub trait AuthProvider: std::fmt::Debug + DynClone + Send + Sync + 'static {
 pub struct NoOpAuthProvider;
 
 impl AuthProvider for NoOpAuthProvider {
-    fn authenticate(
-        &self,
-        _user: Option<&UserId>,
-        _token: &AuthToken,
-    ) -> Result<(), AuthError> {
+    fn authenticate(&self, _user: Option<&UserId>, _token: &AuthToken) -> Result<(), AuthError> {
         Ok(())
     }
 
-    fn authorize(&self, _user: Option<&UserId>, _permission: &'static str) -> Result<(), AuthError> {
+    fn authorize(
+        &self,
+        _user: Option<&UserId>,
+        _permission: &'static str,
+    ) -> Result<(), AuthError> {
         Ok(())
     }
 }
@@ -63,7 +60,11 @@ impl AuthProvider for ConfigAuthProvider {
             (_, AuthToken::Absent) => Err(AuthError::AuthFailed),
             (_, AuthToken::ExternallyVerified) => Ok(()),
             (Some(user_cfg), AuthToken::PlainPassword(pwd)) => {
-                if user_cfg.password.as_ref().is_some_and(|p| p == pwd.as_str()) {
+                if user_cfg
+                    .password
+                    .as_ref()
+                    .is_some_and(|p| p == pwd.as_str())
+                {
                     Ok(())
                 } else {
                     Err(AuthError::AuthFailed)
