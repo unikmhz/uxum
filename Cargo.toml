@@ -100,6 +100,7 @@ tracing-opentelemetry = "0.30"
 tracing-serde = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"] }
 url = { version = "2.5", features = ["serde"] }
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
 
 [features]
 default = ["hash_argon2"]

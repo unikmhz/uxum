@@ -5,6 +5,7 @@ mod errors;
 mod extractor;
 mod layer;
 mod provider;
+mod token;
 mod user;
 
 pub use self::{
@@ -13,5 +14,6 @@ pub use self::{
     extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
     layer::AuthLayer,
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
+    token::AuthToken,
     user::UserId,
 };

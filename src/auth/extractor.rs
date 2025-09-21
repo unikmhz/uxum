@@ -15,7 +15,7 @@ use okapi::{openapi3, Map};
 use tracing::error;
 
 use crate::{
-    auth::{errors::AuthError, user::UserId},
+    auth::{errors::AuthError, token::AuthToken, user::UserId},
     errors,
 };
 
@@ -96,14 +96,14 @@ impl Default for BasicAuthExtractor {
 
 impl AuthExtractor for BasicAuthExtractor {
     type User = UserId;
-    type AuthTokens = String;
+    type AuthTokens = AuthToken;
 
     fn extract_auth(
         &self,
         req: &Request<Body>,
     ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
         match req.headers().get(AUTHORIZATION) {
-            Some(header) => Self::parse_header(header).map(|(user, pwd)| (user.into(), pwd)),
+            Some(header) => Self::parse_header(header).map(|(user, pwd)| (user.into(), pwd.into())),
             None => Err(AuthError::NoAuthProvided),
         }
     }

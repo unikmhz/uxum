@@ -1,3 +1,5 @@
+//! Kafka configuration and utility functions.
+
 use std::{collections::HashMap, time::Duration};
 
 use rdkafka::{

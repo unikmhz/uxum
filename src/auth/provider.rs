@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::auth::{config::AuthConfig, errors::AuthError, user::UserId};
+use crate::auth::{config::AuthConfig, errors::AuthError, token::AuthToken, user::UserId};
 
 /// Authentication provider (back-end) trait.
 pub trait AuthProvider: Clone + Send {
@@ -65,18 +65,19 @@ pub struct ConfigAuthProvider {
 
 impl AuthProvider for ConfigAuthProvider {
     type User = UserId;
-    type AuthTokens = String;
+    type AuthTokens = AuthToken;
 
     fn authenticate(&self, user: &Self::User, tokens: &Self::AuthTokens) -> Result<(), AuthError> {
-        match self.config.user(user) {
-            Some(user_cfg) => {
-                if user_cfg.password == tokens.as_str() {
+        match (self.config.user(user), tokens) {
+            (_, AuthToken::ExternallyVerified) => Ok(()),
+            (Some(user_cfg), AuthToken::PlainPassword(pwd)) => {
+                if user_cfg.password.as_ref().is_some_and(|p| p == pwd.as_str()) {
                     Ok(())
                 } else {
                     Err(AuthError::AuthFailed)
                 }
             }
-            None => Err(AuthError::UserNotFound),
+            (None, _) => Err(AuthError::UserNotFound),
         }
     }
 
