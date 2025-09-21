@@ -1,7 +1,6 @@
 //! Service probe and maintenance mode API endpoints.
 
 use std::{
-    borrow::Borrow,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -92,17 +91,11 @@ impl ProbeConfig {
     }
 
     /// Build Axum router containing all probe and maintenance methods.
-    pub fn build_router<AuthProv, AuthExt>(
+    pub fn build_router(
         &self,
-        auth_provider: AuthProv,
-        auth_extractor: AuthExt,
-    ) -> Router
-    where
-        AuthProv: AuthProvider + Sync + 'static,
-        AuthExt: AuthExtractor + Sync + 'static,
-        AuthExt::User: Borrow<AuthProv::User>,
-        AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
-    {
+        auth_provider: Box<dyn AuthProvider>,
+        auth_extractor: Box<dyn AuthExtractor>,
+    ) -> Router {
         // TODO: add toggle for probes, and possibly for maintenance mode.
         let _span = debug_span!("build_probes").entered();
         let state = ProbeState::new(self.start_in_maintenance, self.watchdog.as_ref());

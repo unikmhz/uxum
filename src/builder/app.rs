@@ -2,7 +2,6 @@
 
 use std::{
     any::Any,
-    borrow::Borrow,
     collections::{BTreeMap, HashSet},
     convert::Infallible,
 };
@@ -18,6 +17,7 @@ use axum::{
     routing::{MethodRouter, Router},
     BoxError,
 };
+use dyn_clone::clone_box;
 use http::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
@@ -86,13 +86,13 @@ pub enum AppBuilderError {
 /// Builder for application routes.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
+pub struct AppBuilder {
     /// Authentication and authorization back-end.
-    auth_provider: AuthProv,
+    auth_provider: Box<dyn AuthProvider>,
     /// Authentication front-end.
     ///
     /// Handles protocol- and schema-specific message exchange.
-    auth_extractor: AuthExt,
+    auth_extractor: Box<dyn AuthExtractor>,
     /// Application configuration.
     config: AppConfig,
     /// Metrics container object.
@@ -104,9 +104,11 @@ pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> 
 
 impl From<AppConfig> for AppBuilder {
     fn from(value: AppConfig) -> Self {
+        let auth_provider = value.auth.make_provider();
+        let auth_extractor = value.auth.extractor.make_extractor();
         Self {
-            auth_provider: NoOpAuthProvider,
-            auth_extractor: NoOpAuthExtractor,
+            auth_provider,
+            auth_extractor,
             config: value,
             metrics: None,
             #[cfg(feature = "grpc")]
@@ -115,11 +117,11 @@ impl From<AppConfig> for AppBuilder {
     }
 }
 
-impl Default for AppBuilder<NoOpAuthProvider, NoOpAuthExtractor> {
+impl Default for AppBuilder {
     fn default() -> Self {
         Self {
-            auth_provider: NoOpAuthProvider,
-            auth_extractor: NoOpAuthExtractor,
+            auth_provider: Box::new(NoOpAuthProvider),
+            auth_extractor: Box::new(NoOpAuthExtractor),
             config: AppConfig::default(),
             metrics: None,
             #[cfg(feature = "grpc")]
@@ -140,78 +142,49 @@ impl AppBuilder {
     pub fn from_config(cfg: &AppConfig) -> Self {
         cfg.clone().into()
     }
-}
-
-impl<AuthProv, AuthExt> AppBuilder<AuthProv, AuthExt>
-where
-    AuthProv: AuthProvider + Sync + 'static,
-    AuthExt: AuthExtractor + Sync + 'static,
-    AuthExt::User: Borrow<AuthProv::User>,
-    AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
-{
-    /// Enable HTTP Basic authentication using built-in user and role databases.
-    #[must_use]
-    pub fn with_basic_auth(self) -> AppBuilder<ConfigAuthProvider, BasicAuthExtractor> {
-        AppBuilder {
-            auth_provider: self.config.auth.clone().into(),
-            auth_extractor: BasicAuthExtractor::default(),
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Enable header authentication using built-in user and role databases.
-    #[must_use]
-    pub fn with_header_auth(self) -> AppBuilder<ConfigAuthProvider, HeaderAuthExtractor> {
-        AppBuilder {
-            auth_provider: self.config.auth.clone().into(),
-            auth_extractor: HeaderAuthExtractor::default(),
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Set custom authentication extractor (front-end).
-    #[must_use]
-    pub fn with_auth_extractor<E: AuthExtractor>(
-        self,
-        auth_extractor: E,
-    ) -> AppBuilder<AuthProv, E> {
-        AppBuilder {
-            auth_provider: self.auth_provider,
-            auth_extractor,
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Set custom authentication provider (back-end).
-    #[must_use]
-    pub fn with_auth_provider<P: AuthProvider>(self, auth_provider: P) -> AppBuilder<P, AuthExt> {
-        AppBuilder {
-            auth_provider,
-            auth_extractor: self.auth_extractor,
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
 
     /// Create [`tower`] auth layer for use in a specific handler.
     #[must_use]
-    pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
+    pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S> {
         AuthLayer::new(
             perms,
-            self.auth_provider.clone(),
-            self.auth_extractor.clone(),
+            clone_box(self.auth_provider.as_ref()),
+            clone_box(self.auth_extractor.as_ref()),
         )
+    }
+
+    /// Set auth extractor directly.
+    ///
+    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    pub fn with_auth_extractor(&mut self, extractor: impl AuthExtractor) -> &mut Self {
+        self.auth_extractor = Box::new(extractor);
+        self
+    }
+
+    /// Set auth provider directly.
+    ///
+    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    pub fn with_auth_provider(&mut self, provider: impl AuthProvider) -> &mut Self {
+        self.auth_provider = Box::new(provider);
+        self
+    }
+
+    /// Configure application for HTTP Basic auth.
+    ///
+    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    pub fn with_basic_auth(&mut self) -> &mut Self {
+        self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
+        self.auth_extractor = Box::new(BasicAuthExtractor::new(None::<&str>));
+        self
+    }
+
+    /// Configure application for authentication via HTTP headers.
+    ///
+    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    pub fn with_header_auth(&mut self) -> &mut Self {
+        self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
+        self.auth_extractor = Box::new(HeaderAuthExtractor::new(None::<&str>, None::<&str>));
+        self
     }
 
     /// Set used API doc builder.
@@ -312,7 +285,10 @@ where
         rtr = rtr.merge(
             self.config
                 .probes
-                .build_router(self.auth_provider.clone(), self.auth_extractor.clone()),
+                .build_router(
+                    clone_box(self.auth_provider.as_ref()),
+                    clone_box(self.auth_extractor.as_ref()),
+                ),
         );
 
         // A set to ensure uniqueness of handler names.
@@ -584,37 +560,6 @@ where
         S::Future: Send + 'static,
     {
         self.grpc_services.add_service(svc);
-        self
-    }
-}
-
-impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor> {
-    /// Set realm used for HTTP authentication challenge.
-    ///
-    /// Default value is "auth".
-    #[must_use]
-    pub fn with_auth_realm(mut self, realm: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_realm(realm);
-        self
-    }
-}
-
-impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
-    /// Set user ID header name for use in authentication.
-    ///
-    /// Default value is "X-API-Name".
-    #[must_use]
-    pub fn with_user_header(mut self, name: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_user_header(name);
-        self
-    }
-
-    /// Set authenticating token header name for use in authentication.
-    ///
-    /// Default value is "X-API-Key".
-    #[must_use]
-    pub fn with_tokens_header(mut self, name: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_tokens_header(name);
         self
     }
 }

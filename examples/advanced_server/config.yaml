@@ -64,6 +64,10 @@ http_clients:
       half_open_len: 3
       open_wait: 10s
 auth:
+  extractor:
+    type: basic
+  provider:
+    type: config
   users:
     test:
       password: test

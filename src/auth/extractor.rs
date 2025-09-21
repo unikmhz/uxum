@@ -11,6 +11,7 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use dyn_clone::DynClone;
 use okapi::{openapi3, Map};
 use tracing::error;
 
@@ -20,15 +21,7 @@ use crate::{
 };
 
 /// Authentication extractor (front-end) trait.
-pub trait AuthExtractor: Clone + Send {
-    /// User ID type.
-    ///
-    /// Passed to auth provider (back-end) for authentication and authorization.
-    /// On successful authentication it is injected into request as an extension.
-    type User: Clone + Send + Sync + 'static;
-    /// Authentication data type.
-    type AuthTokens;
-
+pub trait AuthExtractor: std::fmt::Debug + DynClone + Send + Sync + 'static {
     /// Extract user ID and authentication data from request.
     ///
     /// # Errors
@@ -37,7 +30,7 @@ pub trait AuthExtractor: Clone + Send {
     fn extract_auth(
         &self,
         req: &Request<Body>,
-    ) -> Result<(Self::User, Self::AuthTokens), AuthError>;
+    ) -> Result<(Option<UserId>, AuthToken), AuthError>;
 
     /// Format error response from [`AuthError`].
     ///
@@ -57,14 +50,11 @@ pub trait AuthExtractor: Clone + Send {
 pub struct NoOpAuthExtractor;
 
 impl AuthExtractor for NoOpAuthExtractor {
-    type User = ();
-    type AuthTokens = ();
-
     fn extract_auth(
         &self,
         _req: &Request<Body>,
-    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
-        Ok(((), ()))
+    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
+        Ok((None, AuthToken::Absent))
     }
 
     fn error_response(&self, err: AuthError) -> Response<Body> {
@@ -95,15 +85,12 @@ impl Default for BasicAuthExtractor {
 }
 
 impl AuthExtractor for BasicAuthExtractor {
-    type User = UserId;
-    type AuthTokens = AuthToken;
-
     fn extract_auth(
         &self,
         req: &Request<Body>,
-    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
+    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
         match req.headers().get(AUTHORIZATION) {
-            Some(header) => Self::parse_header(header).map(|(user, pwd)| (user.into(), pwd.into())),
+            Some(header) => Self::parse_header(header).map(|(user, pwd)| (Some(user.into()), pwd.into())),
             None => Err(AuthError::NoAuthProvided),
         }
     }
@@ -154,8 +141,18 @@ impl BasicAuthExtractor {
     /// Name of authentication scheme.
     const SCHEME: &'static str = "Basic";
 
+    /// Create new extractor, passing optional parameters.
+    pub fn new(realm: Option<impl AsRef<str>>) -> Self {
+        match realm {
+            Some(realm) => Self {
+                www_auth: Cow::Owned(Self::format_www_authenticate(realm)),
+            },
+            None => Default::default(),
+        }
+    }
+
     /// Format value of `WWW-Authenticate` header.
-    fn format_www_authenticate(&self, realm: impl AsRef<str>) -> String {
+    fn format_www_authenticate(realm: impl AsRef<str>) -> String {
         // TODO: escape realm
         format!(
             r#"{} realm="{}", charset="UTF-8""#,
@@ -188,7 +185,7 @@ impl BasicAuthExtractor {
 
     /// Set realm used for HTTP authentication challenge.
     pub fn set_realm(&mut self, realm: impl AsRef<str>) {
-        self.www_auth = Cow::Owned(self.format_www_authenticate(realm));
+        self.www_auth = Cow::Owned(Self::format_www_authenticate(realm));
     }
 }
 
@@ -202,26 +199,23 @@ pub struct HeaderAuthExtractor {
     /// Header name for user authentication info.
     ///
     /// Default is "X-API-Key".
-    tokens_header: Cow<'static, str>,
+    token_header: Cow<'static, str>,
 }
 
 impl Default for HeaderAuthExtractor {
     fn default() -> Self {
         Self {
             user_header: Cow::Borrowed("X-API-Name"),
-            tokens_header: Cow::Borrowed("X-API-Key"),
+            token_header: Cow::Borrowed("X-API-Key"),
         }
     }
 }
 
 impl AuthExtractor for HeaderAuthExtractor {
-    type User = UserId;
-    type AuthTokens = String;
-
     fn extract_auth(
         &self,
         req: &Request<Body>,
-    ) -> Result<(Self::User, Self::AuthTokens), AuthError> {
+    ) -> Result<(Option<UserId>, AuthToken), AuthError> {
         let headers = req.headers();
         let user = match headers.get(self.user_header.as_ref()) {
             Some(header) => match header.to_str() {
@@ -230,14 +224,14 @@ impl AuthExtractor for HeaderAuthExtractor {
             },
             None => return Err(AuthError::NoAuthProvided),
         };
-        let tokens = match headers.get(self.tokens_header.as_ref()) {
+        let token = match headers.get(self.token_header.as_ref()) {
             Some(header) => match header.to_str() {
                 Ok(user) => user.to_string(),
                 Err(_) => return Err(AuthError::InvalidAuthPayload),
             },
             None => return Err(AuthError::NoAuthProvided),
         };
-        Ok((user, tokens))
+        Ok((Some(user), token.into()))
     }
 
     fn error_response(&self, err: AuthError) -> Response<Body> {
@@ -267,7 +261,7 @@ impl AuthExtractor for HeaderAuthExtractor {
             "api-key".into() => openapi3::SecurityScheme {
                 description: Some("API key".into()),
                 data: openapi3::SecuritySchemeData::ApiKey {
-                    name: self.tokens_header.to_string(),
+                    name: self.token_header.to_string(),
                     location: "header".into(),
                 },
                 extensions: Map::default(),
@@ -277,13 +271,25 @@ impl AuthExtractor for HeaderAuthExtractor {
 }
 
 impl HeaderAuthExtractor {
+    /// Create new extractor, passing optional parameters.
+    pub fn new(user_header: Option<impl AsRef<str>>, token_header: Option<impl AsRef<str>>) -> Self {
+        let mut extractor = Self::default();
+        if let Some(header) = user_header {
+            extractor.user_header = Cow::Owned(header.as_ref().to_string());
+        }
+        if let Some(header) = token_header {
+            extractor.token_header = Cow::Owned(header.as_ref().to_string());
+        }
+        extractor
+    }
+
     /// Set user ID header name.
     pub fn set_user_header(&mut self, name: impl AsRef<str>) {
         self.user_header = Cow::Owned(name.as_ref().into());
     }
 
     /// Set authenticating token header name.
-    pub fn set_tokens_header(&mut self, name: impl AsRef<str>) {
-        self.tokens_header = Cow::Owned(name.as_ref().into());
+    pub fn set_token_header(&mut self, name: impl AsRef<str>) {
+        self.token_header = Cow::Owned(name.as_ref().into());
     }
 }

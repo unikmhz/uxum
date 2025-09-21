@@ -1,19 +1,16 @@
 //! AAA - providers.
 
-use std::sync::Arc;
+use std::{
+    borrow::Borrow,
+    sync::Arc,
+};
+
+use dyn_clone::DynClone;
 
 use crate::auth::{config::AuthConfig, errors::AuthError, token::AuthToken, user::UserId};
 
 /// Authentication provider (back-end) trait.
-pub trait AuthProvider: Clone + Send {
-    /// User ID type.
-    ///
-    /// Acquired from auth extractor (front-end) for authentication and authorization.
-    /// On successful authentication it is injected into request as an extension.
-    type User: Clone + Send + Sync + 'static;
-    /// Authentication data type.
-    type AuthTokens;
-
+pub trait AuthProvider: std::fmt::Debug + DynClone + Send + Sync + 'static {
     /// Authenticate the request.
     ///
     /// This checks if user exists, and verifies that any passed auth tokens are valid.
@@ -21,7 +18,7 @@ pub trait AuthProvider: Clone + Send {
     /// # Errors
     ///
     /// Returns `Err` if user authentication failed, or on other error condition.
-    fn authenticate(&self, user: &Self::User, tokens: &Self::AuthTokens) -> Result<(), AuthError>;
+    fn authenticate(&self, user: Option<&UserId>, token: &AuthToken) -> Result<(), AuthError>;
 
     /// Authorize the request.
     ///
@@ -30,7 +27,7 @@ pub trait AuthProvider: Clone + Send {
     /// # Errors
     ///
     /// Returns `Err` if permission check is unsuccessful, or on other error condition.
-    fn authorize(&self, user: &Self::User, permission: &'static str) -> Result<(), AuthError>;
+    fn authorize(&self, user: Option<&UserId>, permission: &'static str) -> Result<(), AuthError>;
 }
 
 /// Authentication provider (back-end) which does nothing.
@@ -38,18 +35,15 @@ pub trait AuthProvider: Clone + Send {
 pub struct NoOpAuthProvider;
 
 impl AuthProvider for NoOpAuthProvider {
-    type User = ();
-    type AuthTokens = ();
-
     fn authenticate(
         &self,
-        _user: &Self::User,
-        _tokens: &Self::AuthTokens,
+        _user: Option<&UserId>,
+        _token: &AuthToken,
     ) -> Result<(), AuthError> {
         Ok(())
     }
 
-    fn authorize(&self, _user: &Self::User, _permission: &'static str) -> Result<(), AuthError> {
+    fn authorize(&self, _user: Option<&UserId>, _permission: &'static str) -> Result<(), AuthError> {
         Ok(())
     }
 }
@@ -64,11 +58,9 @@ pub struct ConfigAuthProvider {
 }
 
 impl AuthProvider for ConfigAuthProvider {
-    type User = UserId;
-    type AuthTokens = AuthToken;
-
-    fn authenticate(&self, user: &Self::User, tokens: &Self::AuthTokens) -> Result<(), AuthError> {
-        match (self.config.user(user), tokens) {
+    fn authenticate(&self, user: Option<&UserId>, token: &AuthToken) -> Result<(), AuthError> {
+        match (self.config.user(user.map(|u| u.borrow())), token) {
+            (_, AuthToken::Absent) => Err(AuthError::AuthFailed),
             (_, AuthToken::ExternallyVerified) => Ok(()),
             (Some(user_cfg), AuthToken::PlainPassword(pwd)) => {
                 if user_cfg.password.as_ref().is_some_and(|p| p == pwd.as_str()) {
@@ -81,9 +73,9 @@ impl AuthProvider for ConfigAuthProvider {
         }
     }
 
-    fn authorize(&self, user: &Self::User, permission: &'static str) -> Result<(), AuthError> {
+    fn authorize(&self, user: Option<&UserId>, permission: &'static str) -> Result<(), AuthError> {
         // TODO: combine with authentication to avoid double lookup
-        match self.config.user(user) {
+        match self.config.user(user.map(|u| u.borrow())) {
             Some(user_cfg) => {
                 for role in &user_cfg.roles {
                     if let Some(role_cfg) = self.config.roles.get(role) {

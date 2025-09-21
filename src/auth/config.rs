@@ -10,7 +10,23 @@ use password_hash::{PasswordHashString, PasswordVerifier};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
+use crate::auth::{
+    extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
+    provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
+};
+
 static VERIFIERS: OnceLock<Vec<Box<dyn PasswordVerifier + Send + Sync>>> = OnceLock::new();
+
+fn get_verifiers() -> &'static Vec<Box<dyn PasswordVerifier + Send + Sync>> {
+    VERIFIERS.get_or_init(|| vec![
+        #[cfg(feature = "hash_argon2")]
+        Box::new(argon2::Argon2::default()),
+        #[cfg(feature = "hash_scrypt")]
+        Box::new(scrypt::Scrypt),
+        #[cfg(feature = "hash_pbkdf2")]
+        Box::new(pbkdf2::Pbkdf2),
+    ])
+}
 
 /// User configuration.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -51,15 +67,10 @@ impl PartialEq<str> for UserPassword {
             Self::Plaintext(pwd) => other.as_bytes().ct_eq(pwd.as_bytes()).into(),
             // FIXME: pre-parse hashes from configuration.
             Self::Hashed(pwd) => {
-                let verifiers = VERIFIERS.get_or_init(|| vec![
-                    #[cfg(feature = "hash_argon2")]
-                    Box::new(argon2::Argon2::default()),
-                    #[cfg(feature = "hash_pbkdf2")]
-                    Box::new(pbkdf2::Pbkdf2),
-                    #[cfg(feature = "hash_scrypt")]
-                    Box::new(scrypt::Scrypt),
-                ]);
-                let verifiers = verifiers.iter().map(|v| v.as_ref() as &dyn PasswordVerifier).collect::<Vec<_>>();
+                let verifiers = get_verifiers()
+                    .iter()
+                    .map(|v| v.as_ref() as &dyn PasswordVerifier)
+                    .collect::<Vec<_>>();
                 pwd.password_hash().verify_password(verifiers.as_slice(), other.as_bytes()).is_ok()
             }
         }
@@ -78,6 +89,62 @@ pub struct RoleConfig {
     pub super_user: bool,
 }
 
+/// Auth provider (back-end) configuration.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProviderConfig {
+    /// No provider.
+    #[default]
+    NoOp,
+    /// Get user and role information from [`AuthConfig`] struct.
+    Config,
+}
+
+/// Auth extractor (front-end) configuration.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ExtractorConfig {
+    /// No extractor.
+    #[default]
+    NoOp,
+    /// Extract credentials using HTTP Basic.
+    Basic {
+        /// Custom realm to use for HTTP Basic auth, if any.
+        realm: Option<String>,
+    },
+    /// Extract credentials using (configurable) HTTP headers.
+    Header {
+        /// Custom user HTTP header to use, if any.
+        user_header: Option<String>,
+        /// Custom token HTTP header to use, if any.
+        token_header: Option<String>,
+    },
+    /// Extract credentials using HTTP Bearer containing a JWT.
+    Jwt,
+    /// Use several extractors, trying each one in sequence until there is success.
+    Stacked {
+        /// Contents of the extractor stack.
+        extractors: Vec<ExtractorConfig>,
+    },
+}
+
+impl ExtractorConfig {
+    /// Construct an extractor based on configuration.
+    pub fn make_extractor(&self) -> Box<dyn AuthExtractor> {
+        match self {
+            Self::NoOp => Box::new(NoOpAuthExtractor),
+            Self::Basic { realm } => Box::new(BasicAuthExtractor::new(realm.as_deref())),
+            Self::Header { user_header, token_header } => {
+                Box::new(HeaderAuthExtractor::new(user_header.as_deref(), token_header.as_deref()))
+            }
+            Self::Jwt => todo!("JWT auth unimplemented"),
+            Self::Stacked { .. } => todo!("Stacked auth unimplemented"),
+        }
+    }
+}
+
 /// Authentication provider configuration.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
@@ -88,12 +155,26 @@ pub struct AuthConfig {
     /// Role dictionary.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub roles: BTreeMap<String, RoleConfig>,
+    /// Configuration for auth data provider to use.
+    #[serde(default)]
+    pub provider: ProviderConfig,
+    /// Configuration for credentials extractor in use.
+    #[serde(default)]
+    pub extractor: ExtractorConfig,
 }
 
 impl AuthConfig {
     /// Find and return user by name.
-    pub fn user(&self, name: &str) -> Option<&UserConfig> {
-        self.users.get(name)
+    pub fn user(&self, name: Option<&str>) -> Option<&UserConfig> {
+        name.and_then(|n| self.users.get(n))
+    }
+
+    /// Construct a provider based on configuration.
+    pub fn make_provider(&self) -> Box<dyn AuthProvider> {
+        match self.provider {
+            ProviderConfig::NoOp => Box::new(NoOpAuthProvider),
+            ProviderConfig::Config => Box::new(ConfigAuthProvider::from(self.clone())),
+        }
     }
 }
 

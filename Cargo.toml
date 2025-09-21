@@ -48,6 +48,7 @@ base64 = "0.22"
 bytes = { version = "1.10", features = ["serde"] }
 config = { version = "0.15", features = ["yaml"] }
 dashmap = "6.1"
+dyn-clone = "1.0"
 forwarded-header-value = "0.1"
 futures = "0.3"
 gettid = "0.1"
