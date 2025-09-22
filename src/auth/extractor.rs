@@ -2,13 +2,13 @@
 
 #[cfg(feature = "jwt")]
 use std::collections::HashMap;
-use std::{borrow::Cow, collections::BTreeMap};
+use std::{borrow::Cow, collections::BTreeMap, str::FromStr};
 
 use axum::{
     body::Body,
     http::{
         header::{AUTHORIZATION, WWW_AUTHENTICATE},
-        HeaderValue, Request, Response, StatusCode,
+        HeaderName, HeaderValue, Request, Response, StatusCode,
     },
     response::IntoResponse,
 };
@@ -47,6 +47,11 @@ pub trait AuthExtractor: std::fmt::Debug + DynClone + Send + Sync + 'static {
     #[must_use]
     fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
         BTreeMap::new()
+    }
+
+    /// Additional list of HTTP headers to hide in logs and traces.
+    fn sensitive_headers(&self) -> Vec<HeaderName> {
+        vec![]
     }
 }
 
@@ -264,6 +269,13 @@ impl AuthExtractor for HeaderAuthExtractor {
                 },
                 extensions: Map::default(),
             },
+        }
+    }
+
+    fn sensitive_headers(&self) -> Vec<HeaderName> {
+        match HeaderName::from_str(self.token_header.as_ref()) {
+            Ok(hdr) => vec![hdr],
+            _ => vec![],
         }
     }
 }
@@ -498,6 +510,14 @@ impl AuthExtractor for StackedAuthExtractor {
             map.append(&mut ex.security_schemes());
         }
         map
+    }
+
+    fn sensitive_headers(&self) -> Vec<HeaderName> {
+        let mut list = Vec::new();
+        for ex in &self.extractors {
+            list.append(&mut ex.sensitive_headers());
+        }
+        list
     }
 }
 

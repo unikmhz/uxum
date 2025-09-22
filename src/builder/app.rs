@@ -413,10 +413,12 @@ impl AppBuilder {
             tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
         let response_level =
             tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
+        let mut sensitive_headers = vec![header::AUTHORIZATION];
+        sensitive_headers.append(&mut self.auth_extractor.sensitive_headers());
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
-            .sensitive_headers([header::AUTHORIZATION])
+            .sensitive_headers(sensitive_headers)
             .layer(
                 // TODO: factor out tracing for GRPC.
                 TraceLayer::new_for_http()
