@@ -81,7 +81,7 @@ reqwest-middleware = { version = "0.4", features = ["multipart", "json"] }
 reqwest-tracing = { version = "0.5.7", features = ["opentelemetry_0_29"] }
 subtle = "2.5"
 rustls = { version = "0.23", features = ["std", "aws_lc_rs", "custom-provider"] }
-schemars = { version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"] }
+schemars = { version = "1.0", features = ["bytes", "chrono", "preserve_order", "semver", "url"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"] }
 socket2 = { version = "0.5" }
