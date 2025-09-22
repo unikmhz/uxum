@@ -1,5 +1,7 @@
 //! AAA - extractors.
 
+#[cfg(feature = "jwt")]
+use std::collections::HashMap;
 use std::{borrow::Cow, collections::BTreeMap};
 
 use axum::{
@@ -11,8 +13,14 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+#[cfg(feature = "jwt")]
+use deboog::Deboog;
 use dyn_clone::DynClone;
+#[cfg(feature = "jwt")]
+use jsonwebtoken as jwt;
 use okapi::{openapi3, Map};
+#[cfg(feature = "jwt")]
+use serde_json::Value;
 use tracing::error;
 
 use crate::{
@@ -284,5 +292,162 @@ impl HeaderAuthExtractor {
     /// Set authenticating token header name.
     pub fn set_token_header(&mut self, name: impl AsRef<str>) {
         self.token_header = Cow::Owned(name.as_ref().into());
+    }
+}
+
+/// Authentication extractor (front-end) for HTTP Bearer authentication using signed JWT.
+#[cfg(feature = "jwt")]
+#[derive(Clone, Deboog)]
+pub struct JwtAuthExtractor {
+    /// Decoding key.
+    #[deboog(skip)]
+    key: jwt::DecodingKey,
+    /// JWT validation configuration.
+    validation: jwt::Validation,
+    /// Value to use for `WWW-Authenticate` header.
+    ///
+    /// Default value uses "auth" string as a realm.
+    www_auth: Cow<'static, str>,
+}
+
+#[cfg(feature = "jwt")]
+impl AuthExtractor for JwtAuthExtractor {
+    fn extract_auth(&self, req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError> {
+        match req.headers().get(AUTHORIZATION) {
+            Some(header) => {
+                let claims = self.parse_header(header)?;
+                // TODO: customize user ID location inside claims.
+                // TODO: parse user ID from formatted field, stripping out prefixes/suffixes.
+                let user = claims.get("sub").and_then(|v| match v {
+                    Value::String(s) => Some(s.as_str().into()),
+                    Value::Number(n) => Some(n.to_string().into()),
+                    _ => None,
+                });
+                Ok((user, AuthToken::ExternallyVerified))
+            }
+            None => Err(AuthError::NoAuthProvided),
+        }
+    }
+
+    fn error_response(&self, err: AuthError) -> Response<Body> {
+        let status = match err {
+            AuthError::NoAuthProvided | AuthError::UserNotFound | AuthError::AuthFailed => {
+                StatusCode::UNAUTHORIZED
+            }
+            AuthError::NoPermission(_) => StatusCode::FORBIDDEN,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        let mut resp = problemdetails::new(status)
+            .with_type(errors::TAG_UXUM_AUTH)
+            .with_title(err.to_string())
+            .into_response();
+        if status == StatusCode::UNAUTHORIZED {
+            let header_value = match HeaderValue::from_str(&self.www_auth) {
+                Ok(val) => val,
+                Err(err) => {
+                    return problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+                        .with_type(errors::TAG_UXUM_AUTH)
+                        .with_title("Invalid HTTP Basic realm value")
+                        .with_detail(err.to_string())
+                        .into_response()
+                }
+            };
+            let _ = resp.headers_mut().insert(WWW_AUTHENTICATE, header_value);
+        }
+        resp
+    }
+
+    fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
+        maplit::btreemap! {
+            "bearer".into() => openapi3::SecurityScheme {
+                description: Some("HTTP Bearer authentication".into()),
+                data: openapi3::SecuritySchemeData::Http {
+                    scheme: "bearer".into(),
+                    bearer_format: Some("JWT".into()),
+                },
+                extensions: Map::default(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "jwt")]
+impl JwtAuthExtractor {
+    /// Name of authentication scheme.
+    const SCHEME: &'static str = "Bearer";
+
+    /// Create new extractor.
+    pub fn new(
+        realm: Option<impl AsRef<str>>,
+        key: jwt::DecodingKey,
+        validation: jwt::Validation,
+    ) -> Self {
+        let www_auth = match realm {
+            Some(realm) => Cow::Owned(Self::format_www_authenticate(realm)),
+            None => Cow::Borrowed(r#"Bearer realm="auth", charset="UTF-8""#),
+        };
+        Self {
+            key,
+            validation,
+            www_auth,
+        }
+    }
+
+    /// Format value of `WWW-Authenticate` header.
+    fn format_www_authenticate(realm: impl AsRef<str>) -> String {
+        // TODO: escape realm
+        format!(
+            r#"{} realm="{}", charset="UTF-8""#,
+            Self::SCHEME,
+            realm.as_ref()
+        )
+    }
+
+    /// Parse `Authorization` header into token value.
+    fn parse_header(&self, header: &HeaderValue) -> Result<HashMap<String, Value>, AuthError> {
+        let Ok(header) = header.to_str() else {
+            return Err(AuthError::InvalidAuthHeader);
+        };
+        match header.split_once(' ') {
+            Some((scheme, payload)) if scheme.eq_ignore_ascii_case(Self::SCHEME) => {
+                self.parse_payload(payload)
+            }
+            Some((scheme, _)) => Err(AuthError::UnknownAuthScheme(scheme.to_string())),
+            None => Err(AuthError::InvalidAuthHeader),
+        }
+    }
+
+    /// Parse base64-encoded credentials into plaintext username and password.
+    fn parse_payload(&self, payload: &str) -> Result<HashMap<String, Value>, AuthError> {
+        use jwt::errors::ErrorKind;
+        // TODO: maybe use spawn_blocking? crypto can be resource-intensive.
+        match jwt::decode(payload, &self.key, &self.validation) {
+            Ok(token) => Ok(token.claims),
+            // TODO: maybe add more AuthError variants?
+            Err(err) => match err.kind() {
+                ErrorKind::InvalidSignature => Err(AuthError::AuthFailed),
+                ErrorKind::ExpiredSignature => Err(AuthError::AuthFailed),
+                _ => Err(AuthError::InvalidAuthPayload),
+            },
+        }
+    }
+
+    /// Set realm used for HTTP authentication challenge.
+    pub fn set_realm(&mut self, realm: impl AsRef<str>) {
+        self.www_auth = Cow::Owned(Self::format_www_authenticate(realm));
+    }
+
+    /// Set JWT decoding key.
+    ///
+    /// See [`jsonwebtoken::DecodingKey`].
+    pub fn set_key(&mut self, key: jwt::DecodingKey) {
+        self.key = key;
+    }
+
+    /// Set JWT validation parameters.
+    ///
+    /// See [`jsonwebtoken::Validation`].
+    pub fn set_validation(&mut self, valid: jwt::Validation) {
+        self.validation = valid;
     }
 }

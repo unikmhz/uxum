@@ -29,5 +29,6 @@ An opinionated backend service framework based on axum.
  * `hash_pbkdf2`: support PHC user password hashes using [PBKDF2](https://docs.rs/pbkdf2) and HMAC-SHA256/512 algorithm.
  * `hash_scrypt`: support PHC user password hashes using [SCrypt](https://docs.rs/scrypt) algorithm.
  * `hash_all`: alias for `hash_argon2` + `hash_pbkdf2` + `hash_scrypt`.
+ * `jwt`: support athentication via HTTP Bearer using [JWT](https://datatracker.ietf.org/doc/html/rfc7519).
  * `kafka`: support writing logs to a Kafka topic.
  * `systemd`: enable systemd integration for service notifications and watchdog support (Linux only).

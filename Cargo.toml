@@ -48,6 +48,7 @@ base64 = "0.22"
 bytes = { version = "1.10", features = ["serde"] }
 config = { version = "0.15", features = ["yaml"] }
 dashmap = "6.1"
+deboog = "0.2"
 dyn-clone = "1.0"
 forwarded-header-value = "0.1"
 futures = "0.3"
@@ -59,6 +60,7 @@ hyper = { version = "1.6", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["http1", "http2", "server"] }
 inventory = "0.3"
 iso8601-duration = "0.2"
+jsonwebtoken = { version = "9", features = ["use_pem"], optional = true }
 maplit = "1.0"
 mime = "0.3"
 okapi = { version = "0.7", features = ["preserve_order"] }
@@ -105,12 +107,14 @@ zeroize = { version = "1.8", features = ["zeroize_derive"] }
 
 [features]
 default = ["hash_argon2"]
+full = ["grpc", "hash_all", "jwt", "kafka", "systemd"]
 
 grpc = ["dep:prost", "dep:tonic"]
 hash_argon2 = ["dep:argon2"]
 hash_pbkdf2 = ["dep:pbkdf2"]
 hash_scrypt = ["dep:scrypt"]
 hash_all = ["hash_argon2", "hash_pbkdf2", "hash_scrypt"]
+jwt = ["dep:jsonwebtoken"]
 kafka = ["dep:rdkafka"]
 systemd = ["dep:libsystemd"]
 

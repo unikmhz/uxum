@@ -26,7 +26,7 @@ async fn main() {
     // Create app builder from app config
     //
     // Also enable the auth subsystem.
-    let mut app_builder = AppBuilder::from_config(app_cfg);
+    let mut app_builder = AppBuilder::from_config(app_cfg).expect("Unable to create app builder");
     // Some hard-coded parameters for built-in API documentation
     app_builder.configure_api_doc(|api_doc| {
         api_doc

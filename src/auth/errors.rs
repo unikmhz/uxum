@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::errors::IoError;
+
 /// Error type used in authentication and authorization layer.
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
@@ -39,4 +41,17 @@ pub enum AuthError {
     /// User does not have permission.
     #[error("User does not have permission: {0}")]
     NoPermission(&'static str),
+}
+
+/// Error on setting up authentication framework.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum AuthSetupError {
+    /// Key loading error.
+    #[error("Key loading error (file {0}): {1}")]
+    KeyIo(String, IoError),
+    #[cfg(feature = "jwt")]
+    /// Key decoding error.
+    #[error("Key decoding error: {0}")]
+    KeyDecode(#[from] jsonwebtoken::errors::Error),
 }

@@ -42,8 +42,8 @@ use tracing::{debug, debug_span, info, info_span, warn};
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::{
-        AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
-        HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
+        AuthExtractor, AuthLayer, AuthProvider, AuthSetupError, BasicAuthExtractor,
+        ConfigAuthProvider, HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
     errors,
@@ -81,6 +81,9 @@ pub enum AppBuilderError {
     /// HTTP client is absent from configuration.
     #[error("HTTP client is absent from configuration: {0}")]
     HttpClientAbsent(String),
+    /// Auth framework error.
+    #[error("Auth framework error: {0}")]
+    Auth(#[from] AuthSetupError),
 }
 
 /// Builder for application routes.
@@ -102,18 +105,20 @@ pub struct AppBuilder {
     grpc_services: GrpcRoutesBuilder,
 }
 
-impl From<AppConfig> for AppBuilder {
-    fn from(value: AppConfig) -> Self {
-        let auth_provider = value.auth.make_provider();
-        let auth_extractor = value.auth.extractor.make_extractor();
-        Self {
+impl TryFrom<AppConfig> for AppBuilder {
+    type Error = AppBuilderError;
+
+    fn try_from(value: AppConfig) -> Result<Self, Self::Error> {
+        let auth_provider = value.auth.make_provider()?;
+        let auth_extractor = value.auth.extractor.make_extractor()?;
+        Ok(Self {
             auth_provider,
             auth_extractor,
             config: value,
             metrics: None,
             #[cfg(feature = "grpc")]
             grpc_services: GrpcRoutes::builder(),
-        }
+        })
     }
 }
 
@@ -138,9 +143,12 @@ impl AppBuilder {
     }
 
     /// Create new builder with provided configuration.
-    #[must_use]
-    pub fn from_config(cfg: &AppConfig) -> Self {
-        cfg.clone().into()
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some part in builder initialization fails.
+    pub fn from_config(cfg: &AppConfig) -> Result<Self, AppBuilderError> {
+        cfg.clone().try_into()
     }
 
     /// Create [`tower`] auth layer for use in a specific handler.
