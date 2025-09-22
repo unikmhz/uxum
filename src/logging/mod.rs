@@ -430,7 +430,7 @@ pub enum LoggingDestination {
     #[cfg(feature = "kafka")]
     /// Output to Apache Kafka topic.
     #[serde(alias = "kafka_topic", alias = "topic")]
-    Kafka(KafkaProducerConfig),
+    Kafka(Box<KafkaProducerConfig>),
 }
 
 impl LoggingDestination {

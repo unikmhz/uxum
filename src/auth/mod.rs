@@ -13,7 +13,10 @@ pub use self::extractor::JwtAuthExtractor;
 pub use self::{
     config::{AuthConfig, ExtractorConfig, ProviderConfig, RoleConfig, UserConfig, UserPassword},
     errors::{AuthError, AuthSetupError},
-    extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
+    extractor::{
+        AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor,
+        StackedAuthExtractor,
+    },
     layer::AuthLayer,
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
     token::AuthToken,

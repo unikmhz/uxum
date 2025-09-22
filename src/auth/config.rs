@@ -23,7 +23,10 @@ use subtle::ConstantTimeEq;
 use crate::auth::extractor::JwtAuthExtractor;
 use crate::auth::{
     errors::AuthSetupError,
-    extractor::{AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor},
+    extractor::{
+        AuthExtractor, BasicAuthExtractor, HeaderAuthExtractor, NoOpAuthExtractor,
+        StackedAuthExtractor,
+    },
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
 };
 
@@ -191,7 +194,13 @@ impl ExtractorConfig {
                 key.to_key()?,
                 validate.to_validation(*algo),
             ))),
-            Self::Stacked { .. } => todo!("Stacked auth unimplemented"),
+            Self::Stacked { extractors } => {
+                let extractors = extractors
+                    .iter()
+                    .map(|ec| ec.make_extractor())
+                    .collect::<Result<_, _>>()?;
+                Ok(Box::new(StackedAuthExtractor::new(extractors)))
+            }
         }
     }
 }
@@ -342,6 +351,8 @@ impl JwtValidation {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JwtKey {
+    /// Raw secret for use with HMAC signatures, limited to UTF-8 codepoints.
+    RawHmacSecret(String),
     /// Base64-encoded secret for use with HMAC signatures.
     HmacSecret(String),
     /// RSA public key from PEM-encoded file.
@@ -392,6 +403,7 @@ impl JwtKey {
     pub fn to_key(&self) -> Result<jwt::DecodingKey, AuthSetupError> {
         // TODO: make this async
         match self {
+            Self::RawHmacSecret(s) => Ok(jwt::DecodingKey::from_secret(s.as_bytes())),
             Self::HmacSecret(s) => jwt::DecodingKey::from_base64_secret(s).map_err(Into::into),
             Self::RsaPem(path) => {
                 let buf = Self::read_path(path)?;

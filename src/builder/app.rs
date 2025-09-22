@@ -163,7 +163,7 @@ impl AppBuilder {
 
     /// Set auth extractor directly.
     ///
-    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
     pub fn with_auth_extractor(&mut self, extractor: impl AuthExtractor) -> &mut Self {
         self.auth_extractor = Box::new(extractor);
         self
@@ -171,7 +171,7 @@ impl AppBuilder {
 
     /// Set auth provider directly.
     ///
-    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
     pub fn with_auth_provider(&mut self, provider: impl AuthProvider) -> &mut Self {
         self.auth_provider = Box::new(provider);
         self
@@ -179,7 +179,7 @@ impl AppBuilder {
 
     /// Configure application for HTTP Basic auth.
     ///
-    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
     pub fn with_basic_auth(&mut self) -> &mut Self {
         self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
         self.auth_extractor = Box::new(BasicAuthExtractor::new(None::<&str>));
@@ -188,7 +188,7 @@ impl AppBuilder {
 
     /// Configure application for authentication via HTTP headers.
     ///
-    /// Normally you shouldn't use this method, relying insted on runtime configuration.
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
     pub fn with_header_auth(&mut self) -> &mut Self {
         self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
         self.auth_extractor = Box::new(HeaderAuthExtractor::new(None::<&str>, None::<&str>));

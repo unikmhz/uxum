@@ -15,7 +15,7 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 #[cfg(feature = "jwt")]
 use deboog::Deboog;
-use dyn_clone::DynClone;
+use dyn_clone::{clone_box, DynClone};
 #[cfg(feature = "jwt")]
 use jsonwebtoken as jwt;
 use okapi::{openapi3, Map};
@@ -449,5 +449,65 @@ impl JwtAuthExtractor {
     /// See [`jsonwebtoken::Validation`].
     pub fn set_validation(&mut self, valid: jwt::Validation) {
         self.validation = valid;
+    }
+}
+
+/// Authentication extractor (front-end) which encapsulates several different extractors at once..
+#[derive(Debug)]
+pub struct StackedAuthExtractor {
+    /// List of extractors to use.
+    extractors: Vec<Box<dyn AuthExtractor>>,
+}
+
+impl Clone for StackedAuthExtractor {
+    fn clone(&self) -> Self {
+        let extractors = self
+            .extractors
+            .iter()
+            .map(|ex| clone_box(ex.as_ref()))
+            .collect();
+        Self { extractors }
+    }
+}
+
+impl AuthExtractor for StackedAuthExtractor {
+    fn extract_auth(&self, req: &Request<Body>) -> Result<(Option<UserId>, AuthToken), AuthError> {
+        let mut first_error = None;
+        for ex in &self.extractors {
+            match ex.extract_auth(req) {
+                Ok(pair) => return Ok(pair),
+                Err(err) => {
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
+                }
+            }
+        }
+        // SAFETY: first_error is always `Some`, as we check that self.extractors is not empty.
+        Err(first_error.unwrap())
+    }
+
+    fn error_response(&self, err: AuthError) -> Response<Body> {
+        // TODO: make error responses smarter, i.e. multiple WWW-Authenticate headers.
+        self.extractors[0].error_response(err)
+    }
+
+    fn security_schemes(&self) -> BTreeMap<String, openapi3::SecurityScheme> {
+        let mut map = BTreeMap::new();
+        for ex in &self.extractors {
+            map.append(&mut ex.security_schemes());
+        }
+        map
+    }
+}
+
+impl StackedAuthExtractor {
+    /// Create new extractor, passing a stack of effective extractors.
+    pub fn new(mut extractors: Vec<Box<dyn AuthExtractor>>) -> Self {
+        // Ensure that extractor list is not empty.
+        if extractors.is_empty() {
+            extractors.push(Box::new(NoOpAuthExtractor));
+        }
+        Self { extractors }
     }
 }
