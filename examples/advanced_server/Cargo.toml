@@ -12,12 +12,12 @@ publish = false
 [dependencies]
 prost = "0.13"
 rand = "0.9"
-serde = {version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 tonic = "0.13"
 tonic-reflection = "0.13"
-uxum = {path = "../..", features = ["grpc", "systemd"]}
-tracing = {version = "0.1", features = ["std"]}
+uxum = { path = "../..", features = ["grpc", "systemd"] }
+tracing = { version = "0.1", features = ["std"] }
 
 [build-dependencies]
 tonic-build = "0.13"

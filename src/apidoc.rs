@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, debug_span};
 
-use crate::builder::app::HandlerExt;
+use crate::{builder::app::HandlerExt, errors};
 
 /// Error type used in API doc objects.
 #[derive(Debug, Error)]
@@ -78,6 +78,9 @@ pub struct ApiDocBuilder {
     /// Whether to install RapiDoc UI endpoints.
     #[serde(default = "crate::util::default_true")]
     enable_ui: bool,
+    /// Whether to install index page endpoints.
+    #[serde(default = "crate::util::default_true")]
+    enable_index: bool,
     /// Inline the subschemas or use references.
     ///
     /// See [`SchemaSettings::inline_subschemas`].
@@ -107,6 +110,7 @@ impl Default for ApiDocBuilder {
             tags: vec![],
             servers: vec![],
             enable_ui: true,
+            enable_index: true,
             inline_subschemas: false,
             rapidoc_attributes: Self::default_rapidoc_attributes(),
             disabled_handlers: Vec::new(),
@@ -275,6 +279,13 @@ impl ApiDocBuilder {
         self
     }
 
+    /// Disable index page.
+    #[must_use]
+    pub fn without_index(mut self) -> Self {
+        self.enable_index = false;
+        self
+    }
+
     /// Discourage use of references in generated OpenAPI specification.
     #[must_use]
     pub fn with_inline_subschemas(mut self) -> Self {
@@ -348,7 +359,6 @@ impl ApiDocBuilder {
     ///
     /// # Errors
     ///
-    /// Returns `Err`
     /// Returns `Err` if OpenAPI specification object could not be generated for some reason or
     /// there was some error during serialization.
     pub fn build_router(
@@ -370,6 +380,14 @@ impl ApiDocBuilder {
                     .route(&index_path, routing::get(get_rapidoc_index))
                     .route(&self.js_path, routing::get(get_rapidoc_js))
                     .route(&js_map_path, routing::get(get_rapidoc_js_map))
+                    .with_state(self.clone()),
+            );
+        }
+        if self.enable_index {
+            rtr = rtr.merge(
+                Router::new()
+                    .route("/index.html", routing::get(get_index))
+                    .route("/", routing::get(get_index))
                     .with_state(self.clone()),
             );
         }
@@ -476,6 +494,19 @@ impl ApiDocBuilder {
             .map(OpenApiSpec)
             .map_err(Into::into)
     }
+
+    /// Get template object for an index page.
+    fn index(&self) -> IndexPage<'_> {
+        IndexPage { cfg: self }
+    }
+}
+
+#[derive(Clone, Debug, Template)]
+#[non_exhaustive]
+#[template(path = "index.html.j2", ext = "html")]
+struct IndexPage<'s> {
+    /// Short app name.
+    cfg: &'s ApiDocBuilder,
 }
 
 /// Server definition for generated OpenAPI spec.
@@ -523,10 +554,10 @@ async fn get_rapidoc_index(api_doc: State<ApiDocBuilder>) -> impl IntoResponse {
             buf,
         )
             .into_response(),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error rendering index: {err}"),
-        )
+        Err(err) => problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_type(errors::TAG_UXUM_ERROR)
+            .with_title("Error rendering RapiDoc index")
+            .with_detail(err.to_string())
             .into_response(),
     }
 }
@@ -545,4 +576,22 @@ async fn get_rapidoc_js_map() -> impl IntoResponse {
         [(header::CONTENT_TYPE, mime::APPLICATION_JSON.as_ref())],
         include_bytes!("../static/rapidoc-min.js.map").as_slice(),
     )
+}
+
+/// Handler to serve top-level index page with helpful information and links.
+async fn get_index(tpl: State<ApiDocBuilder>) -> impl IntoResponse {
+    let mut buf = bytes::BytesMut::with_capacity(256);
+    match tpl.0.index().render_into(&mut buf) {
+        Ok(_) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, mime::TEXT_HTML.as_ref())],
+            buf,
+        )
+            .into_response(),
+        Err(err) => problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
+            .with_type(errors::TAG_UXUM_ERROR)
+            .with_title("Unable to render index page")
+            .with_detail(err.to_string())
+            .into_response(),
+    }
 }

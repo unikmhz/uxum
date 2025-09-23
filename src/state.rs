@@ -4,14 +4,14 @@ use std::{
     any::{Any, TypeId},
     collections::HashMap,
     hash::{BuildHasherDefault, Hasher},
+    sync::LazyLock,
 };
 
-use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 
 type AnyMap = HashMap<TypeId, Box<dyn StateClone + Send>, BuildHasherDefault<IdHasher>>;
 
-static STATES: Lazy<Mutex<AnyMap>> = Lazy::new(|| Mutex::new(Default::default()));
+static STATES: LazyLock<Mutex<AnyMap>> = LazyLock::new(|| Mutex::new(Default::default()));
 
 /// Hasher for [`TypeId`] values.
 ///

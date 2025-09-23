@@ -24,11 +24,11 @@ async fn main() {
 /// Sample request handler.
 #[handler(
     name = "hello_world",
-    path = "/",
+    path = "/hello",
     method = "GET",
     tags = ["tag1", "tag2"]
 )]
-async fn root_handler() -> &'static str {
+async fn hello_handler() -> &'static str {
     "Hello Axum world!"
 }
 

@@ -18,6 +18,8 @@ use tracing_subscriber::{
     registry::Registry,
 };
 
+#[cfg(feature = "kafka")]
+use crate::kafka::{KafkaLogAppender, KafkaProducerConfig};
 use crate::logging::json::{ExtensibleJsonFormat, JsonKeyNames};
 
 type LoggingRegistry = Layered<Vec<Box<dyn Layer<Registry> + Send + Sync>>, Registry>;
@@ -31,6 +33,9 @@ pub enum LoggingError {
     /// Error while initializing log directory writer.
     #[error("Error while initializing log directory writer: {0}")]
     Directory(#[from] tracing_appender::rolling::InitError),
+    #[cfg(feature = "kafka")]
+    #[error("Error in Kafka log writer: {0}")]
+    Kafka(#[from] rdkafka::error::KafkaError),
 }
 
 /// Logging configuration.
@@ -386,6 +391,7 @@ impl LoggingBufferConfig {
     /// Construct a builder for non-blocking writer.
     #[must_use]
     pub fn make_builder(&self) -> NonBlockingBuilder {
+        // TODO: provide observability into queue usage.
         let mut builder = NonBlockingBuilder::default()
             .buffered_lines_limit(self.lines)
             .lossy(self.lossy);
@@ -421,6 +427,10 @@ pub enum LoggingDestination {
     /// Output to files in a directory with optional rotation.
     #[serde(alias = "dir")]
     Directory(LoggingDirectoryConfig),
+    #[cfg(feature = "kafka")]
+    /// Output to Apache Kafka topic.
+    #[serde(alias = "kafka_topic", alias = "topic")]
+    Kafka(Box<KafkaProducerConfig>),
 }
 
 impl LoggingDestination {
@@ -458,6 +468,12 @@ impl LoggingDestination {
                     builder = builder.max_log_files(max_files);
                 }
                 let appender = builder.build(&dir_cfg.path)?;
+                let (wr, wg) = buf_builder.finish(appender);
+                Ok((BoxMakeWriter::new(wr), wg))
+            }
+            #[cfg(feature = "kafka")]
+            Self::Kafka(kafka_cfg) => {
+                let appender = KafkaLogAppender::new(kafka_cfg)?;
                 let (wr, wg) = buf_builder.finish(appender);
                 Ok((BoxMakeWriter::new(wr), wg))
             }

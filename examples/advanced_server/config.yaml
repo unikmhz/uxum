@@ -24,6 +24,23 @@ logging:
         env: dev
         something: something
         other: 42
+    - format: json
+      level: DEBUG
+      output:
+        type: kafka
+        topic: logtest
+        brokers:
+          - localhost:9092
+      flatten_metadata: true
+      current_span: false
+      print:
+        target: true
+        file: true
+        line_number: true
+      static_fields:
+        env: dev
+        something: something
+        other: 42
 handlers:
   hello_world:
     disabled: false
@@ -50,7 +67,7 @@ tracing:
   # if sensitive data is present in headers (i.e. authentication data).
   include_headers: false
   # Level at which request start log is emitted
-  request_level: WARN
+  request_level: DEBUG
   # Level at which request finish log is emitted
   response_level: INFO
 http_clients:
@@ -64,6 +81,31 @@ http_clients:
       half_open_len: 3
       open_wait: 10s
 auth:
+  extractor:
+    type: stacked
+    extractors:
+      - type: jwt
+        realm: UXUM_REALM
+        algo: HS256
+        key:
+          raw_hmac_secret: hunter2
+        validate:
+          required_claims:
+            - exp
+            - aud
+            - sub
+          leeway: 2m
+          validate_exp: true
+          validate_aud: true
+          audience:
+            - API_ID_01
+      - type: basic
+        realm: UXUM_REALM
+      - type: header
+        user_header: x-username
+        token_header: x-password
+  provider:
+    type: config
   users:
     test:
       password: test

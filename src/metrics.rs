@@ -35,7 +35,7 @@ use thiserror::Error;
 use tower::{Layer, Service};
 use tracing::{debug_span, trace};
 
-use crate::layers::ext::HandlerName;
+use crate::{errors, layers::ext::HandlerName};
 
 /// Error type used in metrics subsystem.
 #[derive(Debug, Error)]
@@ -52,7 +52,7 @@ pub enum MetricsError {
 impl IntoResponse for MetricsError {
     fn into_response(self) -> Response {
         problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-            .with_type("tag:uxum.github.io,2024:metrics")
+            .with_type(errors::TAG_UXUM_METRICS)
             .with_title(self.to_string())
             .into_response()
     }

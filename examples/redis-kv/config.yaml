@@ -18,6 +18,10 @@ tracing:
     thread_info: true
   level: TRACE
 auth:
+  extractor:
+    type: basic
+  provider:
+    type: config
   users:
     test:
       password: test

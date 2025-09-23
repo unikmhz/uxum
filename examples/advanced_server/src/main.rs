@@ -43,7 +43,7 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
     // Create app builder from app config.
     //
     // Also enable the auth subsystem.
-    let mut app_builder = AppBuilder::from_config(&config.app).with_basic_auth();
+    let mut app_builder = AppBuilder::from_config(&config.app).map_err(HandleError::custom)?;
     // Some hard-coded parameters for built-in API documentation.
     app_builder.configure_api_doc(|api_doc| {
         api_doc
@@ -346,7 +346,7 @@ mod hello {
     /// Greet the Axum world.
     #[handler(
         name = "hello_world",
-        path = "/",
+        path = "/hello",
         method = "GET",
         docs(description = "Some link", url = "http://example.com/hello_world"),
         tags = ["tag1", "tag2"],

@@ -170,7 +170,7 @@ async fn run(args: Args, mut config: ServiceConfig<LocalConfig>) -> Result<(), a
     // Create app builder from app config.
     //
     // Also enable the auth subsystem.
-    let mut app_builder = AppBuilder::from_config(&config.app).with_basic_auth();
+    let mut app_builder = AppBuilder::from_config(&config.app)?;
     // Some hard-coded parameters for built-in API documentation.
     app_builder.configure_api_doc(|api_doc| {
         api_doc

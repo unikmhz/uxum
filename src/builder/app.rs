@@ -2,13 +2,13 @@
 
 use std::{
     any::Any,
-    borrow::Borrow,
     collections::{BTreeMap, HashSet},
     convert::Infallible,
 };
 
 use axum::{
     body::Body,
+    extract::OriginalUri,
     http::{
         header::{self, HeaderValue},
         StatusCode,
@@ -17,6 +17,7 @@ use axum::{
     routing::{MethodRouter, Router},
     BoxError,
 };
+use dyn_clone::clone_box;
 use http::{Request, Response};
 use okapi::{openapi3, schemars::gen::SchemaGenerator};
 use thiserror::Error;
@@ -41,10 +42,11 @@ use tracing::{debug, debug_span, info, info_span, warn};
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::{
-        AuthExtractor, AuthLayer, AuthProvider, BasicAuthExtractor, ConfigAuthProvider,
-        HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
+        AuthExtractor, AuthLayer, AuthProvider, AuthSetupError, BasicAuthExtractor,
+        ConfigAuthProvider, HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
     },
     config::AppConfig,
+    errors,
     http_client::{HttpClientConfig, HttpClientError},
     layers::{
         ext::HandlerName, rate::RateLimitError, request_id::RecordRequestIdLayer,
@@ -79,18 +81,21 @@ pub enum AppBuilderError {
     /// HTTP client is absent from configuration.
     #[error("HTTP client is absent from configuration: {0}")]
     HttpClientAbsent(String),
+    /// Auth framework error.
+    #[error("Auth framework error: {0}")]
+    Auth(#[from] AuthSetupError),
 }
 
 /// Builder for application routes.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> {
+pub struct AppBuilder {
     /// Authentication and authorization back-end.
-    auth_provider: AuthProv,
+    auth_provider: Box<dyn AuthProvider>,
     /// Authentication front-end.
     ///
     /// Handles protocol- and schema-specific message exchange.
-    auth_extractor: AuthExt,
+    auth_extractor: Box<dyn AuthExtractor>,
     /// Application configuration.
     config: AppConfig,
     /// Metrics container object.
@@ -100,24 +105,28 @@ pub struct AppBuilder<AuthProv = NoOpAuthProvider, AuthExt = NoOpAuthExtractor> 
     grpc_services: GrpcRoutesBuilder,
 }
 
-impl From<AppConfig> for AppBuilder {
-    fn from(value: AppConfig) -> Self {
-        Self {
-            auth_provider: NoOpAuthProvider,
-            auth_extractor: NoOpAuthExtractor,
+impl TryFrom<AppConfig> for AppBuilder {
+    type Error = AppBuilderError;
+
+    fn try_from(value: AppConfig) -> Result<Self, Self::Error> {
+        let auth_provider = value.auth.make_provider()?;
+        let auth_extractor = value.auth.extractor.make_extractor()?;
+        Ok(Self {
+            auth_provider,
+            auth_extractor,
             config: value,
             metrics: None,
             #[cfg(feature = "grpc")]
             grpc_services: GrpcRoutes::builder(),
-        }
+        })
     }
 }
 
-impl Default for AppBuilder<NoOpAuthProvider, NoOpAuthExtractor> {
+impl Default for AppBuilder {
     fn default() -> Self {
         Self {
-            auth_provider: NoOpAuthProvider,
-            auth_extractor: NoOpAuthExtractor,
+            auth_provider: Box::new(NoOpAuthProvider),
+            auth_extractor: Box::new(NoOpAuthExtractor),
             config: AppConfig::default(),
             metrics: None,
             #[cfg(feature = "grpc")]
@@ -134,82 +143,56 @@ impl AppBuilder {
     }
 
     /// Create new builder with provided configuration.
-    #[must_use]
-    pub fn from_config(cfg: &AppConfig) -> Self {
-        cfg.clone().into()
-    }
-}
-
-impl<AuthProv, AuthExt> AppBuilder<AuthProv, AuthExt>
-where
-    AuthProv: AuthProvider + Sync + 'static,
-    AuthExt: AuthExtractor + Sync + 'static,
-    AuthExt::User: Borrow<AuthProv::User>,
-    AuthExt::AuthTokens: Borrow<AuthProv::AuthTokens>,
-{
-    /// Enable HTTP Basic authentication using built-in user and role databases.
-    #[must_use]
-    pub fn with_basic_auth(self) -> AppBuilder<ConfigAuthProvider, BasicAuthExtractor> {
-        AppBuilder {
-            auth_provider: self.config.auth.clone().into(),
-            auth_extractor: BasicAuthExtractor::default(),
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Enable header authentication using built-in user and role databases.
-    #[must_use]
-    pub fn with_header_auth(self) -> AppBuilder<ConfigAuthProvider, HeaderAuthExtractor> {
-        AppBuilder {
-            auth_provider: self.config.auth.clone().into(),
-            auth_extractor: HeaderAuthExtractor::default(),
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Set custom authentication extractor (front-end).
-    #[must_use]
-    pub fn with_auth_extractor<E: AuthExtractor>(
-        self,
-        auth_extractor: E,
-    ) -> AppBuilder<AuthProv, E> {
-        AppBuilder {
-            auth_provider: self.auth_provider,
-            auth_extractor,
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
-    }
-
-    /// Set custom authentication provider (back-end).
-    #[must_use]
-    pub fn with_auth_provider<P: AuthProvider>(self, auth_provider: P) -> AppBuilder<P, AuthExt> {
-        AppBuilder {
-            auth_provider,
-            auth_extractor: self.auth_extractor,
-            config: self.config,
-            metrics: self.metrics,
-            #[cfg(feature = "grpc")]
-            grpc_services: self.grpc_services,
-        }
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some part in builder initialization fails.
+    pub fn from_config(cfg: &AppConfig) -> Result<Self, AppBuilderError> {
+        cfg.clone().try_into()
     }
 
     /// Create [`tower`] auth layer for use in a specific handler.
     #[must_use]
-    pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S, AuthProv, AuthExt> {
+    pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S> {
         AuthLayer::new(
             perms,
-            self.auth_provider.clone(),
-            self.auth_extractor.clone(),
+            clone_box(self.auth_provider.as_ref()),
+            clone_box(self.auth_extractor.as_ref()),
         )
+    }
+
+    /// Set auth extractor directly.
+    ///
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
+    pub fn with_auth_extractor(&mut self, extractor: impl AuthExtractor) -> &mut Self {
+        self.auth_extractor = Box::new(extractor);
+        self
+    }
+
+    /// Set auth provider directly.
+    ///
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
+    pub fn with_auth_provider(&mut self, provider: impl AuthProvider) -> &mut Self {
+        self.auth_provider = Box::new(provider);
+        self
+    }
+
+    /// Configure application for HTTP Basic auth.
+    ///
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
+    pub fn with_basic_auth(&mut self) -> &mut Self {
+        self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
+        self.auth_extractor = Box::new(BasicAuthExtractor::new(None::<&str>));
+        self
+    }
+
+    /// Configure application for authentication via HTTP headers.
+    ///
+    /// Normally you shouldn't use this method, relying instead on runtime configuration.
+    pub fn with_header_auth(&mut self) -> &mut Self {
+        self.auth_provider = Box::new(ConfigAuthProvider::from(self.config.auth.clone()));
+        self.auth_extractor = Box::new(HeaderAuthExtractor::new(None::<&str>, None::<&str>));
+        self
     }
 
     /// Set used API doc builder.
@@ -307,11 +290,10 @@ where
         }
 
         // Add probes and management mode API.
-        rtr = rtr.merge(
-            self.config
-                .probes
-                .build_router(self.auth_provider.clone(), self.auth_extractor.clone()),
-        );
+        rtr = rtr.merge(self.config.probes.build_router(
+            clone_box(self.auth_provider.as_ref()),
+            clone_box(self.auth_extractor.as_ref()),
+        ));
 
         // A set to ensure uniqueness of handler names.
         let mut handler_names = HashSet::new();
@@ -339,6 +321,7 @@ where
         // Register GRPC services.
         #[cfg(feature = "grpc")]
         {
+            // TODO: filter GRPC handlers on request content-type.
             rtr = rtr.merge(self.grpc_services.clone().routes().into_axum_router());
         }
 
@@ -358,6 +341,9 @@ where
             let auth = self.auth_extractor.security_schemes();
             rtr = rtr.merge(api_doc.build_router(auth)?);
         }
+
+        // TODO: allow customizing fallback handler.
+        rtr = rtr.fallback(fallback_handler);
 
         // Wrap router in global layers.
         let final_rtr = self.wrap_global_layers(rtr, metrics_state);
@@ -427,10 +413,12 @@ where
             tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
         let response_level =
             tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
+        let mut sensitive_headers = vec![header::AUTHORIZATION];
+        sensitive_headers.append(&mut self.auth_extractor.sensitive_headers());
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
-            .sensitive_headers([header::AUTHORIZATION])
+            .sensitive_headers(sensitive_headers)
             .layer(
                 // TODO: factor out tracing for GRPC.
                 TraceLayer::new_for_http()
@@ -582,37 +570,6 @@ where
     }
 }
 
-impl<AuthProv> AppBuilder<AuthProv, BasicAuthExtractor> {
-    /// Set realm used for HTTP authentication challenge.
-    ///
-    /// Default value is "auth".
-    #[must_use]
-    pub fn with_auth_realm(mut self, realm: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_realm(realm);
-        self
-    }
-}
-
-impl<AuthProv> AppBuilder<AuthProv, HeaderAuthExtractor> {
-    /// Set user ID header name for use in authentication.
-    ///
-    /// Default value is "X-API-Name".
-    #[must_use]
-    pub fn with_user_header(mut self, name: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_user_header(name);
-        self
-    }
-
-    /// Set authenticating token header name for use in authentication.
-    ///
-    /// Default value is "X-API-Key".
-    #[must_use]
-    pub fn with_tokens_header(mut self, name: impl AsRef<str>) -> Self {
-        self.auth_extractor.set_tokens_header(name);
-        self
-    }
-}
-
 /// Error handler for uxum-specific error types.
 pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
@@ -622,8 +579,17 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
         return timeo_err.into_response();
     }
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-        .with_type("tag:uxum.github.io,2024:error")
+        .with_type(errors::TAG_UXUM_ERROR)
         .with_title(err.to_string())
+        .into_response()
+}
+
+/// Error handler for when no handler is found by application router.
+pub(crate) async fn fallback_handler(OriginalUri(uri): OriginalUri) -> Response<Body> {
+    problemdetails::new(StatusCode::NOT_FOUND)
+        .with_type(errors::TAG_UXUM_NOT_FOUND)
+        .with_title("Resource not found")
+        .with_value("uri", uri.to_string())
         .into_response()
 }
 
@@ -639,7 +605,7 @@ fn panic_handler(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
         "Unknown panic format".to_string()
     };
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
-        .with_type("tag:uxum.github.io,2024:panic")
+        .with_type(errors::TAG_UXUM_PANIC)
         .with_title("Encountered panic in handler")
         .with_detail(details)
         .into_response()
