@@ -76,7 +76,7 @@ password-hash = { version = "0.5", features = ["alloc"] }
 pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
 problemdetails = { version = "0.6", features = ["axum"] }
 prometheus = "0.14"
-prost = { version = "0.13", optional = true }
+prost = { version = "0.14", optional = true }
 rdkafka = { version = "0.38", features = ["ssl", "ssl-vendored", "zstd"], optional = true }
 recloser = "1.1"
 regex = "1.11.2"
@@ -91,7 +91,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"] }
 socket2 = { version = "0.6" }
 thiserror = "2.0"
-tonic = { version = "0.13", optional = true }
+tonic = { version = "0.14", optional = true }
 tonic_012 = { version = "0.12.3", package = "tonic" }
 tokio = { version = "1.44", features = ["full"] }
 tower = { version = "0.5", features = ["buffer", "filter", "limit", "retry", "timeout", "util"] }
