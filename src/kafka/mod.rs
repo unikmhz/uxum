@@ -477,7 +477,7 @@ impl ProducerContext<NoCustomPartitioner> for LogProducerContext {
     }
 }
 
-/// Wrapper for Kafka producer for use in writing logs from [`tracing_subscriber::fmt`].
+/// Wrapper for Kafka producer for use in writing logs from [`mod@tracing_subscriber::fmt`].
 pub struct KafkaLogAppender {
     config: KafkaProducerConfig,
     producer: ThreadedProducer<LogProducerContext>,
