@@ -89,7 +89,7 @@ schemars = { version = "0.8", features = ["bytes", "chrono", "preserve_order", "
 scrypt = { version = "0.11", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"] }
-socket2 = { version = "0.5" }
+socket2 = { version = "0.6" }
 thiserror = "2.0"
 tonic = { version = "0.13", optional = true }
 tonic_012 = { version = "0.12.3", package = "tonic" }
