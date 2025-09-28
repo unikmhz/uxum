@@ -8,7 +8,9 @@ logging:
     - format: compact
       level: DEBUG
 tracing:
-  endpoint: http://localhost:4317
+  exporters:
+    - type: otlp
+      endpoint: http://localhost:4317
   include:
     location: true
     exception_from_error_fields: true

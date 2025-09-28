@@ -2,13 +2,16 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use opentelemetry_otlp::{ExporterBuildError, SpanExporter, WithExportConfig, WithTonicConfig};
+use opentelemetry_otlp::{
+    ExporterBuildError, SpanExporter as OtlpSpanExporter, WithExportConfig, WithTonicConfig,
+};
 use opentelemetry_sdk::{
     trace::{
         BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
     },
     Resource,
 };
+use opentelemetry_stdout::SpanExporter as StdoutSpanExporter;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug_span, Instrument, Level, Subscriber};
@@ -43,15 +46,12 @@ pub enum TracingError {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TracingConfig {
-    /// Trace collector endpoint URL.
-    #[serde(default = "TracingConfig::default_endpoint")]
-    endpoint: Url,
-    /// Protocol to use when exporting data.
-    #[serde(default, alias = "format")]
-    protocol: OtlpProtocol,
-    /// OTLP collector timeout.
-    #[serde(default = "TracingConfig::default_timeout")]
-    timeout: Duration,
+    /// List of exporters to supply traces to.
+    #[serde(
+        default = "TracingConfig::default_exporters",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    exporters: Vec<TracingExporterConfig>,
     /// Sampling rule.
     #[serde(default)]
     sample: TracingSampler,
@@ -67,9 +67,6 @@ pub struct TracingConfig {
     /// Batch span processor configuration.
     #[serde(default)]
     batch: TracingBatchConfig,
-    /// TLS configuration for exporter.
-    #[serde(default)]
-    tls: TonicTlsConfig,
     /// Include HTTP headers in tracing spans and responses.
     #[serde(default = "crate::util::default_false")]
     include_headers: bool,
@@ -84,15 +81,12 @@ pub struct TracingConfig {
 impl Default for TracingConfig {
     fn default() -> Self {
         Self {
-            endpoint: Self::default_endpoint(),
-            protocol: OtlpProtocol::default(),
-            timeout: Self::default_timeout(),
+            exporters: Self::default_exporters(),
             sample: TracingSampler::default(),
             level: LoggingLevel::default(),
             limits: TracingSpanLimits::default(),
             include: TracingIncludes::default(),
             batch: TracingBatchConfig::default(),
-            tls: TonicTlsConfig::default(),
             include_headers: false,
             request_level: Self::default_request_level(),
             response_level: Self::default_response_level(),
@@ -101,38 +95,11 @@ impl Default for TracingConfig {
 }
 
 impl TracingConfig {
-    /// Default value for [`Self::endpoint`].
+    /// Default value for [`Self::exporters`].
     #[must_use]
     #[inline]
-    #[allow(clippy::unwrap_used)]
-    fn default_endpoint() -> Url {
-        // TODO: check correctness using a unit test.
-        Url::parse("http://localhost:4317").unwrap()
-    }
-
-    /// Default value for [`Self::timeout`].
-    #[must_use]
-    #[inline]
-    fn default_timeout() -> Duration {
-        opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT
-    }
-
-    /// Build internal protocol exporter.
-    async fn build_exporter(&self) -> Result<SpanExporter, TracingError> {
-        // TODO: allow adding metadata.
-        SpanExporter::builder()
-            .with_tonic()
-            .with_endpoint(self.endpoint.to_string())
-            .with_protocol(self.protocol.into())
-            .with_timeout(self.timeout)
-            .with_tls_config(
-                self.tls
-                    .to_tonic_config()
-                    .await
-                    .map_err(|err| TracingError::ConfigRead(err.into()))?,
-            )
-            .build()
-            .map_err(Into::into)
+    fn default_exporters() -> Vec<TracingExporterConfig> {
+        vec![TracingExporterConfig::default()]
     }
 
     /// Build OpenTelemetry SDK batch configuration.
@@ -151,20 +118,30 @@ impl TracingConfig {
     ) -> Result<SdkTracerProvider, TracingError> {
         let span = debug_span!("build_tracing_provider");
         async {
-            let exporter = self.build_exporter().await?;
-            let processor = BatchSpanProcessor::builder(exporter)
-                .with_batch_config(self.build_batch_config())
-                .build();
-            Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_span_processor(processor)
+            let mut provider = SdkTracerProvider::builder()
                 .with_resource(resource)
                 .with_sampler(Sampler::from(self.sample))
                 .with_max_events_per_span(self.limits.max_events_per_span)
                 .with_max_attributes_per_span(self.limits.max_attributes_per_span)
                 .with_max_links_per_span(self.limits.max_links_per_span)
                 .with_max_attributes_per_event(self.limits.max_attributes_per_event)
-                .with_max_attributes_per_link(self.limits.max_attributes_per_link)
-                .build())
+                .with_max_attributes_per_link(self.limits.max_attributes_per_link);
+            for exp_cfg in &self.exporters {
+                match exp_cfg {
+                    TracingExporterConfig::Otlp(cfg) => {
+                        let exp = cfg.build_exporter().await?;
+                        let processor = BatchSpanProcessor::builder(exp)
+                            .with_batch_config(self.build_batch_config())
+                            .build();
+                        provider = provider.with_span_processor(processor);
+                    }
+                    TracingExporterConfig::Stdout => {
+                        let exp = StdoutSpanExporter::default();
+                        provider = provider.with_simple_exporter(exp);
+                    }
+                }
+            }
+            Ok(provider.build())
         }
         .instrument(span)
         .await
@@ -227,6 +204,92 @@ impl TracingConfig {
     #[must_use]
     pub fn response_level(&self) -> LoggingLevel {
         self.response_level
+    }
+}
+
+/// Configuration for OpenTelemetry trace exporter.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TracingExporterConfig {
+    /// Export traces via pushing to a remote OTLP endpoint.
+    Otlp(Box<OtlpTracingExporterConfig>),
+    /// Export traces to standard output. Use this only during development or for educational
+    /// or debugging purposes.
+    Stdout,
+}
+
+impl Default for TracingExporterConfig {
+    fn default() -> Self {
+        Self::Otlp(Box::default())
+    }
+}
+
+/// Configuration for OpenTelemetry OTLP trace exporter.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct OtlpTracingExporterConfig {
+    /// Trace collector endpoint URL.
+    #[serde(default = "OtlpTracingExporterConfig::default_endpoint")]
+    endpoint: Url,
+    /// Protocol to use when exporting data.
+    #[serde(default, alias = "format")]
+    protocol: OtlpProtocol,
+    /// OTLP collector timeout.
+    #[serde(default = "OtlpTracingExporterConfig::default_timeout")]
+    timeout: Duration,
+    /// TLS configuration for exporter.
+    #[serde(default)]
+    tls: TonicTlsConfig,
+}
+
+impl Default for OtlpTracingExporterConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: Self::default_endpoint(),
+            protocol: OtlpProtocol::default(),
+            timeout: Self::default_timeout(),
+            tls: TonicTlsConfig::default(),
+        }
+    }
+}
+
+impl OtlpTracingExporterConfig {
+    /// Default value for [`Self::endpoint`].
+    #[must_use]
+    #[inline]
+    #[allow(clippy::unwrap_used)]
+    fn default_endpoint() -> Url {
+        // TODO: check correctness using a unit test.
+        Url::parse("http://localhost:4317").unwrap()
+    }
+
+    /// Default value for [`Self::timeout`].
+    #[must_use]
+    #[inline]
+    fn default_timeout() -> Duration {
+        opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT
+    }
+
+    /// Try building exporter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some files required to properly initialize exporter could not be loaded.
+    async fn build_exporter(&self) -> Result<OtlpSpanExporter, TracingError> {
+        OtlpSpanExporter::builder()
+            .with_tonic()
+            .with_endpoint(self.endpoint.to_string())
+            .with_protocol(self.protocol.into())
+            .with_timeout(self.timeout)
+            .with_tls_config(
+                self.tls
+                    .to_tonic_config()
+                    .await
+                    .map_err(|err| TracingError::ConfigRead(err.into()))?,
+            )
+            .build()
+            .map_err(Into::into)
     }
 }
 

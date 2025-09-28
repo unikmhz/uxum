@@ -22,13 +22,15 @@ use opentelemetry::{
     metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter},
     KeyValue,
 };
-use opentelemetry_otlp::{ExporterBuildError, WithExportConfig, WithTonicConfig};
+use opentelemetry_otlp::{
+    ExporterBuildError, MetricExporter as OtlpMetricExporter, WithExportConfig, WithTonicConfig,
+};
 use opentelemetry_prometheus_text_exporter::PrometheusExporter;
 use opentelemetry_sdk::{
     metrics::{SdkMeterProvider, Temporality},
     Resource,
 };
-use opentelemetry_stdout::MetricExporter as StdoutExporter;
+use opentelemetry_stdout::MetricExporter as StdoutMetricExporter;
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -512,8 +514,8 @@ impl OtlpMetricsExporterConfig {
     /// # Errors
     ///
     /// Returns `Err` if some files required to properly initialize exporter could not be loaded.
-    async fn build_exporter(&self) -> Result<opentelemetry_otlp::MetricExporter, MetricsError> {
-        opentelemetry_otlp::MetricExporter::builder()
+    async fn build_exporter(&self) -> Result<OtlpMetricExporter, MetricsError> {
+        OtlpMetricExporter::builder()
             .with_tonic()
             .with_endpoint(self.endpoint.to_string())
             .with_protocol(self.protocol.into())
@@ -530,7 +532,7 @@ impl OtlpMetricsExporterConfig {
     }
 }
 
-/// Configuration for OpenTelemetry Prometheus metrics exporter.
+/// Configuration for OpenTelemetry stdout metrics exporter.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 struct StdoutMetricsExporterConfig {
@@ -540,13 +542,9 @@ struct StdoutMetricsExporterConfig {
 }
 
 impl StdoutMetricsExporterConfig {
-    /// Try building exporter.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if some files required to properly initialize exporter could not be loaded.
-    fn build_exporter(&self) -> StdoutExporter {
-        StdoutExporter::builder()
+    /// Build exporter.
+    fn build_exporter(&self) -> StdoutMetricExporter {
+        StdoutMetricExporter::builder()
             .with_temporality(self.temporality.into())
             .build()
     }
