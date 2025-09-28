@@ -29,7 +29,11 @@ use tonic::{
 };
 #[cfg(feature = "grpc")]
 use tower::Service;
-use tower::{builder::ServiceBuilder, util::BoxCloneSyncService, ServiceExt};
+use tower::{
+    builder::ServiceBuilder,
+    util::{BoxCloneSyncService, MapRequestLayer},
+    ServiceExt,
+};
 use tower_http::{
     catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
@@ -421,7 +425,11 @@ impl AppBuilder {
                     ),
             )
             .option_layer(metrics)
-            .map_request(crate::logging::span::register_request)
+            .option_layer(if self.config.tracing.is_some() {
+                Some(MapRequestLayer::new(crate::logging::span::register_request))
+            } else {
+                None
+            })
             .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,

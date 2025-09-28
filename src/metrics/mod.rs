@@ -28,6 +28,7 @@ use opentelemetry_sdk::{
     metrics::{SdkMeterProvider, Temporality},
     Resource,
 };
+use opentelemetry_stdout::MetricExporter as StdoutExporter;
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -231,6 +232,10 @@ impl MetricsBuilder {
                         let exp = cfg.build_exporter().await?;
                         provider = provider.with_periodic_exporter(exp);
                     }
+                    MetricsExporterConfig::Stdout(cfg) => {
+                        let exp = cfg.build_exporter();
+                        provider = provider.with_periodic_exporter(exp);
+                    }
                 }
             }
             Ok((provider.build(), prom))
@@ -377,6 +382,9 @@ enum MetricsExporterConfig {
     Prometheus(PrometheusMetricsExporterConfig),
     /// Export metrics via pushing to a remote OTLP endpoint.
     Otlp(OtlpMetricsExporterConfig),
+    /// Export metrics to standard output. Use this only during development or for educational
+    /// or debugging purposes.
+    Stdout(StdoutMetricsExporterConfig),
 }
 
 impl Default for MetricsExporterConfig {
@@ -519,6 +527,28 @@ impl OtlpMetricsExporterConfig {
             .with_temporality(self.temporality.into())
             .build()
             .map_err(Into::into)
+    }
+}
+
+/// Configuration for OpenTelemetry Prometheus metrics exporter.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct StdoutMetricsExporterConfig {
+    /// Default temporality for collected metrics.
+    #[serde(default)]
+    temporality: MetricsTemporality,
+}
+
+impl StdoutMetricsExporterConfig {
+    /// Try building exporter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some files required to properly initialize exporter could not be loaded.
+    fn build_exporter(&self) -> StdoutExporter {
+        StdoutExporter::builder()
+            .with_temporality(self.temporality.into())
+            .build()
     }
 }
 
