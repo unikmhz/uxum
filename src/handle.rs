@@ -4,16 +4,20 @@ use std::{net::SocketAddr, time::Duration};
 
 use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
+use opentelemetry::{metrics::MeterProvider as _, trace::TracerProvider as _};
+use opentelemetry_sdk::{
+    metrics::SdkMeterProvider,
+    trace::{SdkTracerProvider, Tracer},
+};
 use thiserror::Error;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     builder::server::ServerBuilder, config::AppConfig, crypto::ensure_default_crypto_provider,
-    errors::IoError, notify::ServiceNotifier,
+    errors::IoError, metrics::gather_runtime_metrics, notify::ServiceNotifier,
 };
 
 /// Error type returned by uxum handle.
@@ -26,6 +30,9 @@ pub enum HandleError {
     /// Error while setting up trace collection and propagation.
     #[error(transparent)]
     Tracing(#[from] crate::tracing::TracingError),
+    /// Error while setting up metrics collection and propagation.
+    #[error(transparent)]
+    Metrics(#[from] crate::metrics::MetricsError),
     /// Error while building HTTP server.
     #[error(transparent)]
     ServerBuilder(#[from] crate::builder::server::ServerBuilderError),
@@ -67,12 +74,16 @@ impl HandleError {
 #[allow(dead_code)]
 #[non_exhaustive]
 pub struct Handle {
+    /// Cancellation token for auxillary tasks.
+    token: CancellationToken,
     /// Guards for [`tracing_appender::non_blocking::NonBlocking`].
     buf_guards: Vec<WorkerGuard>,
     /// Tracing pipeline.
     tracer: Option<Tracer>,
-    /// Tracing provider pipeline.
+    /// Tracing provider.
     tracer_provider: Option<SdkTracerProvider>,
+    /// Metrics provider.
+    metrics_provider: Option<SdkMeterProvider>,
     /// Internal [`axum_server`] control handle.
     handle: AxumHandle,
     /// Service supervisor notification.
@@ -85,16 +96,27 @@ pub struct Handle {
     http_task: Option<JoinHandle<Result<(), HandleError>>>,
     /// HTTPS server task.
     https_task: Option<JoinHandle<Result<(), HandleError>>>,
+    /// Runtime metrics recording task.
+    rt_metrics_task: Option<JoinHandle<()>>,
 }
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        if let Some(provider) = self.tracer_provider.as_ref() {
+        self.token.cancel();
+        if let Some(provider) = self.metrics_provider.take() {
+            if let Err(err) = provider.force_flush() {
+                eprintln!("Error flushing metrics: {err}");
+            }
+            if let Err(err) = provider.shutdown() {
+                eprintln!("Error shutting down OTel metrics provider: {err}")
+            }
+        }
+        if let Some(provider) = self.tracer_provider.take() {
             if let Err(err) = provider.force_flush() {
                 eprintln!("Error flushing spans: {err}");
             }
             if let Err(err) = provider.shutdown() {
-                eprintln!("Error shutting down OTel provider: {err}")
+                eprintln!("Error shutting down OTel tracing provider: {err}")
             }
         }
     }
@@ -123,7 +145,6 @@ impl Handle {
         A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
         A::MakeFuture: Send,
     {
-        //let make_service = app.into_make_service_with_connect_info::<SocketAddr>();
         if server.has_tls_config() {
             ensure_default_crypto_provider();
             self.https_task = Some(tokio::spawn(
@@ -281,19 +302,26 @@ impl Handle {
 }
 
 impl AppConfig {
-    /// Initialize logging and tracing subsystems.
+    /// Create application control handle and initialize logging and tracing subsystems.
     ///
     /// Returns a guard that shouldn't be dropped as long as there is a need for these subsystems.
+    ///
+    /// You can start, stop, control and monitor application with this handle.
+    ///
+    /// Note that this call configures and finalizes logging, tracing and metrics subsystems
+    /// so if you want to make changes to those programmatically - should do it before creating
+    /// the [`Handle`].
     ///
     /// # Errors
     ///
     /// Returns `Err` if any part of initializing of tracing or logging subsystems ends with and
     /// error.
-    pub fn handle(&mut self) -> Result<Handle, HandleError> {
+    pub async fn handle(&mut self) -> Result<Handle, HandleError> {
+        let token = CancellationToken::new();
         let (registry, buf_guards) = self.logging.make_registry()?;
         let otel_res = self.otel_resource();
         let (tracer, tracer_provider) = if let Some(tcfg) = self.tracing.as_mut() {
-            let tracer_provider = tcfg.build_pipeline(otel_res)?;
+            let tracer_provider = tcfg.build_provider(otel_res.clone()).await?;
             let tracer = tracer_provider.tracer("uxum");
             let layer = tcfg.build_layer(&tracer);
             registry.with(layer).init();
@@ -305,18 +333,36 @@ impl AppConfig {
             registry.init();
             (None, None)
         };
+        let (metrics_provider, rt_metrics_task) = if let Some(mcfg) = self.metrics.as_ref() {
+            let (metrics_provider, prom_exporter) = mcfg.build_provider(otel_res).await?;
+            let meter = metrics_provider.meter("uxum");
+            let metrics_state = mcfg.build_state(&meter, prom_exporter);
+            let rt_task = tokio::spawn(gather_runtime_metrics(
+                metrics_state.clone(),
+                mcfg.runtime_metrics_interval,
+                token.clone(),
+            ));
+            self.metrics_state = Some(metrics_state);
+            opentelemetry::global::set_meter_provider(metrics_provider.clone());
+            (Some(metrics_provider), Some(rt_task))
+        } else {
+            (None, None)
+        };
         let handle = AxumHandle::new();
         let notify = ServiceNotifier::new();
         Ok(Handle {
+            token,
             buf_guards,
             tracer,
             tracer_provider,
+            metrics_provider,
             handle,
             notify,
             service_watchdog: None,
             signal_handler: None,
             http_task: None,
             https_task: None,
+            rt_metrics_task,
         })
     }
 }

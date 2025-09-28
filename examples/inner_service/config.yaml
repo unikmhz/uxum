@@ -22,10 +22,10 @@ logging:
       current_span: true
       static_fields:
         user: $USER
-        something: $PATH, lol $KEK and $USER ($USER) 
+        something: $PATH, lol $KEK and $USER ($USER)
         other: 42
       parse_env_in_static: true
-metrics:
+telemetry:
   labels:
     env: example
 tracing:

@@ -213,7 +213,9 @@ impl ServerBuilder {
     {
         let (sock, addr) = socket(addr_conf).await?;
         let sref = SockRef::from(&sock);
-        let domain = sref.domain().map_err(|err| ServerBuilderError::GetDomain(err.into()))?;
+        let domain = sref
+            .domain()
+            .map_err(|err| ServerBuilderError::GetDomain(err.into()))?;
         if let Some(tos) = self.ip.tos {
             match domain {
                 socket2::Domain::IPV4 => sref.set_tos_v4(tos),

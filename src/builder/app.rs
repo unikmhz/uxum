@@ -108,14 +108,14 @@ pub struct AppBuilder {
 impl TryFrom<AppConfig> for AppBuilder {
     type Error = AppBuilderError;
 
-    fn try_from(value: AppConfig) -> Result<Self, Self::Error> {
+    fn try_from(mut value: AppConfig) -> Result<Self, Self::Error> {
         let auth_provider = value.auth.make_provider()?;
         let auth_extractor = value.auth.extractor.make_extractor()?;
         Ok(Self {
             auth_provider,
             auth_extractor,
+            metrics: value.metrics_state.take(),
             config: value,
-            metrics: None,
             #[cfg(feature = "grpc")]
             grpc_services: GrpcRoutes::builder(),
         })
@@ -222,8 +222,8 @@ impl AppBuilder {
     /// of handler execution metrics, as well as an exporter HTTP endpoint.
     ///
     /// Alternatively, you can include metrics configuration in [`AppConfig::metrics`] section.
-    pub fn with_metrics(&mut self, metrics: MetricsBuilder) -> &mut Self {
-        self.config.metrics = metrics;
+    pub fn with_metrics_config(&mut self, metrics: MetricsBuilder) -> &mut Self {
+        self.config.metrics = Some(metrics);
         self
     }
 
@@ -232,9 +232,9 @@ impl AppBuilder {
     /// This gets the builder from configuration, and then passes it to the provided callback
     /// function for additional customization.
     #[must_use]
-    pub fn with_configured_metrics<F>(mut self, modifier: F) -> Self
+    pub fn with_configured_metrics_config<F>(mut self, modifier: F) -> Self
     where
-        F: FnOnce(MetricsBuilder) -> MetricsBuilder,
+        F: FnOnce(Option<MetricsBuilder>) -> Option<MetricsBuilder>,
     {
         self.config.metrics = modifier(self.config.metrics);
         self
@@ -259,18 +259,8 @@ impl AppBuilder {
     /// # Errors
     ///
     /// Returns `Err` if metrics registry or provider could not be initialized.
-    pub fn metrics(&mut self) -> Result<&MetricsState, AppBuilderError> {
-        // TODO: make metrics optional.
-        match self.metrics {
-            Some(ref metrics) => Ok(metrics),
-            None => {
-                let otel_res = self.config.otel_resource();
-                let metrics = self.config.metrics.build_state(otel_res.clone())?;
-                self.metrics = Some(metrics);
-                // SAFETY: Some() is guaranteed, as we assigned it before.
-                Ok(self.metrics.as_ref().unwrap())
-            }
-        }
+    pub fn metrics(&self) -> Option<&MetricsState> {
+        self.metrics.as_ref()
     }
 
     /// Build top-level Axum router.
@@ -283,10 +273,9 @@ impl AppBuilder {
         let _build_span = debug_span!("build_app").entered();
         let mut rtr = Router::new();
 
-        // Build metrics subsystem.
-        let metrics_state = self.metrics()?.clone();
-        if self.config.metrics.is_enabled() {
-            rtr = rtr.merge(metrics_state.build_router());
+        let metrics_state = self.metrics().cloned();
+        if let (Some(m_state), Some(m_cfg)) = (&metrics_state, &self.config.metrics) {
+            rtr = rtr.merge(m_cfg.build_router(m_state));
         }
 
         // Add probes and management mode API.
@@ -357,23 +346,22 @@ impl AppBuilder {
     ///
     /// Returns `Err` if metrics registry or HTTP client could not be initialized.
     pub async fn http_client(
-        &mut self,
+        &self,
         name: impl AsRef<str>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
-        let metrics = self.metrics()?.client_metrics(name);
-        match self.config.http_clients.get_mut(metrics.name()) {
-            Some(cfg) => {
+        let name = name.as_ref();
+        match self.config.http_clients.get(name).cloned() {
+            Some(mut cfg) => {
                 if let Some(app_name) = &self.config.app_name {
                     cfg.with_app_name(app_name);
                 }
                 if let Some(app_version) = &self.config.app_version {
                     cfg.with_app_version(app_version);
                 }
-                cfg.to_client(Some(metrics)).await.map_err(Into::into)
+                let metrics = self.metrics().map(|m| m.client_metrics(name));
+                cfg.to_client(metrics).await.map_err(Into::into)
             }
-            None => Err(AppBuilderError::HttpClientAbsent(
-                metrics.name().to_string(),
-            )),
+            None => Err(AppBuilderError::HttpClientAbsent(name.to_string())),
         }
     }
 
@@ -384,11 +372,11 @@ impl AppBuilder {
     ///
     /// Returns `Err` if metrics registry or HTTP client could not be initialized.
     pub async fn http_client_or_default(
-        &mut self,
+        &self,
         name: impl AsRef<str>,
     ) -> Result<reqwest_middleware::ClientWithMiddleware, AppBuilderError> {
-        let metrics = self.metrics()?.client_metrics(name);
-        match self.http_client(metrics.name()).await {
+        let name = name.as_ref();
+        match self.http_client(name).await {
             Ok(client) => Ok(client),
             Err(AppBuilderError::HttpClientAbsent(_)) => {
                 let mut cfg = HttpClientConfig::default();
@@ -398,14 +386,15 @@ impl AppBuilder {
                 if let Some(app_version) = &self.config.app_version {
                     cfg.with_app_version(app_version);
                 }
-                cfg.to_client(Some(metrics)).await.map_err(Into::into)
+                let metrics = self.metrics().map(|m| m.client_metrics(name));
+                cfg.to_client(metrics).await.map_err(Into::into)
             }
             Err(err) => Err(err),
         }
     }
 
     /// Wrap router in global [`tower`] layers.
-    fn wrap_global_layers(&self, rtr: Router, metrics: MetricsState) -> Router {
+    fn wrap_global_layers(&self, rtr: Router, metrics: Option<MetricsState>) -> Router {
         // [`tower`] layers that are executed for any request.
         let tracing_config = self.config.tracing.as_ref();
         let include_headers = tracing_config.is_some_and(|t| t.include_headers());
@@ -431,7 +420,7 @@ impl AppBuilder {
                             .latency_unit(LatencyUnit::Micros),
                     ),
             )
-            .layer(metrics)
+            .option_layer(metrics)
             .map_request(crate::logging::span::register_request)
             .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(

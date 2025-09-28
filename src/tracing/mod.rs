@@ -2,9 +2,7 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use opentelemetry_otlp::{
-    ExporterBuildError, Protocol, SpanExporter, WithExportConfig, WithTonicConfig,
-};
+use opentelemetry_otlp::{ExporterBuildError, SpanExporter, WithExportConfig, WithTonicConfig};
 use opentelemetry_sdk::{
     trace::{
         BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
@@ -13,8 +11,7 @@ use opentelemetry_sdk::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tonic_012::transport::ClientTlsConfig;
-use tracing::{debug_span, Level, Subscriber};
+use tracing::{debug_span, Instrument, Level, Subscriber};
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{
     filter::{Filtered, Targets},
@@ -23,18 +20,23 @@ use tracing_subscriber::{
 };
 use url::Url;
 
-use crate::logging::LoggingLevel;
+use crate::{
+    crypto::TonicTlsConfig, errors::IoError, logging::LoggingLevel, telemetry::OtlpProtocol,
+};
 
 /// Error type used in tracing configuration.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum TracingError {
-    // Exporter builder error.
+    /// Exporter builder error.
     #[error("OTel span exporter builder error: {0}")]
-    ExporterBuilder(#[from] ExporterBuildError),
-    // OTel tracing error.
+    OpenTelemetry(#[from] ExporterBuildError),
+    /// OTel tracing error.
     #[error("OTel tracing error: {0}")]
     Tracing(#[from] opentelemetry_sdk::trace::TraceError),
+    /// Error loading files in configuration.
+    #[error("Error loading files in configuration: {0}")]
+    ConfigRead(IoError),
 }
 
 /// OpenTelemetry tracing configuration.
@@ -46,7 +48,7 @@ pub struct TracingConfig {
     endpoint: Url,
     /// Protocol to use when exporting data.
     #[serde(default, alias = "format")]
-    protocol: TracingProtocol,
+    protocol: OtlpProtocol,
     /// OTLP collector timeout.
     #[serde(default = "TracingConfig::default_timeout")]
     timeout: Duration,
@@ -65,6 +67,9 @@ pub struct TracingConfig {
     /// Batch span processor configuration.
     #[serde(default)]
     batch: TracingBatchConfig,
+    /// TLS configuration for exporter.
+    #[serde(default)]
+    tls: TonicTlsConfig,
     /// Include HTTP headers in tracing spans and responses.
     #[serde(default = "crate::util::default_false")]
     include_headers: bool,
@@ -80,13 +85,14 @@ impl Default for TracingConfig {
     fn default() -> Self {
         Self {
             endpoint: Self::default_endpoint(),
-            protocol: TracingProtocol::default(),
+            protocol: OtlpProtocol::default(),
             timeout: Self::default_timeout(),
             sample: TracingSampler::default(),
             level: LoggingLevel::default(),
             limits: TracingSpanLimits::default(),
             include: TracingIncludes::default(),
             batch: TracingBatchConfig::default(),
+            tls: TonicTlsConfig::default(),
             include_headers: false,
             request_level: Self::default_request_level(),
             response_level: Self::default_response_level(),
@@ -112,15 +118,21 @@ impl TracingConfig {
     }
 
     /// Build internal protocol exporter.
-    fn build_exporter(&self) -> Result<SpanExporter, ExporterBuildError> {
+    async fn build_exporter(&self) -> Result<SpanExporter, TracingError> {
         // TODO: allow adding metadata.
         SpanExporter::builder()
             .with_tonic()
-            .with_protocol(self.protocol.into())
             .with_endpoint(self.endpoint.to_string())
+            .with_protocol(self.protocol.into())
             .with_timeout(self.timeout)
-            .with_tls_config(ClientTlsConfig::new().with_native_roots())
+            .with_tls_config(
+                self.tls
+                    .to_tonic_config()
+                    .await
+                    .map_err(|err| TracingError::ConfigRead(err.into()))?,
+            )
             .build()
+            .map_err(Into::into)
     }
 
     /// Build OpenTelemetry SDK batch configuration.
@@ -128,27 +140,34 @@ impl TracingConfig {
         self.batch.to_builder().build()
     }
 
-    /// Build OpenTelemetry tracing pipeline.
+    /// Build OpenTelemetry tracing provider.
     ///
     /// # Errors
     ///
     /// Returns `Err` if span exporter and/or processor cannot be installed for some reason.
-    pub fn build_pipeline(&self, resource: Resource) -> Result<SdkTracerProvider, TracingError> {
-        let _span = debug_span!("build_tracing_pipeline").entered();
-        let exporter = self.build_exporter()?;
-        let processor = BatchSpanProcessor::builder(exporter)
-            .with_batch_config(self.build_batch_config())
-            .build();
-        Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
-            .with_span_processor(processor)
-            .with_resource(resource)
-            .with_sampler(Sampler::from(self.sample))
-            .with_max_events_per_span(self.limits.max_events_per_span)
-            .with_max_attributes_per_span(self.limits.max_attributes_per_span)
-            .with_max_links_per_span(self.limits.max_links_per_span)
-            .with_max_attributes_per_event(self.limits.max_attributes_per_event)
-            .with_max_attributes_per_link(self.limits.max_attributes_per_link)
-            .build())
+    pub async fn build_provider(
+        &self,
+        resource: Resource,
+    ) -> Result<SdkTracerProvider, TracingError> {
+        let span = debug_span!("build_tracing_provider");
+        async {
+            let exporter = self.build_exporter().await?;
+            let processor = BatchSpanProcessor::builder(exporter)
+                .with_batch_config(self.build_batch_config())
+                .build();
+            Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_span_processor(processor)
+                .with_resource(resource)
+                .with_sampler(Sampler::from(self.sample))
+                .with_max_events_per_span(self.limits.max_events_per_span)
+                .with_max_attributes_per_span(self.limits.max_attributes_per_span)
+                .with_max_links_per_span(self.limits.max_links_per_span)
+                .with_max_attributes_per_event(self.limits.max_attributes_per_event)
+                .with_max_attributes_per_link(self.limits.max_attributes_per_link)
+                .build())
+        }
+        .instrument(span)
+        .await
     }
 
     /// Build OpenTelemetry layer for [`tracing`].
@@ -208,27 +227,6 @@ impl TracingConfig {
     #[must_use]
     pub fn response_level(&self) -> LoggingLevel {
         self.response_level
-    }
-}
-
-/// Protocol to use for data export.
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
-#[non_exhaustive]
-#[serde(rename_all = "snake_case")]
-enum TracingProtocol {
-    /// GRPC over HTTP.
-    #[default]
-    OtlpGrpc,
-    /// Protobuf over HTTP.
-    OtlpHttp,
-}
-
-impl From<TracingProtocol> for Protocol {
-    fn from(value: TracingProtocol) -> Self {
-        match value {
-            TracingProtocol::OtlpGrpc => Self::Grpc,
-            TracingProtocol::OtlpHttp => Self::HttpBinary,
-        }
     }
 }
 

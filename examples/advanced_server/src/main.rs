@@ -39,7 +39,11 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
     //
     // Logging will start working right after this call, and until the returned
     // guard is dropped.
-    let mut handle = config.app.handle().expect("Error initializing handle");
+    let mut handle = config
+        .app
+        .handle()
+        .await
+        .expect("Error initializing handle");
     // Create app builder from app config.
     //
     // Also enable the auth subsystem.

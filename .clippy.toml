@@ -1,1 +1,1 @@
-doc-valid-idents = ["OpenAPI", "OpenTelemetry", "RapiDoc", "RusTLS", "EdDSA", ".."]
+doc-valid-idents = ["OpenAPI", "OpenTelemetry", "OTel", "RapiDoc", "RusTLS", "EdDSA", ".."]

@@ -50,7 +50,7 @@ handlers:
     cors:
       origins: any
       max_age: 60s
-metrics:
+telemetry:
   labels:
     env: example
 tracing:
