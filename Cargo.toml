@@ -73,7 +73,7 @@ opentelemetry-prometheus-text-exporter = "0.2"
 opentelemetry-resource-detectors = "0.9"
 opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
 opentelemetry-semantic-conventions = "0.30"
-opentelemetry-stdout = { version = "0.30", features = ["trace", "metrics", "logs"] }
+opentelemetry-stdout = { version = "0.31", features = ["trace", "metrics", "logs"] }
 password-hash = { version = "0.5", features = ["alloc"] }
 pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
 problemdetails = { version = "0.6", features = ["axum"] }
