@@ -68,7 +68,7 @@ okapi = { version = "0.7", features = ["preserve_order"] }
 parking_lot = "0.12"
 pin-project = "1.1"
 opentelemetry = { version = "0.30", features = ["metrics"] }
-opentelemetry-otlp = { version = "0.30", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
+opentelemetry-otlp = { version = "0.31", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
 opentelemetry-prometheus-text-exporter = "0.2"
 opentelemetry-resource-detectors = "0.9"
 opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
