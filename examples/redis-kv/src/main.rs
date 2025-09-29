@@ -166,7 +166,7 @@ async fn run(args: Args, mut config: ServiceConfig<LocalConfig>) -> Result<(), a
     //
     // Logging will start working right after this call, and until the returned
     // guard is dropped.
-    let mut handle = config.app.handle()?;
+    let mut handle = config.app.handle().await?;
     // Create app builder from app config.
     //
     // Also enable the auth subsystem.
@@ -183,8 +183,6 @@ async fn run(args: Args, mut config: ServiceConfig<LocalConfig>) -> Result<(), a
             .with_tag("set", Some("KV setters"), None::<&str>)
     });
     // Initialize application state.
-    // FIXME: transparently initialize metrics and traces in correct order.
-    let _ = app_builder.metrics();
     let manager = RedisConnectionManager::new(config.service.redis.url)?;
     let pool = bb8::Pool::builder()
         .max_size(config.service.redis.max_size)

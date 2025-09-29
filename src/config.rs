@@ -15,14 +15,15 @@ use crate::{
         timeout::HandlerTimeoutConfig,
     },
     logging::LoggingConfig,
-    metrics::MetricsBuilder,
+    metrics::{MetricsBuilder, MetricsState},
     probes::ProbeConfig,
     runtime::RuntimeConfig,
+    telemetry::TelemetryConfig,
     tracing::TracingConfig,
 };
 
 /// Root container for app configuration.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[non_exhaustive]
 pub struct ServiceConfig<C = ()>
 where
@@ -134,7 +135,7 @@ where
 }
 
 /// Top-level application configuration.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[non_exhaustive]
 pub struct AppConfig {
     /// Tokio runtime configuration.
@@ -153,8 +154,11 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_doc: Option<ApiDocBuilder>,
     /// Metrics configuration.
-    #[serde(default)]
-    pub metrics: MetricsBuilder,
+    #[serde(
+        default = "AppConfig::default_metrics",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub metrics: Option<MetricsBuilder>,
     /// Probes and maintenance mode configuration.
     #[serde(default)]
     pub probes: ProbeConfig,
@@ -164,18 +168,28 @@ pub struct AppConfig {
     /// [`reqwest`] HTTP client configuration.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub http_clients: HashMap<String, HttpClientConfig>,
+    /// OpenTelemetry configuration common for logging, metrics and tracing.
+    #[serde(default)]
+    pub telemetry: TelemetryConfig,
     /// Short application name.
     #[serde(skip)]
     pub app_name: Option<String>,
     /// Application version.
     #[serde(skip)]
     pub app_version: Option<String>,
-    /// OpenTelemetry static attributes.
+    /// Metrics state to pass into app builder.
     #[serde(skip)]
-    pub otel_res: Option<opentelemetry_sdk::Resource>,
+    pub metrics_state: Option<MetricsState>,
 }
 
 impl AppConfig {
+    /// Default value for [`Self::metrics`].
+    #[must_use]
+    #[inline]
+    fn default_metrics() -> Option<MetricsBuilder> {
+        Some(MetricsBuilder::default())
+    }
+
     /// Set short name of an application.
     ///
     /// Whitespace is not allowed, as this value is used in Server: HTTP header, among other
@@ -193,6 +207,12 @@ impl AppConfig {
     pub fn with_app_version(&mut self, app_version: impl ToString) -> &mut Self {
         // TODO: maybe check for value correctness?
         self.app_version = Some(app_version.to_string());
+        self
+    }
+
+    /// Set metrics state to pass into app builder on initialization.
+    pub fn with_metrics_state(&mut self, metrics_state: MetricsState) -> &mut Self {
+        self.metrics_state = Some(metrics_state);
         self
     }
 }

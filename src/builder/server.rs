@@ -51,6 +51,9 @@ pub enum ServerBuilderError {
     /// Unable to extract local address.
     #[error("Unable to extract local address: {0}")]
     ListenerLocalAddr(hyper::Error),
+    /// Unable to get socket domain.
+    #[error("Unable to get socket domain: {0}")]
+    GetDomain(IoError),
     /// Unable to set `SO_REUSEADDR`.
     #[error("Unable to set SO_REUSEADDR: {0}")]
     SetReuseAddr(IoError),
@@ -63,8 +66,8 @@ pub enum ServerBuilderError {
     /// Unable to set `SO_KEEPALIVE`.
     #[error("Unable to set SO_KEEPALIVE: {0}")]
     SetKeepAlive(IoError),
-    /// Unable to set `IP_TOS`.
-    #[error("Unable to set IP_TOS: {0}")]
+    /// Unable to set `IP_TOS`/`IPV6_TCLASS`.
+    #[error("Unable to set IP_TOS/IPV6_TCLASS: {0}")]
     SetIpTos(IoError),
     /// Unable to set `TCP_MAXSEG`.
     #[error("Unable to set TCP_MAXSEG: {0}")]
@@ -210,9 +213,16 @@ impl ServerBuilder {
     {
         let (sock, addr) = socket(addr_conf).await?;
         let sref = SockRef::from(&sock);
+        let domain = sref
+            .domain()
+            .map_err(|err| ServerBuilderError::GetDomain(err.into()))?;
         if let Some(tos) = self.ip.tos {
-            sref.set_tos(tos)
-                .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
+            match domain {
+                socket2::Domain::IPV4 => sref.set_tos_v4(tos),
+                socket2::Domain::IPV6 => sref.set_tclass_v6(tos),
+                _ => Ok(()),
+            }
+            .map_err(|err| ServerBuilderError::SetIpTos(err.into()))?;
         }
         if let Some(sz) = self.tcp.recv_buffer {
             sref.set_recv_buffer_size(sz.get())
@@ -223,7 +233,7 @@ impl ServerBuilder {
                 .map_err(|err| ServerBuilderError::SetSendBuffer(err.into()))?;
         }
         if let Some(mss) = self.tcp.mss {
-            sref.set_mss(mss.get())
+            sref.set_tcp_mss(mss.get())
                 .map_err(|err| ServerBuilderError::SetTcpMss(err.into()))?;
         }
         if let Some(idle) = self.tcp.keepalive.idle {

@@ -32,3 +32,4 @@ An opinionated backend service framework based on axum.
  * `jwt`: support athentication via HTTP Bearer using [JWT](https://datatracker.ietf.org/doc/html/rfc7519).
  * `kafka`: support writing logs to a Kafka topic.
  * `systemd`: enable systemd integration for service notifications and watchdog support (Linux only).
+ * `full`: kitchen sink mode, enable every feature.

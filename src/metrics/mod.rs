@@ -2,13 +2,12 @@
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
     future::Future,
     ops::Deref,
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -20,33 +19,49 @@ use axum::{
 };
 use hyper::{Method, Request};
 use opentelemetry::{
-    global,
-    metrics::{Counter, Gauge, Histogram, MeterProvider, UpDownCounter},
+    metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter},
     KeyValue,
 };
+use opentelemetry_otlp::{
+    ExporterBuildError, MetricExporter as OtlpMetricExporter, WithExportConfig, WithTonicConfig,
+};
+use opentelemetry_prometheus_text_exporter::PrometheusExporter;
 use opentelemetry_sdk::{
-    metrics::{new_view, Aggregation, Instrument, InstrumentKind, MeterProviderBuilder, Stream},
+    metrics::{SdkMeterProvider, Temporality},
     Resource,
 };
+use opentelemetry_stdout::MetricExporter as StdoutMetricExporter;
 use pin_project::pin_project;
-use prometheus::{Encoder, Registry, TextEncoder};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 use tower::{Layer, Service};
-use tracing::{debug_span, trace};
+use tracing::{debug_span, trace, Instrument};
+use url::Url;
 
-use crate::{errors, layers::ext::HandlerName};
+use crate::{
+    crypto::TonicTlsConfig,
+    errors::{self, IoError},
+    layers::ext::HandlerName,
+    telemetry::OtlpProtocol,
+};
 
 /// Error type used in metrics subsystem.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum MetricsError {
-    /// Prometheus exporter error.
-    #[error("Prometheus error: {0}")]
-    Prometheus(#[from] prometheus::Error),
     /// OpenTelemetry metrics error.
-    #[error("OTel metrics error: {0}")]
-    OpenTelemetry(#[from] opentelemetry_sdk::metrics::MetricError),
+    #[error("OTel metrics setup error: {0}")]
+    OpenTelemetry(#[from] ExporterBuildError),
+    /// Error loading files in configuration.
+    #[error("Error loading files in configuration: {0}")]
+    ConfigRead(IoError),
+    /// Error collecting metrics.
+    #[error("Error collecting Prometheus metrics: {0}")]
+    Prometheus(IoError),
+    /// Metrics subsystem is misconfigured.
+    #[error("Metrics subsystem is misconfigured")]
+    RuntimeConfig,
 }
 
 impl IntoResponse for MetricsError {
@@ -62,9 +77,12 @@ impl IntoResponse for MetricsError {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct MetricsBuilder {
-    /// Whether HTTP metrics gathering is enabled.
-    #[serde(default = "crate::util::default_true")]
-    enabled: bool,
+    /// List of exporters to supply metrics to.
+    #[serde(
+        default = "MetricsBuilder::default_exporters",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    exporters: Vec<MetricsExporterConfig>,
     /// Histogram metric buckets for total request duration.
     ///
     /// Measured in seconds.
@@ -75,31 +93,42 @@ pub struct MetricsBuilder {
     /// Measured in bytes.
     #[serde(default = "MetricsBuilder::default_size_buckets")]
     size_buckets: Vec<f64>,
-    /// URL path for metrics prometheus exporter endpoint.
-    #[serde(default = "MetricsBuilder::default_metrics_path")]
-    metrics_path: String,
-    /// Static labels to add to gathered metrics.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    labels: HashMap<String, String>,
-    /// Optional prefix for metric names.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    prefix: Option<String>,
+    /// Time interval between recording runtime metrics.
+    #[serde(
+        default = "MetricsBuilder::default_runtime_metrics_interval",
+        with = "humantime_serde"
+    )]
+    pub runtime_metrics_interval: Duration,
 }
 
 impl Default for MetricsBuilder {
     fn default() -> Self {
         Self {
-            enabled: true,
+            exporters: Self::default_exporters(),
             duration_buckets: Self::default_duration_buckets(),
             size_buckets: Self::default_size_buckets(),
-            metrics_path: Self::default_metrics_path(),
-            labels: HashMap::new(),
-            prefix: None,
+            runtime_metrics_interval: Self::default_runtime_metrics_interval(),
+        }
+    }
+}
+
+impl From<MetricsExporterConfig> for MetricsBuilder {
+    fn from(value: MetricsExporterConfig) -> Self {
+        Self {
+            exporters: vec![value],
+            ..Default::default()
         }
     }
 }
 
 impl MetricsBuilder {
+    /// Default value for [`Self::exporters`].
+    #[must_use]
+    #[inline]
+    fn default_exporters() -> Vec<MetricsExporterConfig> {
+        vec![MetricsExporterConfig::default()]
+    }
+
     /// Default value for [`Self::duration_buckets`].
     #[must_use]
     #[inline]
@@ -142,18 +171,11 @@ impl MetricsBuilder {
         .into()
     }
 
-    /// Default value for [`Self::metrics_path`].
+    /// Default value for [`Self::runtime_metrics_interval`].
     #[must_use]
     #[inline]
-    fn default_metrics_path() -> String {
-        "/metrics".into()
-    }
-
-    /// Whether HTTP metrics gathering is enabled.
-    #[must_use]
-    #[inline]
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
+    fn default_runtime_metrics_interval() -> Duration {
+        Duration::from_secs(15)
     }
 
     /// Set histogram metric buckets for total request duration.
@@ -178,107 +200,59 @@ impl MetricsBuilder {
         self
     }
 
-    /// Set URL path for metrics prometheus exporter endpoint.
+    /// Set interval to collect runtime metrics.
     #[must_use]
-    pub fn with_metrics_path<B, S>(mut self, path: impl ToString) -> Self {
-        self.metrics_path = path.to_string();
+    pub fn with_runtime_metrics_interval(mut self, interval: Duration) -> Self {
+        self.runtime_metrics_interval = interval;
         self
     }
 
-    /// Add one static label to be added to gathered metrics.
-    #[must_use]
-    pub fn with_label<T, U>(mut self, key: T, value: U) -> Self
-    where
-        T: ToString,
-        U: ToString,
-    {
-        self.labels.insert(key.to_string(), value.to_string());
-        self
-    }
-
-    /// Add multiple static labels to be added to gathered metrics.
-    #[must_use]
-    pub fn with_labels<'a, T, U, V>(mut self, kvs: V) -> Self
-    where
-        T: ToString + 'a,
-        U: ToString + 'a,
-        V: IntoIterator<Item = (&'a T, &'a U)>,
-    {
-        self.labels.extend(
-            kvs.into_iter()
-                .map(|(key, val)| (key.to_string(), val.to_string())),
-        );
-        self
-    }
-
-    /// Set optional prefix for metric names.
+    /// Build OpenTelemetry metrics provider.
     ///
-    /// Defaults to no prefix used.
-    #[must_use]
-    pub fn with_prefix(mut self, prefix: impl ToString) -> Self {
-        self.prefix = Some(prefix.to_string());
-        self
-    }
-
-    /// Build new Prometheus registry.
-    fn build_prometheus_registry(&self) -> Result<Registry, MetricsError> {
-        Registry::new_custom(
-            self.prefix.clone(),
-            if self.labels.is_empty() {
-                None
-            } else {
-                Some(self.labels.clone())
-            },
-        )
-        .map_err(Into::into)
-    }
-
-    /// Build metrics state object.
+    /// Returns built provider, and a Prometheus exporter, if it was mentioned in configuration.
+    /// You should use this exporter from within a handler to generate metrics in text format.
     ///
     /// # Errors
     ///
-    /// Returns `Err` if metrics registry or provider could not be initialized.
-    pub fn build_state(&self, resource: Resource) -> Result<MetricsState, MetricsError> {
-        let _span = debug_span!("build_metrics").entered();
-        let registry = self.build_prometheus_registry()?;
-        let exporter = opentelemetry_prometheus::exporter()
-            .with_registry(registry.clone())
-            .build()?;
-        let mut all_hist = Instrument::new().name("*");
-        all_hist.kind = Some(InstrumentKind::Histogram);
-        let provider = MeterProviderBuilder::default()
-            .with_resource(resource)
-            .with_reader(exporter)
-            .with_view(new_view(
-                Instrument::new().name("*http.server.request.body.size"),
-                Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
-                    boundaries: self.size_buckets.clone(),
-                    record_min_max: true,
-                }),
-            )?)
-            .with_view(new_view(
-                Instrument::new().name("*http.server.response.body.size"),
-                Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
-                    boundaries: self.size_buckets.clone(),
-                    record_min_max: true,
-                }),
-            )?)
-            .with_view(new_view(
-                all_hist,
-                Stream::new().aggregation(Aggregation::ExplicitBucketHistogram {
-                    boundaries: self.duration_buckets.clone(),
-                    record_min_max: true,
-                }),
-            )?)
-            .build();
+    /// Returns `Err` if metrics exporter and/or processor cannot be installed for some reason.
+    pub async fn build_provider(
+        &self,
+        resource: Resource,
+    ) -> Result<(SdkMeterProvider, Option<PrometheusExporter>), MetricsError> {
+        let span = debug_span!("build_tracing_provider");
+        async {
+            let mut prom = None;
+            let mut provider = SdkMeterProvider::builder().with_resource(resource);
+            for exp_cfg in &self.exporters {
+                match exp_cfg {
+                    MetricsExporterConfig::Prometheus(cfg) => {
+                        let exp = cfg.build_exporter();
+                        prom = Some(exp.clone());
+                        provider = provider.with_reader(exp);
+                    }
+                    MetricsExporterConfig::Otlp(cfg) => {
+                        let exp = cfg.build_exporter().await?;
+                        provider = provider.with_periodic_exporter(exp);
+                    }
+                    MetricsExporterConfig::Stdout(cfg) => {
+                        let exp = cfg.build_exporter();
+                        provider = provider.with_periodic_exporter(exp);
+                    }
+                }
+            }
+            Ok((provider.build(), prom))
+        }
+        .instrument(span)
+        .await
+    }
 
-        global::set_meter_provider(provider.clone());
-        let meter = provider.meter("uxum");
-
+    /// Build metrics state object.
+    pub fn build_state(&self, meter: &Meter, prom: Option<PrometheusExporter>) -> MetricsState {
         // HTTP server metrics.
         let request_duration = meter
             .f64_histogram("http.server.request.duration")
             .with_unit("s")
+            .with_boundaries(self.duration_buckets.clone())
             .with_description("The HTTP request latencies in seconds.")
             .build();
         let requests_total = meter
@@ -294,11 +268,13 @@ impl MetricsBuilder {
         let request_body_size = meter
             .u64_histogram("http.server.request.body.size")
             .with_unit("By")
+            .with_boundaries(self.size_buckets.clone())
             .with_description("The HTTP request body sizes in bytes.")
             .build();
         let response_body_size = meter
             .u64_histogram("http.server.response.body.size")
             .with_unit("By")
+            .with_boundaries(self.size_buckets.clone())
             .with_description("The HTTP reponse body sizes in bytes.")
             .build();
         let http_server = HttpServerMetrics {
@@ -313,6 +289,7 @@ impl MetricsBuilder {
         let request_duration = meter
             .f64_histogram("http.client.request.duration")
             .with_unit("s")
+            .with_boundaries(self.duration_buckets.clone())
             .with_description("The HTTP request latencies in seconds.")
             .build();
         let requests_total = meter
@@ -336,11 +313,13 @@ impl MetricsBuilder {
         let request_body_size = meter
             .u64_histogram("http.client.request.body.size")
             .with_unit("By")
+            .with_boundaries(self.size_buckets.clone())
             .with_description("The HTTP request body sizes in bytes.")
             .build();
         let response_body_size = meter
             .u64_histogram("http.client.response.body.size")
             .with_unit("By")
+            .with_boundaries(self.size_buckets.clone())
             .with_description("The HTTP reponse body sizes in bytes.")
             .build();
         let http_client = HttpClientMetricsInner {
@@ -373,13 +352,235 @@ impl MetricsBuilder {
             global_queue_depth,
         };
 
-        Ok(MetricsState {
-            registry,
+        MetricsState {
             http_server,
             http_client,
             runtime,
-            metrics_path: self.metrics_path.clone(),
-        })
+            prom,
+        }
+    }
+
+    /// Build Axum router containing all metrics methods.
+    pub fn build_router(&self, metrics_state: &MetricsState) -> Router {
+        let _span = debug_span!("build_metrics_router").entered();
+        let mut rtr = Router::new();
+        for exp_cfg in &self.exporters {
+            if let MetricsExporterConfig::Prometheus(cfg) = exp_cfg {
+                rtr = rtr.route(&cfg.path, routing::get(get_prom_metrics))
+            }
+        }
+        rtr.with_state(metrics_state.clone())
+    }
+}
+
+/// Configuration for OpenTelemetry metrics exporter.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum MetricsExporterConfig {
+    /// Export metrics via a local handler that returns collected metrics in Prometheus text
+    /// format.
+    #[serde(alias = "prom")]
+    Prometheus(PrometheusMetricsExporterConfig),
+    /// Export metrics via pushing to a remote OTLP endpoint.
+    Otlp(OtlpMetricsExporterConfig),
+    /// Export metrics to standard output. Use this only during development or for educational
+    /// or debugging purposes.
+    Stdout(StdoutMetricsExporterConfig),
+}
+
+impl Default for MetricsExporterConfig {
+    fn default() -> Self {
+        Self::Prometheus(Default::default())
+    }
+}
+
+/// Configuration for OpenTelemetry Prometheus metrics exporter.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct PrometheusMetricsExporterConfig {
+    /// URL path for metrics prometheus exporter endpoint.
+    #[serde(default = "PrometheusMetricsExporterConfig::default_path")]
+    path: String,
+    /// Use automatic unit suffixes (e.g., `_seconds`, `_bytes`).
+    #[serde(default = "crate::util::default_true")]
+    with_units: bool,
+    /// Use `_total` suffix on counter metrics.
+    #[serde(default = "crate::util::default_true")]
+    with_counter_suffixes: bool,
+    /// Generate `target_info` metric from resource attributes.
+    #[serde(default = "crate::util::default_true")]
+    with_target_info: bool,
+    /// Generate `otel_scope_info` metric with instrumentation scope labels.
+    #[serde(default = "crate::util::default_true")]
+    with_scope_info: bool,
+}
+
+impl Default for PrometheusMetricsExporterConfig {
+    fn default() -> Self {
+        Self {
+            path: Self::default_path(),
+            with_units: true,
+            with_counter_suffixes: true,
+            with_target_info: true,
+            with_scope_info: true,
+        }
+    }
+}
+
+impl PrometheusMetricsExporterConfig {
+    /// Default value for [`Self::path`].
+    #[must_use]
+    #[inline]
+    fn default_path() -> String {
+        String::from("/metrics")
+    }
+
+    /// Build exporter.
+    #[must_use]
+    fn build_exporter(&self) -> PrometheusExporter {
+        let mut builder = PrometheusExporter::builder();
+        if !self.with_units {
+            builder = builder.without_units();
+        }
+        if !self.with_counter_suffixes {
+            builder = builder.without_counter_suffixes();
+        }
+        if !self.with_target_info {
+            builder = builder.without_target_info();
+        }
+        if !self.with_scope_info {
+            builder = builder.without_scope_info();
+        }
+        builder.build()
+    }
+}
+
+/// Configuration for OpenTelemetry OTLP metrics exporter.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct OtlpMetricsExporterConfig {
+    /// Metrics collector endpoint URL.
+    #[serde(default = "OtlpMetricsExporterConfig::default_endpoint")]
+    endpoint: Url,
+    /// Protocol to use when exporting data.
+    #[serde(default, alias = "format")]
+    protocol: OtlpProtocol,
+    /// Timeout for an outbound exporter request.
+    #[serde(
+        default = "OtlpMetricsExporterConfig::default_timeout",
+        with = "humantime_serde"
+    )]
+    timeout: Duration,
+    /// Default temporality for collected metrics.
+    #[serde(default)]
+    temporality: MetricsTemporality,
+    /// TLS configuration for exporter.
+    #[serde(default)]
+    tls: TonicTlsConfig,
+}
+
+impl Default for OtlpMetricsExporterConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: Self::default_endpoint(),
+            protocol: OtlpProtocol::default(),
+            timeout: Self::default_timeout(),
+            temporality: MetricsTemporality::default(),
+            tls: TonicTlsConfig::default(),
+        }
+    }
+}
+
+impl OtlpMetricsExporterConfig {
+    /// Default value for [`Self::endpoint`].
+    #[must_use]
+    #[inline]
+    #[allow(clippy::unwrap_used)]
+    fn default_endpoint() -> Url {
+        // TODO: check correctness using a unit test.
+        Url::parse("http://localhost:9090/api/v1/otlp/v1/metrics").unwrap()
+    }
+
+    /// Default value for [`Self::timeout`].
+    #[must_use]
+    #[inline]
+    fn default_timeout() -> Duration {
+        opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT
+    }
+
+    /// Try building exporter.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some files required to properly initialize exporter could not be loaded.
+    async fn build_exporter(&self) -> Result<OtlpMetricExporter, MetricsError> {
+        OtlpMetricExporter::builder()
+            .with_tonic()
+            .with_endpoint(self.endpoint.to_string())
+            .with_protocol(self.protocol.into())
+            .with_timeout(self.timeout)
+            .with_tls_config(
+                self.tls
+                    .to_tonic_config()
+                    .await
+                    .map_err(|err| MetricsError::ConfigRead(err.into()))?,
+            )
+            .with_temporality(self.temporality.into())
+            .build()
+            .map_err(Into::into)
+    }
+}
+
+/// Configuration for OpenTelemetry stdout metrics exporter.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+struct StdoutMetricsExporterConfig {
+    /// Default temporality for collected metrics.
+    #[serde(default)]
+    temporality: MetricsTemporality,
+}
+
+impl StdoutMetricsExporterConfig {
+    /// Build exporter.
+    fn build_exporter(&self) -> StdoutMetricExporter {
+        StdoutMetricExporter::builder()
+            .with_temporality(self.temporality.into())
+            .build()
+    }
+}
+
+/// Defines the window that an aggregation was calculated over.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash, Serialize)]
+#[non_exhaustive]
+#[serde(rename_all = "snake_case")]
+pub enum MetricsTemporality {
+    /// A measurement interval that continues to expand forward in time from a
+    /// starting point.
+    ///
+    /// New measurements are added to all previous measurements since a start time.
+    #[default]
+    Cumulative,
+
+    /// A measurement interval that resets each cycle.
+    ///
+    /// Measurements from one cycle are recorded independently, measurements from
+    /// other cycles do not affect them.
+    Delta,
+
+    /// Configures Synchronous Counter and Histogram instruments to use
+    /// Delta aggregation temporality, which allows them to shed memory
+    /// following a cardinality explosion, thus use less memory.
+    LowMemory,
+}
+
+impl From<MetricsTemporality> for Temporality {
+    fn from(value: MetricsTemporality) -> Self {
+        match value {
+            MetricsTemporality::Cumulative => Self::Cumulative,
+            MetricsTemporality::Delta => Self::Delta,
+            MetricsTemporality::LowMemory => Self::LowMemory,
+        }
     }
 }
 
@@ -387,18 +588,14 @@ impl MetricsBuilder {
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct MetricsState {
-    /// Prometheus registry.
-    ///
-    /// Holds all configured metrics and their collected values.
-    registry: Registry,
     /// HTTP server metrics.
     http_server: HttpServerMetrics,
     /// HTTP client metrics.
     http_client: HttpClientMetrics,
     /// Tokio runtime metrics.
     runtime: RuntimeMetrics,
-    /// URL path for metrics prometheus exporter.
-    metrics_path: String,
+    /// Prometheus exporter.
+    prom: Option<PrometheusExporter>,
 }
 
 /// Container for HTTP server metrics.
@@ -483,20 +680,27 @@ impl<S> Layer<S> for MetricsState {
 }
 
 impl MetricsState {
-    /// Build Axum router containing all metrics methods.
-    pub fn build_router(&self) -> Router {
-        let _span = debug_span!("build_metrics_router").entered();
-        Router::new()
-            .route(&self.metrics_path, routing::get(get_metrics))
-            .with_state(self.clone())
-    }
-
     /// Get HTTP client metrics state object.
     #[must_use]
     pub fn client_metrics(&self, name: impl AsRef<str>) -> ClientMetricsState {
         ClientMetricsState {
             name: name.as_ref().to_string(),
             metrics: self.http_client.clone(),
+        }
+    }
+
+    /// Get metrics in Prometheus text format, or `None` if no Prometheus exporter was configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if encountered an error while collecting metrics.
+    pub fn export_text(&self) -> Result<Option<Vec<u8>>, std::io::Error> {
+        if let Some(exporter) = &self.prom {
+            let mut buf = Vec::with_capacity(256);
+            exporter.export(&mut buf)?;
+            Ok(Some(buf))
+        } else {
+            Ok(None)
         }
     }
 }
@@ -659,26 +863,43 @@ where
     }
 }
 
-/// Method handler to generate metrics.
-async fn get_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
-    // Record runtime metrics just-in-time.
-    let rt_metrics = tokio::runtime::Handle::current().metrics();
-    metrics
-        .runtime
-        .num_workers
-        .record(rt_metrics.num_workers() as u64, &[]);
-    metrics
-        .runtime
-        .num_alive_tasks
-        .record(rt_metrics.num_alive_tasks() as u64, &[]);
-    metrics
-        .runtime
-        .global_queue_depth
-        .record(rt_metrics.global_queue_depth() as u64, &[]);
+/// Periodic task to record Tokio runtime metrics.
+pub(crate) async fn gather_runtime_metrics(
+    metrics: MetricsState,
+    period: Duration,
+    cancel: CancellationToken,
+) {
+    let mut interval = tokio::time::interval(period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = interval.tick() => {
+                let rt_metrics = tokio::runtime::Handle::current().metrics();
+                metrics
+                    .runtime
+                    .num_workers
+                    .record(rt_metrics.num_workers() as u64, &[]);
+                metrics
+                    .runtime
+                    .num_alive_tasks
+                    .record(rt_metrics.num_alive_tasks() as u64, &[]);
+                metrics
+                    .runtime
+                    .global_queue_depth
+                    .record(rt_metrics.global_queue_depth() as u64, &[]);
+            }
+        }
+    }
+}
 
+/// Method handler to generate metrics.
+async fn get_prom_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
     // Serialize metrics.
-    let encoder = TextEncoder::new();
-    let mut buf = Vec::new();
-    encoder.encode(&metrics.registry.gather(), &mut buf)?;
+    let buf = match metrics.export_text() {
+        Ok(Some(buf)) => buf,
+        Ok(None) => return Err(MetricsError::RuntimeConfig),
+        Err(err) => return Err(MetricsError::Prometheus(err.into())),
+    };
     Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf))
 }

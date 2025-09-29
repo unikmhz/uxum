@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.8.0"
+version = "0.9.0"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -52,7 +52,8 @@ deboog = "0.2"
 dyn-clone = "1.0"
 forwarded-header-value = "0.1"
 futures = "0.3"
-gettid = "0.1"
+# XXX: gettid 0.1.4 breaks on systems with a really ancient libc.
+gettid = "=0.1.3"
 governor = "0.10"
 humantime-serde = "1.1"
 http = "1.3"
@@ -66,17 +67,18 @@ mime = "0.3"
 okapi = { version = "0.7", features = ["preserve_order"] }
 parking_lot = "0.12"
 pin-project = "1.1"
-opentelemetry = { version = "0.29", features = ["metrics"] }
-opentelemetry-otlp = { version = "0.29", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
-opentelemetry-resource-detectors = "0.8"
-opentelemetry_sdk = { version = "0.29", features = ["rt-tokio", "spec_unstable_metrics_views"] }
-opentelemetry-prometheus = { version = "0.29", features = ["prometheus-encoding"] }
-opentelemetry-semantic-conventions = "0.29"
+opentelemetry = { version = "0.30", features = ["metrics"] }
+opentelemetry-otlp = { version = "0.30", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
+opentelemetry-prometheus-text-exporter = "0.2"
+opentelemetry-resource-detectors = "0.9"
+opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
+opentelemetry-semantic-conventions = "0.30"
+opentelemetry-stdout = { version = "0.30", features = ["trace", "metrics", "logs"] }
 password-hash = { version = "0.5", features = ["alloc"] }
 pbkdf2 = { version = "0.12", features = ["simple"], optional = true }
 problemdetails = { version = "0.6", features = ["axum"] }
 prometheus = "0.14"
-prost = { version = "0.13", optional = true }
+prost = { version = "0.14", optional = true }
 rdkafka = { version = "0.38", features = ["ssl", "ssl-vendored", "zstd"], optional = true }
 recloser = "1.1"
 regex = "1.11.2"
@@ -89,17 +91,17 @@ schemars = { version = "0.8", features = ["bytes", "chrono", "preserve_order", "
 scrypt = { version = "0.11", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"] }
-socket2 = { version = "0.5" }
+socket2 = { version = "0.6" }
 thiserror = "2.0"
-tonic = { version = "0.13", optional = true }
-tonic_012 = { version = "0.12.3", package = "tonic" }
+tonic = { version = "0.14", features = ["tls-native-roots"], optional = true }
 tokio = { version = "1.44", features = ["full"] }
+tokio-util = "0.7"
 tower = { version = "0.5", features = ["buffer", "filter", "limit", "retry", "timeout", "util"] }
 tower-http = { version = "0.6", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "set-header", "trace", "util"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-log = "0.2"
-tracing-opentelemetry = "0.30"
+tracing-opentelemetry = "0.31"
 tracing-serde = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"] }
 url = { version = "2.5", features = ["serde"] }

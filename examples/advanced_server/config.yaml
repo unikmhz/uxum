@@ -5,9 +5,12 @@ logging:
       targets:
         h2: INFO
         hyper: INFO
+        rdkafka: INFO
         tonic: INFO
         tower: INFO
       color: true
+      print:
+        target: true
     - format: compact
       level: DEBUG
       output:
@@ -50,11 +53,13 @@ handlers:
     cors:
       origins: any
       max_age: 60s
-metrics:
+telemetry:
   labels:
     env: example
 tracing:
-  endpoint: http://localhost:4317
+  exporters:
+    - type: otlp
+      endpoint: http://localhost:4317
   include:
     location: true
     exception_from_error_fields: true

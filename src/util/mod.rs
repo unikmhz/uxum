@@ -1,5 +1,7 @@
 //! Misc utility functions and traits.
 
+pub(crate) mod fs;
+
 use std::{
     convert::Infallible,
     future::Future,
