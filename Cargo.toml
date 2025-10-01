@@ -101,7 +101,7 @@ tower-http = { version = "0.6", features = ["catch-panic", "cors", "request-id",
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-log = "0.2"
-tracing-opentelemetry = "0.31"
+tracing-opentelemetry = "0.32"
 tracing-serde = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "local-time", "parking_lot", "time", "tracing-log"] }
 url = { version = "2.5", features = ["serde"] }
