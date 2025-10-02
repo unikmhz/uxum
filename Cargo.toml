@@ -70,7 +70,7 @@ pin-project = "1.1"
 opentelemetry = { version = "0.30", features = ["metrics"] }
 opentelemetry-otlp = { version = "0.30", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
 opentelemetry-prometheus-text-exporter = "0.2"
-opentelemetry-resource-detectors = "0.9"
+opentelemetry-resource-detectors = "0.10"
 opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
 opentelemetry-semantic-conventions = "0.30"
 opentelemetry-stdout = { version = "0.30", features = ["trace", "metrics", "logs"] }
