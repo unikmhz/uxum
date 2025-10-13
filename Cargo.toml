@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -48,7 +48,7 @@ base64 = "0.22"
 bytes = { version = "1.10", features = ["serde"] }
 config = { version = "0.15", features = ["yaml"] }
 dashmap = "6.1"
-deboog = "0.2"
+deboog = "0.3"
 dyn-clone = "1.0"
 forwarded-header-value = "0.1"
 futures = "0.3"
@@ -69,7 +69,7 @@ parking_lot = "0.12"
 pin-project = "1.1"
 opentelemetry = { version = "0.30", features = ["metrics"] }
 opentelemetry-otlp = { version = "0.30", features = ["trace", "metrics", "logs", "grpc-tonic", "zstd-tonic", "tls-roots"] }
-opentelemetry-prometheus-text-exporter = "0.2"
+opentelemetry-prometheus-text-exporter = "=0.2.0"
 opentelemetry-resource-detectors = "0.9"
 opentelemetry_sdk = { version = "0.30", features = ["rt-tokio"] }
 opentelemetry-semantic-conventions = "0.30"
@@ -84,7 +84,7 @@ recloser = "1.1"
 regex = "1.11.2"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls-native-roots"] }
 reqwest-middleware = { version = "0.4", features = ["multipart", "json"] }
-reqwest-tracing = { version = "0.5.7", features = ["opentelemetry_0_29"] }
+reqwest-tracing = { version = "0.5.8", features = ["opentelemetry_0_30"] }
 subtle = "2.5"
 rustls = { version = "0.23", features = ["std", "aws_lc_rs", "custom-provider"] }
 schemars = { version = "0.8", features = ["bytes", "chrono", "preserve_order", "semver", "url"] }
