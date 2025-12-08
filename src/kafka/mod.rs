@@ -441,11 +441,7 @@ impl KafkaBackoffConfig {
 
 /// Convert boolean value for use in [`ClientConfig`].
 fn kafka_config_bool(b: bool) -> &'static str {
-    if b {
-        "true"
-    } else {
-        "false"
-    }
+    if b { "true" } else { "false" }
 }
 
 /// Format duration as number of milliseconds, for use in Kafka configuration.

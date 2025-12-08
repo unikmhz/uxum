@@ -2,7 +2,7 @@
 
 use std::{str::FromStr, time::Duration};
 
-use axum::http::{header, HeaderName, HeaderValue};
+use axum::http::{HeaderName, HeaderValue, header};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tower_http::cors::{Any, CorsLayer};
@@ -105,7 +105,7 @@ impl CorsConfig {
 mod serde_impls {
     use std::{fmt, marker::PhantomData};
 
-    use serde::{de, ser::SerializeSeq, Deserializer, Serializer};
+    use serde::{Deserializer, Serializer, de, ser::SerializeSeq};
 
     use super::*;
 

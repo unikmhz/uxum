@@ -7,18 +7,18 @@ use std::{borrow::Cow, collections::BTreeMap, str::FromStr};
 use axum::{
     body::Body,
     http::{
-        header::{AUTHORIZATION, WWW_AUTHENTICATE},
         HeaderName, HeaderValue, Request, Response, StatusCode,
+        header::{AUTHORIZATION, WWW_AUTHENTICATE},
     },
     response::IntoResponse,
 };
-use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as B64};
 #[cfg(feature = "jwt")]
 use deboog::Deboog;
-use dyn_clone::{clone_box, DynClone};
+use dyn_clone::{DynClone, clone_box};
 #[cfg(feature = "jwt")]
 use jsonwebtoken as jwt;
-use okapi::{openapi3, Map};
+use okapi::{Map, openapi3};
 #[cfg(feature = "jwt")]
 use serde_json::Value;
 use tracing::error;
@@ -121,7 +121,7 @@ impl AuthExtractor for BasicAuthExtractor {
                         .with_type(errors::TAG_UXUM_AUTH)
                         .with_title("Invalid HTTP Basic realm value")
                         .with_detail(err.to_string())
-                        .into_response()
+                        .into_response();
                 }
             };
             let _ = resp.headers_mut().insert(WWW_AUTHENTICATE, header_value);
@@ -361,7 +361,7 @@ impl AuthExtractor for JwtAuthExtractor {
                         .with_type(errors::TAG_UXUM_AUTH)
                         .with_title("Invalid HTTP Basic realm value")
                         .with_detail(err.to_string())
-                        .into_response()
+                        .into_response();
                 }
             };
             let _ = resp.headers_mut().insert(WWW_AUTHENTICATE, header_value);

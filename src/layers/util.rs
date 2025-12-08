@@ -7,7 +7,7 @@ use std::{
 
 use axum::extract::ConnectInfo;
 use forwarded_header_value::{ForwardedHeaderValue, Identifier};
-use http::{header::FORWARDED, HeaderMap, Request};
+use http::{HeaderMap, Request, header::FORWARDED};
 use thiserror::Error;
 
 use crate::auth::UserId;

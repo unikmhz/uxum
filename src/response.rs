@@ -2,7 +2,7 @@
 
 use axum::http::StatusCode;
 use okapi::openapi3;
-use schemars::gen::SchemaGenerator;
+use schemars::r#gen::SchemaGenerator;
 
 /// Object for documenting handler responses as OpenAPI schema.
 pub struct ResponseSchema {
@@ -19,13 +19,13 @@ pub trait GetResponseSchemas {
 
     /// Get all available responses.
     #[must_use]
-    fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter;
+    fn get_response_schemas(r#gen: &mut schemars::r#gen::SchemaGenerator) -> Self::ResponseIter;
 
     /// Convert responses into [`openapi3::Responses`] object.
     #[must_use]
-    fn get_responses(gen: &mut schemars::gen::SchemaGenerator) -> openapi3::Responses {
+    fn get_responses(r#gen: &mut schemars::r#gen::SchemaGenerator) -> openapi3::Responses {
         openapi3::Responses {
-            responses: Self::get_response_schemas(gen)
+            responses: Self::get_response_schemas(r#gen)
                 .into_iter()
                 .map(|sch| {
                     (
@@ -46,17 +46,29 @@ mod impls {
 
     use super::*;
 
+    macro_rules! type_alias {
+        ($new:ty, $old:ty) => {
+            impl GetResponseSchemas for $new {
+                type ResponseIter = <$old as GetResponseSchemas>::ResponseIter;
+
+                fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
+                    <$old as GetResponseSchemas>::get_response_schemas(r#gen)
+                }
+            }
+        };
+    }
+
     impl GetResponseSchemas for String {
         type ResponseIter = [ResponseSchema; 1];
 
-        fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
+        fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
                 response: openapi3::Response {
                     description: "UTF-8 string response".into(), // TODO: allow customization.
                     content: okapi::map! {
                         "text/plain; charset=utf-8".into() => openapi3::MediaType {
-                            schema: Some(gen.subschema_for::<String>().into_object()),
+                            schema: Some(r#gen.subschema_for::<String>().into_object()),
                             ..Default::default()
                         },
                     },
@@ -66,13 +78,32 @@ mod impls {
         }
     }
 
-    impl GetResponseSchemas for str {
+    type_alias!(str, String);
+    type_alias!(std::borrow::Cow<'static, str>, String);
+
+    impl GetResponseSchemas for bytes::Bytes {
         type ResponseIter = [ResponseSchema; 1];
 
-        fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
-            <String as GetResponseSchemas>::get_response_schemas(gen)
+        fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
+            [ResponseSchema {
+                status: StatusCode::OK,
+                response: openapi3::Response {
+                    description: "Binary response".into(), // TODO: allow customization.
+                    content: okapi::map! {
+                        "application/octet-stream".into() => openapi3::MediaType {
+                            schema: Some(r#gen.subschema_for::<bytes::Bytes>().into_object()),
+                            ..Default::default()
+                        },
+                    },
+                    ..Default::default()
+                },
+            }]
         }
     }
+
+    type_alias!(bytes::BytesMut, bytes::Bytes);
+    type_alias!([u8], bytes::Bytes);
+    type_alias!(Vec<u8>, bytes::Bytes);
 
     impl GetResponseSchemas for () {
         type ResponseIter = [ResponseSchema; 1];
@@ -93,8 +124,8 @@ mod impls {
         T: GetResponseSchemas + ?Sized,
     {
         type ResponseIter = T::ResponseIter;
-        fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
-            T::get_response_schemas(gen)
+        fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
+            T::get_response_schemas(r#gen)
         }
     }
 
@@ -104,8 +135,10 @@ mod impls {
     {
         type ResponseIter = T::ResponseIter;
 
-        fn get_response_schemas(gen: &mut schemars::gen::SchemaGenerator) -> Self::ResponseIter {
-            T::get_response_schemas(gen)
+        fn get_response_schemas(
+            r#gen: &mut schemars::r#gen::SchemaGenerator,
+        ) -> Self::ResponseIter {
+            T::get_response_schemas(r#gen)
         }
     }
 
@@ -115,14 +148,14 @@ mod impls {
     {
         type ResponseIter = [ResponseSchema; 1];
 
-        fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
+        fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
             [ResponseSchema {
                 status: StatusCode::OK,
                 response: openapi3::Response {
                     description: "Serialized JSON".into(), // FIXME: get from schema.
                     content: okapi::map! {
                         "application/json".into() => openapi3::MediaType {
-                            schema: Some(gen.subschema_for::<T>().into_object()),
+                            schema: Some(r#gen.subschema_for::<T>().into_object()),
                             ..Default::default()
                         },
                     },
@@ -139,13 +172,21 @@ mod impls {
     {
         type ResponseIter = Vec<ResponseSchema>;
 
-        fn get_response_schemas(gen: &mut SchemaGenerator) -> Self::ResponseIter {
-            T::get_response_schemas(gen)
+        fn get_response_schemas(r#gen: &mut SchemaGenerator) -> Self::ResponseIter {
+            T::get_response_schemas(r#gen)
                 .into_iter()
                 // FIXME: This will overwrite T's responses if E has responses with same status
                 // codes.
-                .chain(E::get_response_schemas(gen))
+                .chain(E::get_response_schemas(r#gen))
                 .collect()
+        }
+    }
+
+    impl GetResponseSchemas for std::convert::Infallible {
+        type ResponseIter = [ResponseSchema; 0];
+
+        fn get_response_schemas(_gen: &mut SchemaGenerator) -> Self::ResponseIter {
+            []
         }
     }
 }

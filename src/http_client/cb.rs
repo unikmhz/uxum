@@ -2,7 +2,10 @@
 
 use std::time::Duration;
 
+use http::Extensions;
 use recloser::{AsyncRecloser, Recloser};
+use reqwest::{Request, Response};
+use reqwest_middleware::{Error, Middleware, Next, Result};
 use serde::{Deserialize, Serialize};
 
 /// HTTP client circuit breaker configuration.
@@ -100,5 +103,42 @@ impl HttpClientCircuitBreakerConfig {
                 .open_wait(self.open_wait)
                 .build(),
         )
+    }
+
+    /// Create circuit breaker middleware based on provided configuration.
+    #[must_use]
+    pub fn make_circuit_breaker_middleware(&self) -> CircuitBreakerMiddleware {
+        CircuitBreakerMiddleware(self.make_circuit_breaker())
+    }
+}
+
+/// Circuit breaker middleware.
+#[derive(Clone, Debug)]
+pub struct CircuitBreakerMiddleware(AsyncRecloser);
+
+impl From<AsyncRecloser> for CircuitBreakerMiddleware {
+    fn from(value: AsyncRecloser) -> Self {
+        Self(value)
+    }
+}
+
+/// Circuit breaker rejection error.
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("Request rejected, circuit breaker is open")]
+pub struct CircuitBreakerRejection;
+
+#[async_trait::async_trait]
+impl Middleware for CircuitBreakerMiddleware {
+    async fn handle(
+        &self,
+        req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> Result<Response> {
+        match self.0.call(next.run(req, extensions)).await {
+            Ok(resp) => Ok(resp),
+            Err(recloser::Error::Rejected) => Err(Error::middleware(CircuitBreakerRejection)),
+            Err(recloser::Error::Inner(err)) => Err(err),
+        }
     }
 }

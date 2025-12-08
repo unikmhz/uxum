@@ -5,6 +5,14 @@
 mod cb;
 mod config;
 mod errors;
+mod metrics;
 mod middleware;
+mod tracing;
 
-pub use self::{config::HttpClientConfig, errors::HttpClientError};
+pub use self::{
+    cb::{CircuitBreakerMiddleware, CircuitBreakerRejection},
+    config::HttpClientConfig,
+    errors::HttpClientError,
+    metrics::MetricsMiddleware,
+    tracing::{DisableOtelPropagation, TracingMiddleware},
+};

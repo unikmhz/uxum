@@ -1,3 +1,5 @@
+//! Utility functions related to file I/O.
+
 use std::{io, path::Path};
 
 use tokio::{fs, io::AsyncReadExt};

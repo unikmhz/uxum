@@ -1,48 +1,53 @@
 //! Subsystem to gather and export application metrics.
 
+pub(crate) mod text_exporter;
+
 use std::{
     borrow::Cow,
+    collections::HashSet,
     future::Future,
     ops::Deref,
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
 
 use axum::{
     body::HttpBody,
     extract::{MatchedPath, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{self, Router},
 };
 use hyper::{Method, Request};
 use opentelemetry::{
+    Key, KeyValue,
     metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter},
-    KeyValue,
 };
 use opentelemetry_otlp::{
     ExporterBuildError, MetricExporter as OtlpMetricExporter, WithExportConfig, WithTonicConfig,
 };
-use opentelemetry_prometheus_text_exporter::PrometheusExporter;
 use opentelemetry_sdk::{
-    metrics::{SdkMeterProvider, Temporality},
     Resource,
+    metrics::{SdkMeterProvider, Temporality},
 };
 use opentelemetry_stdout::MetricExporter as StdoutMetricExporter;
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "spiffe")]
+use spiffe::x509_source::{MetricsErrorKind, MetricsRecorder as SpiffeMetricsRecorder};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 use tower::{Layer, Service};
-use tracing::{debug_span, trace, Instrument};
+use tracing::{Instrument, debug_span, trace};
 use url::Url;
 
 use crate::{
     crypto::TonicTlsConfig,
     errors::{self, IoError},
     layers::ext::HandlerName,
+    metrics::text_exporter::{PrometheusExporter, ResourceSelector},
     telemetry::OtlpProtocol,
 };
 
@@ -67,6 +72,9 @@ pub enum MetricsError {
     /// Metrics subsystem is misconfigured.
     #[error("Metrics subsystem is misconfigured")]
     RuntimeConfig,
+    /// Task join error.
+    #[error("Task join error: {0}")]
+    Tokio(#[from] tokio::task::JoinError),
 }
 
 impl IntoResponse for MetricsError {
@@ -135,6 +143,8 @@ impl MetricsBuilder {
     }
 
     /// Default value for [`Self::duration_buckets`].
+    ///
+    /// Measured in seconds.
     #[must_use]
     #[inline]
     fn default_duration_buckets() -> Vec<f64> {
@@ -146,6 +156,8 @@ impl MetricsBuilder {
     }
 
     /// Default value for [`Self::size_buckets`].
+    ///
+    /// Measured in bytes.
     #[must_use]
     #[inline]
     fn default_size_buckets() -> Vec<f64> {
@@ -338,6 +350,28 @@ impl MetricsBuilder {
         };
         let http_client = HttpClientMetrics(Arc::new(http_client));
 
+        #[cfg(feature = "spiffe")]
+        let spiffe = {
+            let errors = meter
+                .u64_counter("spiffe.source.errors")
+                .with_description("Number of errors during agent communication.")
+                .build();
+            let updates = meter
+                .u64_counter("spiffe.source.updates")
+                .with_description("Number of SPIFFE bundle set updates.")
+                .build();
+            let reconnects = meter
+                .u64_counter("spiffe.source.reconnects")
+                .with_description("Number of reconnects to workload API.")
+                .build();
+            let inner = SpiffeMetricsInner {
+                errors,
+                updates,
+                reconnects,
+            };
+            SpiffeMetrics(Arc::new(inner))
+        };
+
         // Tokio runtime metrics.
         let num_workers = meter
             .u64_gauge("runtime.workers")
@@ -360,6 +394,8 @@ impl MetricsBuilder {
         MetricsState {
             http_server,
             http_client,
+            #[cfg(feature = "spiffe")]
+            spiffe,
             runtime,
             prom,
         }
@@ -419,6 +455,10 @@ struct PrometheusMetricsExporterConfig {
     /// Generate `otel_scope_info` metric with instrumentation scope labels.
     #[serde(default = "crate::util::default_true")]
     with_scope_info: bool,
+    /// Rule to use when choosing which resource attributes to include
+    /// as labels.
+    #[serde(default, flatten)]
+    include_labels: PrometheusResourceSelector,
 }
 
 impl Default for PrometheusMetricsExporterConfig {
@@ -429,6 +469,7 @@ impl Default for PrometheusMetricsExporterConfig {
             with_counter_suffixes: true,
             with_target_info: true,
             with_scope_info: true,
+            include_labels: PrometheusResourceSelector::default(),
         }
     }
 }
@@ -457,7 +498,9 @@ impl PrometheusMetricsExporterConfig {
         if !self.with_scope_info {
             builder = builder.without_scope_info();
         }
-        builder.build()
+        builder
+            .with_resource_selector(self.include_labels.clone())
+            .build()
     }
 }
 
@@ -589,6 +632,34 @@ impl From<MetricsTemporality> for Temporality {
     }
 }
 
+/// Filter what OTel static resource attributes (if any) to include as labels with every metric
+/// output.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[non_exhaustive]
+#[serde(rename_all = "snake_case", tag = "labels")]
+pub enum PrometheusResourceSelector {
+    All,
+    #[default]
+    None,
+    Some {
+        /// Resource keys, in OpenTelemetry format (with dots), to include as labels in exported
+        /// metrics.
+        included_labels: HashSet<String>,
+    },
+}
+
+impl From<PrometheusResourceSelector> for ResourceSelector {
+    fn from(value: PrometheusResourceSelector) -> Self {
+        match value {
+            PrometheusResourceSelector::All => Self::All,
+            PrometheusResourceSelector::None => Self::None,
+            PrometheusResourceSelector::Some { included_labels } => {
+                Self::KeyAllowList(included_labels.into_iter().map(Key::from).collect())
+            }
+        }
+    }
+}
+
 /// Metrics state [`tower`] layer.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -597,6 +668,9 @@ pub struct MetricsState {
     http_server: HttpServerMetrics,
     /// HTTP client metrics.
     http_client: HttpClientMetrics,
+    /// SPIFFE metrics.
+    #[cfg(feature = "spiffe")]
+    spiffe: SpiffeMetrics,
     /// Tokio runtime metrics.
     runtime: RuntimeMetrics,
     /// Prometheus exporter.
@@ -652,6 +726,58 @@ pub struct HttpClientMetricsInner {
     pub response_body_size: Histogram<u64>,
 }
 
+/// Shared container for SPIFFE metrics.
+#[cfg(feature = "spiffe")]
+#[derive(Clone, Debug)]
+#[repr(transparent)]
+pub struct SpiffeMetrics(Arc<SpiffeMetricsInner>);
+
+#[cfg(feature = "spiffe")]
+impl SpiffeMetrics {
+    /// Shed outer container.
+    pub fn into_arc_inner(self) -> Arc<SpiffeMetricsInner> {
+        self.0
+    }
+}
+
+#[cfg(feature = "spiffe")]
+impl Deref for SpiffeMetrics {
+    type Target = SpiffeMetricsInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Inner container for SPIFFE metrics.
+#[cfg(feature = "spiffe")]
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct SpiffeMetricsInner {
+    /// Number of errors during agent communication.
+    pub errors: Counter<u64>,
+    /// Number of SPIFFE bundle set updates.
+    pub updates: Counter<u64>,
+    /// Number of reconnects to workload API.
+    pub reconnects: Counter<u64>,
+}
+
+#[cfg(feature = "spiffe")]
+impl SpiffeMetricsRecorder for SpiffeMetricsInner {
+    fn record_error(&self, kind: MetricsErrorKind) {
+        let label = KeyValue::new("spiffe.error.kind", kind.as_str());
+        self.errors.add(1, &[label]);
+    }
+
+    fn record_update(&self) {
+        self.updates.add(1, &[]);
+    }
+
+    fn record_reconnect(&self) {
+        self.reconnects.add(1, &[]);
+    }
+}
+
 /// Container for Tokio runtime metrics.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -694,19 +820,31 @@ impl MetricsState {
         }
     }
 
+    /// Get SPIFFE metrics container.
+    #[cfg(feature = "spiffe")]
+    #[must_use]
+    pub fn spiffe_metrics(&self) -> SpiffeMetrics {
+        self.spiffe.clone()
+    }
+
     /// Get metrics in Prometheus text format, or `None` if no Prometheus exporter was configured.
     ///
     /// # Errors
     ///
     /// Returns `Err` if encountered an error while collecting metrics.
-    pub fn export_text(&self) -> Result<Option<Vec<u8>>, std::io::Error> {
-        if let Some(exporter) = &self.prom {
-            let mut buf = Vec::with_capacity(256);
-            exporter.export(&mut buf)?;
-            Ok(Some(buf))
-        } else {
-            Ok(None)
-        }
+    pub async fn export_text(self) -> Result<Option<Vec<u8>>, MetricsError> {
+        tokio::task::spawn_blocking(move || {
+            if let Some(exporter) = &self.prom {
+                let mut buf = Vec::with_capacity(1024);
+                exporter
+                    .export(&mut buf)
+                    .map_err(|err| MetricsError::Prometheus(err.into()))?;
+                Ok(Some(buf))
+            } else {
+                Ok(None)
+            }
+        })
+        .await?
     }
 }
 
@@ -900,6 +1038,7 @@ pub(crate) async fn gather_runtime_metrics(
     period: Duration,
     cancel: CancellationToken,
 ) {
+    // TODO: maybe use observable metrics instead of a periodic task.
     let mut interval = tokio::time::interval(period);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -925,12 +1064,19 @@ pub(crate) async fn gather_runtime_metrics(
 }
 
 /// Method handler to generate metrics.
-async fn get_prom_metrics(metrics: State<MetricsState>) -> Result<impl IntoResponse, MetricsError> {
+async fn get_prom_metrics(
+    State(metrics): State<MetricsState>,
+) -> Result<impl IntoResponse, MetricsError> {
     // Serialize metrics.
-    let buf = match metrics.export_text() {
-        Ok(Some(buf)) => buf,
-        Ok(None) => return Err(MetricsError::RuntimeConfig),
-        Err(err) => return Err(MetricsError::Prometheus(err.into())),
-    };
-    Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf))
+    let span = debug_span!("render_metrics");
+    async {
+        let buf = match metrics.export_text().await {
+            Ok(Some(buf)) => buf,
+            Ok(None) => return Err(MetricsError::RuntimeConfig),
+            Err(err) => return Err(err),
+        };
+        Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], buf))
+    }
+    .instrument(span)
+    .await
 }

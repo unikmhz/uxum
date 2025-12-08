@@ -15,7 +15,7 @@ use std::{
 
 #[cfg(feature = "jwt")]
 use jsonwebtoken as jwt;
-use password_hash::{PasswordHashString, PasswordVerifier};
+use password_hash::{PasswordVerifier, phc::PasswordHash};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
@@ -30,17 +30,18 @@ use crate::auth::{
     provider::{AuthProvider, ConfigAuthProvider, NoOpAuthProvider},
 };
 
-static VERIFIERS: OnceLock<Vec<Box<dyn PasswordVerifier + Send + Sync>>> = OnceLock::new();
+static VERIFIERS: OnceLock<Vec<Box<dyn PasswordVerifier<PasswordHash> + Send + Sync>>> =
+    OnceLock::new();
 
-fn get_verifiers() -> &'static Vec<Box<dyn PasswordVerifier + Send + Sync>> {
+fn get_verifiers() -> &'static Vec<Box<dyn PasswordVerifier<PasswordHash> + Send + Sync>> {
     VERIFIERS.get_or_init(|| {
         vec![
             #[cfg(feature = "hash_argon2")]
             Box::new(argon2::Argon2::default()),
             #[cfg(feature = "hash_scrypt")]
-            Box::new(scrypt::Scrypt),
+            Box::new(scrypt::Scrypt::new()),
             #[cfg(feature = "hash_pbkdf2")]
-            Box::new(pbkdf2::Pbkdf2),
+            Box::new(pbkdf2::Pbkdf2::SHA256),
         ]
     })
 }
@@ -82,16 +83,9 @@ impl PartialEq<str> for UserPassword {
     fn eq(&self, other: &str) -> bool {
         match self {
             Self::Plaintext(pwd) => other.as_bytes().ct_eq(pwd.as_bytes()).into(),
-            // FIXME: pre-parse hashes from configuration.
-            Self::Hashed(pwd) => {
-                let verifiers = get_verifiers()
-                    .iter()
-                    .map(|v| v.as_ref() as &dyn PasswordVerifier)
-                    .collect::<Vec<_>>();
-                pwd.password_hash()
-                    .verify_password(verifiers.as_slice(), other.as_bytes())
-                    .is_ok()
-            }
+            Self::Hashed(pwd) => get_verifiers()
+                .iter()
+                .any(|v| v.verify_password(other.as_bytes(), pwd).is_ok()),
         }
     }
 }
@@ -483,16 +477,16 @@ impl AuthConfig {
 /// Newtype for hashed passwords.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(transparent)]
-pub struct HashedPassword(PasswordHashString);
+pub struct HashedPassword(Box<PasswordHash>);
 
-impl From<PasswordHashString> for HashedPassword {
-    fn from(item: PasswordHashString) -> Self {
-        Self(item)
+impl From<PasswordHash> for HashedPassword {
+    fn from(item: PasswordHash) -> Self {
+        Self(Box::new(item))
     }
 }
 
 impl Deref for HashedPassword {
-    type Target = PasswordHashString;
+    type Target = PasswordHash;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -508,7 +502,7 @@ impl DerefMut for HashedPassword {
 mod serde_impls {
     use std::fmt;
 
-    use serde::{de, Deserializer, Serializer};
+    use serde::{Deserializer, Serializer, de};
 
     use super::*;
 
@@ -517,7 +511,8 @@ mod serde_impls {
         where
             S: Serializer,
         {
-            ser.serialize_str(self.as_str())
+            let strhash = self.to_string();
+            ser.serialize_str(&strhash)
         }
     }
 
@@ -544,7 +539,7 @@ mod serde_impls {
         where
             E: de::Error,
         {
-            PasswordHashString::new(v)
+            PasswordHash::new(v)
                 .map(Into::into)
                 .map_err(|err| E::custom(format!("unable to parse PHC format: {err}")))
         }

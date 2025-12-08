@@ -40,5 +40,6 @@ tracing:
     inactivity: true
     thread_info: true
   level: TRACE
-server:
-  listen: 127.0.0.1:8081
+servers:
+  - kind: plain
+    listen: 127.0.0.1:8008

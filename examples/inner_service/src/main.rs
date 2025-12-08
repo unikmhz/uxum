@@ -40,14 +40,11 @@ async fn main() {
     let app = app_builder.build().expect("Unable to build app");
     // Create server handle
     let handle = Handle::new();
-    // Spawn signal handler
-    config
-        .server
-        .spawn_signal_handler(handle.clone())
-        .expect("Unable to spawn signal handler");
     // Build server, link the handle and run the app
     config
-        .server
+        .servers
+        .pop()
+        .expect("No servers defined")
         .build()
         .await
         .expect("Unable to build server")

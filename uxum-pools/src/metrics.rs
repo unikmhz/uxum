@@ -1,3 +1,5 @@
+//! OpenTelemetry metrics for instrumented pools.
+
 use std::{
     borrow::Cow,
     sync::{Arc, LazyLock},

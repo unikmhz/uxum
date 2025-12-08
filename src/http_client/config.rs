@@ -1,10 +1,17 @@
 //! HTTP client - configuration.
 
-use std::{collections::BTreeMap, num::NonZeroU32, path::Path, str::FromStr, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
+    num::NonZeroU32,
+    path::Path,
+    str::FromStr,
+    time::Duration,
+};
 
 use reqwest::{
-    header::{HeaderName, HeaderValue},
     ClientBuilder, Identity,
+    header::{HeaderName, HeaderValue},
 };
 use reqwest_middleware::ClientWithMiddleware;
 use serde::{Deserialize, Serialize};
@@ -15,6 +22,7 @@ use crate::{
         cb::HttpClientCircuitBreakerConfig, errors::HttpClientError, middleware::wrap_client,
     },
     metrics::ClientMetricsState,
+    util::OptVec,
 };
 
 /// HTTP client configuration.
@@ -113,6 +121,13 @@ pub struct HttpClientConfig {
         alias = "circuit_breaker"
     )]
     pub cb: Option<HttpClientCircuitBreakerConfig>,
+    /// List of overrides for domain name resolution.
+    ///
+    /// Use domain name as key, and a socket address as value.
+    /// Port 0 for socket address will use a well-known port for
+    /// a protocol, otherwise a chosen port will always be used.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub domain_overrides: HashMap<String, OptVec<SocketAddr>>,
     /// Short application name.
     #[serde(skip)]
     app_name: Option<String>,
@@ -137,6 +152,7 @@ impl Default for HttpClientConfig {
             tcp: HttpClientTcpConfig::default(),
             http2: HttpClientHttp2Config::default(),
             cb: None,
+            domain_overrides: HashMap::new(),
             app_name: None,
             app_version: None,
         }
@@ -207,9 +223,11 @@ impl HttpClientConfig {
             .use_rustls_tls()
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .connection_verbose(self.verbose)
+            .hickory_dns(true)
             .pool_idle_timeout(self.pool_idle_timeout)
             .pool_max_idle_per_host(self.pool_max_idle_per_host)
             .tls_sni(true)
+            .tls_info(true)
             .redirect(self.redirect.into())
             .referer(self.referer)
             .tcp_nodelay(self.tcp.nodelay)
@@ -252,6 +270,9 @@ impl HttpClientConfig {
         }
         if let Some(user_agent) = self.user_agent() {
             builder = builder.user_agent(user_agent);
+        }
+        for (domain, sockaddrs) in &self.domain_overrides {
+            builder = builder.resolve_to_addrs(domain, sockaddrs.as_ref());
         }
         Ok(builder)
     }

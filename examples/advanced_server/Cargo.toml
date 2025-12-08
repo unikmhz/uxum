@@ -11,12 +11,13 @@ publish = false
 
 [dependencies]
 prost = "0.14"
-rand = "0.9"
+rand = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 tonic = "0.14"
 tonic-prost = "0.14"
 tonic-reflection = "0.14"
+tower-http = { version = "0.6", features = ["compression-deflate"] }
 uxum = { path = "../..", features = ["grpc", "systemd", "jwt", "kafka"] }
 tracing = { version = "0.1", features = ["std"] }
 

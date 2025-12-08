@@ -10,10 +10,7 @@ use crate::{
     auth::AuthConfig,
     builder::server::ServerBuilder,
     http_client::HttpClientConfig,
-    layers::{
-        buffer::HandlerBufferConfig, cors::CorsConfig, rate::HandlerRateLimitConfig,
-        timeout::HandlerTimeoutConfig,
-    },
+    layers::{cors::CorsConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutConfig},
     logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsState},
     probes::ProbeConfig,
@@ -23,7 +20,7 @@ use crate::{
 };
 
 /// Root container for app configuration.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[non_exhaustive]
 pub struct ServiceConfig<C = ()>
 where
@@ -33,17 +30,34 @@ where
     #[serde(flatten)]
     pub app: AppConfig,
     /// Server configuration.
-    #[serde(default)]
-    pub server: ServerBuilder,
+    #[serde(default = "ServiceConfig::<C>::default_servers")]
+    pub servers: Vec<ServerBuilder>,
     /// Service-specific configuration.
     #[serde(flatten)]
     pub service: C,
+}
+
+impl<C> Default for ServiceConfig<C>
+where
+    C: Clone + std::fmt::Debug + PartialEq + Default,
+{
+    fn default() -> Self {
+        Self {
+            app: AppConfig::default(),
+            servers: ServiceConfig::<C>::default_servers(),
+            service: C::default(),
+        }
+    }
 }
 
 impl<C> ServiceConfig<C>
 where
     C: Clone + std::fmt::Debug,
 {
+    fn default_servers() -> Vec<ServerBuilder> {
+        vec![Default::default()]
+    }
+
     /// Create builder for service configuration.
     pub fn builder() -> ServiceConfigBuilder<C> {
         ServiceConfigBuilder::new()
@@ -227,9 +241,6 @@ pub struct HandlerConfig {
     /// Method is hidden from OpenAPI specification.
     #[serde(default)]
     pub hidden: bool,
-    /// Request buffering configuration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub buffer: Option<HandlerBufferConfig>,
     /// CORS configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cors: Option<CorsConfig>,

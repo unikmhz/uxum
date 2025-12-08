@@ -10,9 +10,9 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::{
     task::JoinHandle,
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
-use tracing::{trace_span, Instrument};
+use tracing::{Instrument, trace_span};
 
 /// Configuration for runtime watchdog.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -88,7 +88,7 @@ impl Drop for Watchdog {
 
 impl Watchdog {
     /// Create runtime watchdog future.
-    fn watchdog_task(&self) -> impl Future<Output = ()> {
+    fn watchdog_task(&self) -> impl Future<Output = ()> + use<> {
         let span = trace_span!("runtime_watchdog");
         let interval_dur = self.config.interval;
         let last_shared = self.last.clone();

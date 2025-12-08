@@ -7,19 +7,19 @@ use std::{
 };
 
 use axum::{
+    BoxError,
     body::Body,
     extract::OriginalUri,
     http::{
-        header::{self, HeaderValue},
         StatusCode,
+        header::{self, HeaderValue},
     },
     response::IntoResponse,
     routing::{MethodRouter, Router},
-    BoxError,
 };
 use dyn_clone::clone_box;
 use http::{Request, Response};
-use okapi::{openapi3, schemars::gen::SchemaGenerator};
+use okapi::{openapi3, schemars::r#gen::SchemaGenerator};
 use thiserror::Error;
 #[cfg(feature = "grpc")]
 use tonic::{
@@ -29,19 +29,15 @@ use tonic::{
 };
 #[cfg(feature = "grpc")]
 use tower::Service;
-use tower::{
-    builder::ServiceBuilder,
-    util::{BoxCloneSyncService, MapRequestLayer},
-    ServiceExt,
-};
+use tower::{ServiceExt, builder::ServiceBuilder, util::BoxCloneSyncService};
 use tower_http::{
+    LatencyUnit, ServiceBuilderExt,
     catch_panic::CatchPanicLayer,
     request_id::MakeRequestUuid,
     set_header::SetResponseHeaderLayer,
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
-    LatencyUnit, ServiceBuilderExt,
 };
-use tracing::{debug, debug_span, info, info_span, warn};
+use tracing::{debug, debug_span, error, info, info_span, warn};
 
 use crate::{
     apidoc::{ApiDocBuilder, ApiDocError},
@@ -49,6 +45,7 @@ use crate::{
         AuthExtractor, AuthLayer, AuthProvider, AuthSetupError, BasicAuthExtractor,
         ConfigAuthProvider, HeaderAuthExtractor, NoOpAuthExtractor, NoOpAuthProvider,
     },
+    behavior::{AppBehavior, StandardAppBehavior},
     config::AppConfig,
     errors,
     http_client::{HttpClientConfig, HttpClientError},
@@ -93,7 +90,9 @@ pub enum AppBuilderError {
 /// Builder for application routes.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct AppBuilder {
+pub struct AppBuilder<B> {
+    /// Customizable application behaviors.
+    behavior: B,
     /// Authentication and authorization back-end.
     auth_provider: Box<dyn AuthProvider>,
     /// Authentication front-end.
@@ -109,13 +108,14 @@ pub struct AppBuilder {
     grpc_services: GrpcRoutesBuilder,
 }
 
-impl TryFrom<AppConfig> for AppBuilder {
+impl TryFrom<AppConfig> for AppBuilder<StandardAppBehavior> {
     type Error = AppBuilderError;
 
     fn try_from(mut value: AppConfig) -> Result<Self, Self::Error> {
         let auth_provider = value.auth.make_provider()?;
         let auth_extractor = value.auth.extractor.make_extractor()?;
         Ok(Self {
+            behavior: StandardAppBehavior,
             auth_provider,
             auth_extractor,
             metrics: value.metrics_state.take(),
@@ -126,9 +126,10 @@ impl TryFrom<AppConfig> for AppBuilder {
     }
 }
 
-impl Default for AppBuilder {
+impl Default for AppBuilder<StandardAppBehavior> {
     fn default() -> Self {
         Self {
+            behavior: StandardAppBehavior,
             auth_provider: Box::new(NoOpAuthProvider),
             auth_extractor: Box::new(NoOpAuthExtractor),
             config: AppConfig::default(),
@@ -139,7 +140,7 @@ impl Default for AppBuilder {
     }
 }
 
-impl AppBuilder {
+impl AppBuilder<StandardAppBehavior> {
     /// Create new builder with default configuration.
     #[must_use]
     pub fn new() -> Self {
@@ -154,7 +155,9 @@ impl AppBuilder {
     pub fn from_config(cfg: &AppConfig) -> Result<Self, AppBuilderError> {
         cfg.clone().try_into()
     }
+}
 
+impl<B: AppBehavior> AppBuilder<B> {
     /// Create [`tower`] auth layer for use in a specific handler.
     #[must_use]
     pub fn auth_layer<S>(&self, perms: &'static [&'static str]) -> AuthLayer<S> {
@@ -163,6 +166,19 @@ impl AppBuilder {
             clone_box(self.auth_provider.as_ref()),
             clone_box(self.auth_extractor.as_ref()),
         )
+    }
+
+    /// Set custom application behaviors.
+    pub fn with_behavior<NewB: AppBehavior>(self, behavior: NewB) -> AppBuilder<NewB> {
+        AppBuilder {
+            behavior,
+            auth_provider: self.auth_provider,
+            auth_extractor: self.auth_extractor,
+            config: self.config,
+            metrics: self.metrics,
+            #[cfg(feature = "grpc")]
+            grpc_services: self.grpc_services,
+        }
     }
 
     /// Set auth extractor directly.
@@ -211,6 +227,8 @@ impl AppBuilder {
     }
 
     /// Add state to be used in handlers using [`axum::extract::State`].
+    ///
+    /// NOTE: states are shared globally between all application instances.
     pub fn with_state<S>(&mut self, state: S) -> &mut Self
     where
         S: Clone + Send + 'static,
@@ -317,11 +335,6 @@ impl AppBuilder {
             tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
         let response_level =
             tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
-        rtr = if self.config.tracing.is_some() {
-            rtr.layer(MapRequestLayer::new(crate::logging::span::register_request))
-        } else {
-            rtr
-        };
         rtr = rtr.layer(
             // TODO: factor out tracing for GRPC.
             TraceLayer::new_for_http()
@@ -342,6 +355,7 @@ impl AppBuilder {
 
         // Add probes and management mode API.
         rtr = rtr.merge(self.config.probes.build_router(
+            self.behavior.clone(),
             clone_box(self.auth_provider.as_ref()),
             clone_box(self.auth_extractor.as_ref()),
         ));
@@ -427,6 +441,7 @@ impl AppBuilder {
         // [`tower`] layers that are executed for any request.
         let mut sensitive_headers = vec![header::AUTHORIZATION];
         sensitive_headers.append(&mut self.auth_extractor.sensitive_headers());
+        let behavior_layer = self.behavior.clone().layer();
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
@@ -437,6 +452,7 @@ impl AppBuilder {
                 header::SERVER,
                 self.server_header(),
             ))
+            .layer(behavior_layer)
             .layer(CatchPanicLayer::custom(panic_handler));
         // TODO: DefaultBodyLimit (configurable).
         rtr.layer(global_layers)
@@ -517,11 +533,6 @@ impl AppBuilder {
                 true => None,
                 false => Some(self.auth_layer(handler.permissions())),
             })
-            // Buffer layer.
-            .option_layer(
-                service_cfg.and_then(|cfg| cfg.buffer.as_ref())
-                    .map(|lcfg| lcfg.make_layer()),
-            )
             // Rate limiting layer.
             .option_layer(
                 service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
@@ -571,6 +582,7 @@ impl AppBuilder {
 
 /// Error handler for uxum-specific error types.
 pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
+    error!(error = err.to_string(), "error in handler");
     if let Some(rate_err) = err.downcast_ref::<RateLimitError>().cloned() {
         return rate_err.into_response();
     }
@@ -585,10 +597,11 @@ pub(crate) async fn error_handler(err: BoxError) -> Response<Body> {
 
 /// Error handler for when no handler is found by application router.
 pub(crate) async fn fallback_handler(OriginalUri(uri): OriginalUri) -> Response<Body> {
+    error!(path = uri.path(), "handler not found");
     problemdetails::new(StatusCode::NOT_FOUND)
         .with_type(errors::TAG_UXUM_NOT_FOUND)
         .with_title("Resource not found")
-        .with_value("uri", uri.to_string())
+        .with_value("uri", uri.path())
         .into_response()
 }
 
@@ -603,6 +616,7 @@ fn panic_handler(err: Box<dyn Any + Send + 'static>) -> Response<Body> {
     } else {
         "Unknown panic format".to_string()
     };
+    error!(error = details, "panic in handler");
     problemdetails::new(StatusCode::INTERNAL_SERVER_ERROR)
         .with_type(errors::TAG_UXUM_PANIC)
         .with_title("Encountered panic in handler")
@@ -634,7 +648,7 @@ pub trait HandlerExt: Sync {
     /// Return handler function packaged as a [`tower`] service.
     fn service(&self) -> BoxCloneSyncService<Request<Body>, Response<Body>, Infallible>;
     /// Generate OpenAPI specification object for handler.
-    fn openapi_spec(&self, gen: &mut SchemaGenerator) -> openapi3::Operation;
+    fn openapi_spec(&self, r#gen: &mut SchemaGenerator) -> openapi3::Operation;
 }
 
 // All handlers are registered at this point.

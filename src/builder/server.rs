@@ -8,22 +8,21 @@ use std::{
 };
 
 use axum_server::{
+    Server as AxumServer,
     tls_rustls::{RustlsAcceptor, RustlsConfig},
-    Handle,
 };
 use hyper_util::server::conn::auto::Builder;
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
 use thiserror::Error;
-use tokio::{
-    net::{lookup_host, TcpSocket, ToSocketAddrs},
-    task::JoinHandle,
-};
-use tracing::{debug, debug_span, error, info, Instrument};
+use tokio::net::{TcpSocket, ToSocketAddrs, lookup_host};
+use tracing::{Instrument, debug, debug_span, info};
 
+use crate::errors::IoError;
+#[cfg(feature = "spiffe")]
 use crate::{
-    errors::IoError,
-    signal::{SignalError, SignalStream},
+    metrics::SpiffeMetrics,
+    spiffe::{SpiffeConfig, SpiffeError},
 };
 
 /// Error type returned by server builder.
@@ -78,21 +77,51 @@ pub enum ServerBuilderError {
     /// Neither HTTP/1 nor HTTP/2 are enabled.
     #[error("Neither HTTP/1 nor HTTP/2 are enabled")]
     NoProtocolsEnabled,
-    /// Signal handler error.
-    #[error(transparent)]
-    SignalHandler(#[from] SignalError),
     /// TLS configuration error.
     #[error("TLS configuration error: {0}")]
     TlsConfig(IoError),
     /// No TLS configuration was provided.
     #[error("No TLS configuration was provided")]
     NoTlsConfig,
+    /// Unable to build server instance.
+    #[error("Unable to build server instance: {0}")]
+    BuildServer(IoError),
+    /// SPIFFE X509 source error.
+    #[cfg(feature = "spiffe")]
+    #[error("SPIFFE: {0}")]
+    Spiffe(#[from] SpiffeError),
 }
 
-/// Builder for HTTP server
+/// HTTP server kind.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ServerKind {
+    /// Standard axum server without TLS.
+    #[default]
+    #[serde(alias = "http", alias = "plaintext")]
+    Plain,
+    /// Standard axum server with TLS.
+    #[serde(alias = "https")]
+    Tls {
+        /// TLS configuration.
+        tls: Box<TlsConfig>,
+    },
+    /// Standard axum server with mTLS and SPIFFE AAA.
+    #[cfg(feature = "spiffe")]
+    Spiffe {
+        /// SPIFFE configuration.
+        #[serde(default)]
+        spiffe: Box<SpiffeConfig>,
+    },
+}
+
+/// Builder for HTTP server.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct ServerBuilder {
+    /// Server kind to use.
+    #[serde(default, flatten)]
+    kind: ServerKind,
     /// Host/address and port to listen on.
     #[serde(default = "ServerBuilder::default_listen")]
     pub listen: String,
@@ -113,21 +142,18 @@ pub struct ServerBuilder {
     /// Configuration specific to HTTP/2 protocol.
     #[serde(default)]
     pub http2: Http2Config,
-    /// TLS configuration.
-    #[serde(default)]
-    pub tls: Option<TlsConfig>,
 }
 
 impl Default for ServerBuilder {
     fn default() -> Self {
         Self {
+            kind: ServerKind::Plain,
             listen: Self::default_listen(),
             sleep_on_accept_errors: false,
             ip: IpConfig::default(),
             tcp: TcpConfig::default(),
             http1: Http1Config::default(),
             http2: Http2Config::default(),
-            tls: None,
         }
     }
 }
@@ -140,17 +166,16 @@ impl ServerBuilder {
         "localhost:8080".into()
     }
 
-    /// Check if server configuration includes parameters required for setting up TLS.
-    #[must_use]
-    #[inline]
-    pub fn has_tls_config(&self) -> bool {
-        self.tls.is_some()
-    }
-
     /// Create new server builder with default configuration.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Get kind of server.
+    #[must_use]
+    pub fn kind(&self) -> &ServerKind {
+        &self.kind
     }
 
     /// Build TCP network server.
@@ -158,11 +183,12 @@ impl ServerBuilder {
     /// # Errors
     ///
     /// Returns `Err` if builder encounters an error while setting up a listening socket.
-    pub async fn build(self) -> Result<axum_server::Server, ServerBuilderError> {
+    pub async fn build(self) -> Result<AxumServer<SocketAddr>, ServerBuilderError> {
         let span = debug_span!("build_server");
         async move {
             let listener = self.create_listener(&self.listen).await?;
-            let mut server = axum_server::from_tcp(listener);
+            let mut server = axum_server::from_tcp(listener)
+                .map_err(|err| ServerBuilderError::BuildServer(err.into()))?;
 
             let builder = server.http_builder();
             self.configure_http1(builder);
@@ -183,19 +209,50 @@ impl ServerBuilder {
     /// or configuring TLS parameters.
     pub async fn build_tls(
         self,
-    ) -> Result<axum_server::Server<RustlsAcceptor>, ServerBuilderError> {
+        tls_config: &TlsConfig,
+    ) -> Result<AxumServer<SocketAddr, RustlsAcceptor>, ServerBuilderError> {
         let span = debug_span!("build_tls_server");
         async move {
-            let tls_config = self.tls.as_ref().ok_or(ServerBuilderError::NoTlsConfig)?;
-            let listener = self.create_listener(&tls_config.listen).await?;
+            let listener = self.create_listener(&self.listen).await?;
             let rustls_config = tls_config.rustls_config().await?;
-            let mut server = axum_server::from_tcp_rustls(listener, rustls_config);
+            let mut server = axum_server::from_tcp_rustls(listener, rustls_config)
+                .map_err(|err| ServerBuilderError::BuildServer(err.into()))?;
 
             let builder = server.http_builder();
             self.configure_http1(builder);
             self.configure_http2(builder);
 
             info!("finished building TLS server");
+            Ok(server)
+        }
+        .instrument(span)
+        .await
+    }
+
+    /// Build SPIFFE network server.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if builder encounters an error while setting up a listening socket
+    /// or configuring TLS or SPIFFE parameters.
+    #[cfg(feature = "spiffe")]
+    pub async fn build_spiffe(
+        self,
+        spiffe_config: &SpiffeConfig,
+        metrics: Option<SpiffeMetrics>,
+    ) -> Result<AxumServer<SocketAddr, RustlsAcceptor>, ServerBuilderError> {
+        let span = debug_span!("build_spiffe_server");
+        async move {
+            let listener = self.create_listener(&self.listen).await?;
+            let rustls_config = spiffe_config.rustls_config(metrics).await?;
+            let mut server = axum_server::from_tcp_rustls(listener, rustls_config)
+                .map_err(|err| ServerBuilderError::BuildServer(err.into()))?;
+
+            let builder = server.http_builder();
+            self.configure_http1(builder);
+            self.configure_http2(builder);
+
+            info!("finished building SPIFFE TLS server");
             Ok(server)
         }
         .instrument(span)
@@ -300,42 +357,6 @@ impl ServerBuilder {
             http2.keep_alive_timeout(timeout);
         }
     }
-
-    /// Launch a task that captures common UNIX signals.
-    ///
-    /// This will gracefully shut down the server if signal type is appropriate.
-    ///
-    /// # Errors
-    ///
-    /// Returns `Err` if some signal handler failed to register.
-    pub fn spawn_signal_handler(
-        &self,
-        handle: Handle,
-    ) -> Result<JoinHandle<()>, ServerBuilderError> {
-        let span = debug_span!("signal_handler");
-        let mut sig = SignalStream::new()?;
-        Ok(tokio::spawn(
-            async move {
-                loop {
-                    match sig.next().await {
-                        Ok(sig) if sig.is_shutdown() => {
-                            info!("received {}, shutting down server", sig.name());
-                            // FIXME: configure duration.
-                            handle.graceful_shutdown(Some(Duration::from_secs(5)));
-                            break;
-                        }
-                        Ok(sig) => {
-                            debug!("don't know what to do with signal {}, ignoring", sig.name());
-                        }
-                        Err(err) => {
-                            error!("error in signal handler: {err}");
-                        }
-                    }
-                }
-            }
-            .instrument(span),
-        ))
-    }
 }
 
 /// IP-level configuration.
@@ -343,7 +364,7 @@ impl ServerBuilder {
 #[non_exhaustive]
 pub struct IpConfig {
     /// IP TOS value, as a 32-bit unsigned integer.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tos: Option<u32>,
 }
 
@@ -355,16 +376,16 @@ pub struct TcpConfig {
     #[serde(default = "crate::util::default_true")]
     pub nodelay: bool,
     /// Size of TCP receive buffer, in bytes.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recv_buffer: Option<NonZeroUsize>,
     /// Size of TCP send buffer, in bytes.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub send_buffer: Option<NonZeroUsize>,
     /// Size of TCP backlog queue, in number of connections.
     #[serde(default = "TcpConfig::default_backlog")]
     pub backlog: NonZeroU32,
     /// Size of TCP MSS, in bytes.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mss: Option<NonZeroU32>,
     /// TCP keep-alive socket options.
     #[serde(default)]
@@ -418,6 +439,7 @@ pub struct TcpKeepaliveConfig {
     pub interval: Option<Duration>,
     /// Number of retransmissions to be carried out before declaring that remote end is not
     /// available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retries: Option<NonZeroU32>,
 }
 
@@ -527,9 +549,6 @@ pub struct Http2KeepaliveConfig {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 pub struct TlsConfig {
-    /// Host/address and port to listen on when using TLS.
-    #[serde(default = "TlsConfig::default_listen")]
-    pub listen: String,
     /// Path to certificate or certificate chain in PEM format.
     #[serde(alias = "cert", alias = "chain")]
     certificate: Box<Path>,
@@ -539,13 +558,6 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-    /// Default value for [`Self::listen`].
-    #[must_use]
-    #[inline]
-    fn default_listen() -> String {
-        "localhost:8443".into()
-    }
-
     /// Generate configuration object for RusTLS.
     ///
     /// # Errors

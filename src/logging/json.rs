@@ -1,24 +1,22 @@
 //! Custom JSON formatter and writer for use in logging.
 
-use std::{borrow::Cow, collections::BTreeMap, env, fmt, io, marker::PhantomData, sync::LazyLock};
+use std::{borrow::Cow, collections::BTreeMap, fmt, io, marker::PhantomData};
 
-use regex::Regex;
-use serde::{ser::SerializeMap, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use serde_json::{Serializer as JsonSerializer, Value};
 use tracing::{Event, Subscriber};
 use tracing_log::NormalizeEvent;
 use tracing_serde::AsSerde;
 use tracing_subscriber::{
     fmt::{
+        FmtContext, FormatEvent, FormatFields, FormattedFields,
         format::Writer,
         time::{FormatTime, SystemTime},
-        FmtContext, FormatEvent, FormatFields, FormattedFields,
     },
     registry::{LookupSpan, SpanRef},
 };
 
-static ENV_VAR_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap());
+use crate::util::env::parse_env_vars;
 
 /// Custom names JSON keys.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -418,7 +416,7 @@ impl<T> ExtensibleJsonFormat<T> {
     ///
     /// # Example Output
     ///
-    /// ```ignore,json
+    /// ```json
     /// {"timestamp":"Feb 20 11:28:15.096","level":"INFO","target":"mycrate", "message":"some message", "key": "value"}
     /// ```
     pub(crate) fn flatten_event(self, flatten_event: bool) -> Self {
@@ -444,18 +442,9 @@ impl<T> ExtensibleJsonFormat<T> {
         parse_env: bool,
     ) -> Self {
         if parse_env {
-            let expand_env_vars = |input: &str| -> Value {
-                ENV_VAR_REGEX
-                    .replace_all(input, |caps: &regex::Captures<'_>| {
-                        let var_name = &caps[1];
-                        env::var(var_name).unwrap_or_else(|_| format!("${}", var_name))
-                    })
-                    .into()
-            };
-
             for val in static_fields.values_mut() {
                 if let Some(value) = val.as_str() {
-                    *val = expand_env_vars(value);
+                    *val = parse_env_vars(value).into();
                 }
             }
         }

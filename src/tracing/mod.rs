@@ -6,20 +6,20 @@ use opentelemetry_otlp::{
     ExporterBuildError, SpanExporter as OtlpSpanExporter, WithExportConfig, WithTonicConfig,
 };
 use opentelemetry_sdk::{
+    Resource,
     trace::{
         BatchConfig, BatchConfigBuilder, BatchSpanProcessor, Sampler, SdkTracerProvider, Tracer,
     },
-    Resource,
 };
 use opentelemetry_stdout::SpanExporter as StdoutSpanExporter;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug_span, Instrument, Level, Subscriber};
+use tracing::{Instrument, Level, Subscriber, debug_span};
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{
+    Layer,
     filter::{Filtered, Targets},
     registry::LookupSpan,
-    Layer,
 };
 use url::Url;
 

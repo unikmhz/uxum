@@ -4,15 +4,113 @@ use std::collections::HashMap;
 
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::Protocol;
-use opentelemetry_resource_detectors::{OsResourceDetector, ProcessResourceDetector};
+use opentelemetry_resource_detectors::{
+    HostResourceDetector, K8sResourceDetector, OsResourceDetector, ProcessResourceDetector,
+};
 use opentelemetry_sdk::{
-    resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector},
     Resource,
+    resource::{
+        EnvResourceDetector, ResourceDetector, SdkProvidedResourceDetector,
+        TelemetryResourceDetector,
+    },
 };
 use opentelemetry_semantic_conventions::resource as res;
 use serde::{Deserialize, Serialize};
 
-use crate::config::AppConfig;
+use crate::{config::AppConfig, util::env::parse_env_vars};
+
+/// Configuration to enable/disable various detectors that populate OpenTelemetry resource
+/// attributes.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
+pub struct TelemetryDetectorsConfig {
+    /// Run [`HostResourceDetector`]. Enabled by default.
+    /// Can detect following attributes:
+    /// * `host.id`
+    /// * `host.arch`
+    #[serde(default = "crate::util::default_true")]
+    pub host: bool,
+    /// Run [`K8sResourceDetector`]. Enabled by default.
+    /// Can detect following attributes:
+    /// * `k8s.pod.name`
+    /// * `k8s.namespace.name`
+    #[serde(default = "crate::util::default_true")]
+    pub k8s: bool,
+    /// Run [`OsResourceDetector`]. Enabled by default.
+    /// Can detect following attributes:
+    /// * `os.type`
+    #[serde(default = "crate::util::default_true")]
+    pub os: bool,
+    /// Run [`ProcessResourceDetector`]. Enabled by default.
+    /// Can detect following attributes:
+    /// * `process.command_args`
+    /// * `process.pid`
+    /// * `process.runtime.version`
+    /// * `process.runtime.name`
+    /// * `process.runtime.description`
+    #[serde(default = "crate::util::default_true")]
+    pub process: bool,
+    /// Run [`SdkProvidedResourceDetector`]. Disabled by default.
+    /// Can detect following attributes:
+    /// * `service.name`
+    #[serde(default)]
+    pub provided: bool,
+    /// Run [`EnvResourceDetector`]. Enabled by default.
+    /// Can inject attributes from the environment, based on `OTEL_RESOURCE_ATTRIBUTES` environment
+    /// variable.
+    #[serde(default = "crate::util::default_true")]
+    pub env: bool,
+    /// Run [`TelemetryResourceDetector`]. Enabled by default.
+    /// Provides following attributes:
+    /// * `telemetry.sdk.name`
+    /// * `telemetry.sdk.language`
+    /// * `telemetry.sdk.version`
+    #[serde(default = "crate::util::default_true")]
+    pub sdk: bool,
+}
+
+impl Default for TelemetryDetectorsConfig {
+    fn default() -> Self {
+        Self {
+            host: true,
+            k8s: true,
+            os: true,
+            process: true,
+            provided: false,
+            env: true,
+            sdk: true,
+        }
+    }
+}
+
+impl TelemetryDetectorsConfig {
+    /// Build list of detector objects for use in resource builder.
+    fn detector_list(&self) -> Vec<Box<dyn ResourceDetector>> {
+        let mut detectors: Vec<Box<dyn ResourceDetector>> = Vec::new();
+        if self.host {
+            detectors.push(Box::new(HostResourceDetector::default()));
+        }
+        if self.k8s {
+            detectors.push(Box::new(K8sResourceDetector));
+        }
+        if self.os {
+            detectors.push(Box::new(OsResourceDetector));
+        }
+        if self.process {
+            detectors.push(Box::new(ProcessResourceDetector));
+        }
+        if self.provided {
+            detectors.push(Box::new(SdkProvidedResourceDetector));
+        }
+        if self.env {
+            detectors.push(Box::new(EnvResourceDetector::new()));
+        }
+        if self.sdk {
+            detectors.push(Box::new(TelemetryResourceDetector));
+        }
+        detectors
+    }
+}
 
 /// OpenTelemetry configuration common for logging, metrics and tracing.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -20,10 +118,13 @@ use crate::config::AppConfig;
 pub struct TelemetryConfig {
     /// Static labels to add to gathered metrics.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    labels: HashMap<String, String>,
-    /// TODO: parse $VARIABLE in label values.
+    pub labels: HashMap<String, String>,
+    /// Parse environment variable references in label values.
     #[serde(default)]
-    parse_labels: bool,
+    pub parse_labels: bool,
+    /// Configure various OpenTelemetry resource detectors to (not) run.
+    #[serde(default)]
+    pub detectors: TelemetryDetectorsConfig,
 }
 
 impl TelemetryConfig {
@@ -54,9 +155,15 @@ impl TelemetryConfig {
     }
 
     pub fn static_resources(&self) -> impl Iterator<Item = KeyValue> + '_ {
-        self.labels
-            .iter()
-            .map(|(key, val)| KeyValue::new(key.clone(), val.clone()))
+        self.labels.iter().map(|(key, val)| {
+            KeyValue::new(
+                key.clone(),
+                match self.parse_labels {
+                    true => parse_env_vars(val).into_owned(),
+                    false => val.clone(),
+                },
+            )
+        })
     }
 }
 
@@ -76,14 +183,9 @@ impl AppConfig {
         if let Some(val) = &self.app_version {
             static_resources.push(KeyValue::new(res::SERVICE_VERSION, val.clone()));
         }
+        let detectors = self.telemetry.detectors.detector_list();
         Resource::builder()
-            .with_detectors(&[
-                Box::new(OsResourceDetector),
-                Box::new(ProcessResourceDetector),
-                Box::new(SdkProvidedResourceDetector),
-                Box::new(EnvResourceDetector::new()),
-                Box::new(TelemetryResourceDetector),
-            ])
+            .with_detectors(&detectors)
             .with_attributes(static_resources)
             .build()
     }

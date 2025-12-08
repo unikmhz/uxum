@@ -5,9 +5,9 @@ use std::{future::Future, time::Duration};
 #[cfg(all(target_os = "linux", feature = "systemd"))]
 use libsystemd::daemon::{self, NotifyState};
 use tokio::time::MissedTickBehavior;
+use tracing::{Instrument, debug, trace_span};
 #[cfg(all(target_os = "linux", feature = "systemd"))]
 use tracing::{error, info, trace, warn};
-use tracing::{trace_span, Instrument};
 
 /// Interact with service supervisor.
 ///
@@ -95,10 +95,32 @@ impl ServiceNotifier {
         }
     }
 
+    /// Send custom service status message.
+    pub fn custom_status(&self, status: impl AsRef<str>) {
+        #[allow(clippy::needless_return)]
+        if !self.has_systemd {
+            debug!(
+                status = status.as_ref(),
+                "received supervisor custom status notification"
+            );
+            return;
+        }
+
+        #[cfg(all(target_os = "linux", feature = "systemd"))]
+        match daemon::notify(false, &[NotifyState::Status(status.as_ref().to_string())]) {
+            Ok(true) => {}
+            Ok(false) => warn!(
+                status = status.as_ref(),
+                "supervisor unavailable: service status update skipped"
+            ),
+            Err(err) => error!(status = status.as_ref(), %err, "supervisor notification error"),
+        }
+    }
+
     /// Get watchdog task.
     ///
     /// Generates an eternally waiting future if watchdog is not enabled or not running under `systemd`.
-    pub fn watchdog_task(&self) -> impl Future<Output = ()> {
+    pub fn watchdog_task(&self) -> impl Future<Output = ()> + use<> {
         let span = trace_span!("systemd_watchdog");
         let interval_time = self.watchdog_interval();
         async move {

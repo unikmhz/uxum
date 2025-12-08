@@ -1,29 +1,17 @@
 #![doc = include_str!("../README.md")]
-#![forbid(unsafe_code)]
+#![cfg_attr(not(test), forbid(unsafe_code))]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
-// #![warn(clippy::pedantic)]
-// #![warn(clippy::restriction)]
-// #![warn(clippy::cargo)]
 #![warn(
     missing_docs,
     clippy::doc_link_with_quotes,
     clippy::doc_markdown,
     clippy::missing_errors_doc
 )]
-// #![allow(clippy::module_name_repetitions)]
-// #![allow(clippy::single_call_fn)]
-// #![allow(clippy::implicit_return)]
-// #![allow(clippy::std_instead_of_core)]
-// #![allow(clippy::float_arithmetic)]
-// #![allow(clippy::question_mark_used)]
-// #![allow(clippy::pattern_type_mismatch)]
-// #![allow(clippy::multiple_unsafe_ops_per_block)]
-// #![allow(clippy::absolute_paths)]
-// #![allow(clippy::needless_pass_by_value)]
-// #![allow(clippy::missing_trait_methods)]
+#![cfg_attr(test, deny(warnings))]
 
 mod apidoc;
 mod auth;
+mod behavior;
 mod builder;
 mod config;
 pub mod crypto;
@@ -42,6 +30,8 @@ pub mod reexport;
 mod response;
 mod runtime;
 mod signal;
+#[cfg(feature = "spiffe")]
+pub mod spiffe;
 pub mod state;
 mod telemetry;
 mod tracing;
@@ -53,6 +43,7 @@ pub use uxum_macros::handler;
 pub use self::{
     apidoc::{ApiDocBuilder, ApiDocError},
     auth::*,
+    behavior::{AppBehavior, StandardAppBehavior},
     builder::{
         app::{AppBuilder, AppBuilderError, HandlerExt},
         server::{
@@ -64,24 +55,28 @@ pub use self::{
     handle::{Handle, HandleError},
     http_client::*,
     layers::{
-        buffer::HandlerBufferConfig,
         cors::CorsConfig,
         ext::{Deadline, HandlerName},
         rate::{HandlerRateLimitConfig, RateLimitError},
         request_id::CURRENT_REQUEST_ID,
-        timeout::{HandlerTimeoutConfig, TimeoutError, CURRENT_DEADLINE},
+        timeout::{CURRENT_DEADLINE, HandlerTimeoutConfig, TimeoutError},
     },
     logging::LoggingConfig,
-    metrics::{AdditionalMetricLabels, MetricsBuilder, MetricsError, MetricsState},
+    metrics::{
+        AdditionalMetricLabels, MetricsBuilder, MetricsError, MetricsState, text_exporter::*,
+    },
     notify::ServiceNotifier,
     probes::{ProbeConfig, ProbeState},
     response::{GetResponseSchemas, ResponseSchema},
     runtime::{RuntimeConfig, RuntimeError},
     signal::{SignalError, SignalStream},
     tracing::TracingConfig,
-    util::ResponseExtension,
+    util::{OptVec, ResponseExtension},
     watchdog::WatchdogConfig,
 };
 
 #[cfg(feature = "kafka")]
 pub use self::kafka::{KafkaLogAppender, KafkaProducerConfig, LogProducerContext};
+
+#[cfg(feature = "spiffe")]
+pub use self::spiffe::{SpiffeConfig, SpiffeError};

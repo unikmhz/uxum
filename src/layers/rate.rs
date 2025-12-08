@@ -6,7 +6,7 @@ use std::{
     num::NonZeroU32,
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
 
@@ -17,10 +17,10 @@ use axum::{
 };
 use dashmap::DashMap;
 use governor::{
+    Quota, RateLimiter,
     clock::{Clock, DefaultClock, QuantaClock, QuantaInstant},
     middleware::NoOpMiddleware,
     state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter,
 };
 use pin_project::pin_project;
 use serde::{Deserialize, Serialize};

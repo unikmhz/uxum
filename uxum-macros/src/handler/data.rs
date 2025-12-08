@@ -27,7 +27,7 @@ pub(crate) struct HandlerData {
     #[darling(default)]
     pub(crate) no_auth: bool,
     /// Layer function to wrap the handler service.
-    /// Should be a path to a function that returns a tower::Layer.
+    /// Should be a path to a function that returns a [`tower::Layer`].
     #[darling(default)]
     pub(crate) layer: Option<syn::Expr>,
 }

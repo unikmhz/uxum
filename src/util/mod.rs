@@ -1,5 +1,6 @@
 //! Misc utility functions and traits.
 
+pub(crate) mod env;
 pub(crate) mod fs;
 
 use std::{
@@ -7,7 +8,7 @@ use std::{
     future::Future,
     ops::{Deref, DerefMut},
     pin::Pin,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use axum::{
@@ -146,5 +147,140 @@ where
             resp.extensions_mut().insert(this.value.clone());
             resp
         }))
+    }
+}
+
+/// Helper enum for deserialization.
+#[derive(Clone, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct OptVec<T>(Vec<T>);
+
+impl<T> Deref for OptVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for OptVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T> AsRef<[T]> for OptVec<T> {
+    fn as_ref(&self) -> &[T] {
+        &self.0
+    }
+}
+
+mod serde_impls {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::*;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OptVecInner<T> {
+        Scalar(Option<T>),
+        Vector(Vec<T>),
+    }
+
+    impl<'de, T: Deserialize<'de>> Deserialize<'de> for OptVec<T> {
+        fn deserialize<D: Deserializer<'de>>(deser: D) -> Result<Self, D::Error> {
+            match <OptVecInner<T> as Deserialize<'de>>::deserialize(deser) {
+                Ok(OptVecInner::Scalar(Some(el))) => Ok(OptVec(vec![el])),
+                Ok(OptVecInner::Scalar(None)) => Ok(OptVec(Vec::new())),
+                Ok(OptVecInner::Vector(vec)) => Ok(OptVec(vec)),
+                Err(err) => Err(err),
+            }
+        }
+    }
+
+    impl<T: Serialize> Serialize for OptVec<T> {
+        fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+            match self.0.len() {
+                0 => ser.serialize_none(),
+                1 => self.0[0].serialize(ser),
+                _ => self.0.serialize(ser),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+    use serde_json::{from_str, json, to_value};
+
+    use super::*;
+
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
+    struct TestStruct {
+        field: OptVec<i32>,
+    }
+
+    #[test]
+    fn optvec_null() {
+        let serialized = r#"{
+            "field": null
+        }"#;
+        let deserialized: TestStruct = from_str(serialized).unwrap();
+        assert_eq!(
+            deserialized,
+            TestStruct {
+                field: OptVec(Vec::new()),
+            },
+        );
+        let serialized = to_value(deserialized).unwrap();
+        assert_eq!(
+            serialized,
+            json! {{
+                "field": null
+            }}
+        );
+    }
+
+    #[test]
+    fn optvec_single() {
+        let serialized = r#"{
+            "field": 123
+        }"#;
+        let deserialized: TestStruct = from_str(serialized).unwrap();
+        assert_eq!(
+            deserialized,
+            TestStruct {
+                field: OptVec(vec![123]),
+            },
+        );
+        let serialized = to_value(deserialized).unwrap();
+        assert_eq!(
+            serialized,
+            json! {{
+                "field": 123
+            }}
+        );
+    }
+
+    #[test]
+    fn optvec_multiple() {
+        let serialized = r#"{
+            "field": [123, 234]
+        }"#;
+        let deserialized: TestStruct = from_str(serialized).unwrap();
+        assert_eq!(
+            deserialized,
+            TestStruct {
+                field: OptVec(vec![123, 234]),
+            },
+        );
+        let serialized = to_value(deserialized).unwrap();
+        assert_eq!(
+            serialized,
+            json! {{
+                "field": [123, 234]
+            }}
+        );
     }
 }

@@ -4,6 +4,13 @@
 
 #![forbid(unsafe_code)]
 #![deny(elided_lifetimes_in_paths, unreachable_pub)]
+#![warn(
+    missing_docs,
+    clippy::doc_link_with_quotes,
+    clippy::doc_markdown,
+    clippy::missing_errors_doc
+)]
+#![cfg_attr(test, deny(warnings))]
 
 mod case;
 mod handler;

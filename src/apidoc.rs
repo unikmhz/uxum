@@ -5,17 +5,16 @@ use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
 use axum::{
+    Extension,
     extract::State,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::IntoResponse,
     routing::{self, Router},
-    Extension,
 };
 use http::Method;
 use okapi::{
-    map, openapi3,
-    schemars::gen::{SchemaGenerator, SchemaSettings},
-    Map,
+    Map, map, openapi3,
+    schemars::r#gen::{SchemaGenerator, SchemaSettings},
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -412,7 +411,7 @@ impl ApiDocBuilder {
                 .and_modify(|handlers| handlers.push(*handler))
                 .or_insert_with(|| vec![*handler]);
         }
-        let mut gen = self.build_generator();
+        let mut r#gen = self.build_generator();
         let mut paths = Map::new();
         let mut path_has_handlers;
         for (path, handlers) in grouped {
@@ -422,7 +421,7 @@ impl ApiDocBuilder {
                 if self.disabled_handlers.contains(&handler.name().to_string()) {
                     continue;
                 }
-                let spec = handler.openapi_spec(&mut gen);
+                let spec = handler.openapi_spec(&mut r#gen);
                 match handler.method() {
                     Method::GET => path_item.get = Some(spec),
                     Method::PUT => path_item.put = Some(spec),
@@ -465,7 +464,7 @@ impl ApiDocBuilder {
             servers: self.servers.iter().cloned().map(Into::into).collect(),
             paths,
             components: Some(openapi3::Components {
-                schemas: gen
+                schemas: r#gen
                     .definitions()
                     .iter()
                     .map(|(key, schema)| (key.clone(), schema.clone().into_object()))
@@ -540,7 +539,7 @@ pub struct OpenApiSpec(Vec<u8>);
 async fn get_spec(spec: Extension<OpenApiSpec>) -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "application/swagger+json")],
-        spec.0 .0,
+        spec.0.0,
     )
 }
 

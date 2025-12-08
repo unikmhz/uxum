@@ -199,7 +199,7 @@ async fn run(args: Args, mut config: ServiceConfig<LocalConfig>) -> Result<(), a
     let svc = app.into_make_service_with_connect_info::<SocketAddr>();
     // Start the service.
     handle
-        .run(config.server, svc, Some(Duration::from_secs(5)))
+        .run(config.servers, svc, Some(Duration::from_secs(5)))
         .await
         .map_err(Into::into)
 }
@@ -247,7 +247,7 @@ pub struct SetRequest {
     /// Key to write to storage.
     key: String,
     /// Value to write to storage.
-    value: Option<String>,
+    value: String,
 }
 
 /// Set value for specific key.

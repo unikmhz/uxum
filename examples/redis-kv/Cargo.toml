@@ -12,11 +12,11 @@ publish = false
 [dependencies]
 anyhow = "1.0"
 bb8 = "0.9"
-bb8-redis = "0.24"
-clap = {version = "4.5", features = ["derive", "env"]}
+bb8-redis = "0.26"
+clap = { version = "4.5", features = ["derive", "env"] }
 humantime-serde = "1.1"
-serde = {version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
-uxum = {path = "../.."}
-uxum-pools = {path = "../../uxum-pools", features = ["bb8"]}
-tracing = {version = "0.1", features = ["std"]}
+uxum = { path = "../.." }
+uxum-pools = { path = "../../uxum-pools", features = ["bb8"] }
+tracing = { version = "0.1", features = ["std"] }

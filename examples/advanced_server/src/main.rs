@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uxum::{
     crypto::ensure_default_crypto_provider,
     prelude::*,
-    reexport::{problemdetails, reqwest, reqwest_middleware, tokio},
+    reexport::{problemdetails, reqwest, reqwest_middleware, tokio, tower_http::ServiceBuilderExt},
     GetResponseSchemas, ResponseSchema,
 };
 
@@ -18,6 +18,7 @@ fn main() -> Result<(), HandleError> {
     // Load configuration from file.
     let mut config = ServiceConfig::builder()
         .with_file("examples/advanced_server/config.yaml")
+        .with_env("ADVSRV")
         .build()
         .expect("Unable to load configuration");
     // Add some hard-coded values to [`AppConfig`].
@@ -44,10 +45,10 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
         .handle()
         .await
         .expect("Error initializing handle");
-    // Create app builder from app config.
-    //
-    // Also enable the auth subsystem.
-    let mut app_builder = AppBuilder::from_config(&config.app).map_err(HandleError::custom)?;
+    // Create app builder from app config, and set up custom behaviors.
+    let mut app_builder = AppBuilder::from_config(&config.app)
+        .map_err(HandleError::custom)?
+        .with_behavior(AdvServerBehavior);
     // Some hard-coded parameters for built-in API documentation.
     app_builder.configure_api_doc(|api_doc| {
         api_doc
@@ -82,8 +83,55 @@ async fn run(mut config: ServiceConfig) -> Result<(), HandleError> {
     let svc = app.into_make_service_with_connect_info::<SocketAddr>();
     // Start the service.
     handle
-        .run(config.server, svc, Some(Duration::from_secs(5)))
+        .run(config.servers, svc, Some(Duration::from_secs(5)))
         .await
+}
+
+/// Custom behaviors for this application.
+#[derive(Clone, Debug)]
+struct AdvServerBehavior;
+
+impl AppBehavior for AdvServerBehavior {
+    // This monstrosity can be used to inject additional layers in global layer pipeline for
+    // requests.
+    fn layer<InSvc, InResp>(
+        self,
+    ) -> impl uxum::reexport::tower::Layer<
+        InSvc,
+        Service = impl uxum::reexport::tower::Service<
+            http::Request<axum::body::Body>,
+            Response = http::Response<
+                impl axum::body::HttpBody<Data = prost::bytes::Bytes, Error = axum::BoxError> + Send,
+            >,
+            Error = std::convert::Infallible,
+            Future = impl Send,
+        > + Clone
+                      + Send
+                      + Sync,
+    > + Clone
+           + Send
+           + Sync
+    where
+        InSvc: uxum::reexport::tower::Service<
+                http::Request<axum::body::Body>,
+                Response = http::Response<InResp>,
+                Error = std::convert::Infallible,
+            > + Clone
+            + Send
+            + Sync,
+        InSvc::Future: Send,
+        InResp: axum::body::HttpBody<Data = prost::bytes::Bytes, Error = axum::BoxError> + Send,
+        InResp::Data: Send,
+    {
+        uxum::reexport::tower::ServiceBuilder::new()
+            .compression()
+            .concurrency_limit(4)
+    }
+
+    async fn readiness_probe(&self) -> impl IntoResponse {
+        tracing::warn!("Ready as ever!");
+        StatusCode::OK
+    }
 }
 
 /// Sleep for some time and return response.
@@ -527,7 +575,7 @@ mod distributed_tracing {
     async fn call_inner(state: State<TracingState>) -> Result<String, CallInnerError> {
         Ok(state
             .client
-            .get("http://127.0.0.1:8081/inner")
+            .get("http://127.0.0.1:8008/inner")
             .send()
             .await?
             .text()

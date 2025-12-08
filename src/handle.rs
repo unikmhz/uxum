@@ -2,8 +2,8 @@
 
 use std::{net::SocketAddr, time::Duration};
 
-use axum_server::{service::MakeService, Handle as AxumHandle};
-use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
+use axum_server::{Handle as AxumHandle, service::MakeService};
+use futures::{StreamExt, TryFutureExt, stream::FuturesUnordered};
 use opentelemetry::{metrics::MeterProvider as _, trace::TracerProvider as _};
 use opentelemetry_sdk::{
     metrics::SdkMeterProvider,
@@ -12,12 +12,18 @@ use opentelemetry_sdk::{
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing::{Instrument, debug, debug_span, error, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
-    builder::server::ServerBuilder, config::AppConfig, crypto::ensure_default_crypto_provider,
-    errors::IoError, metrics::gather_runtime_metrics, notify::ServiceNotifier,
+    builder::server::{ServerBuilder, ServerKind},
+    config::AppConfig,
+    crypto::ensure_default_crypto_provider,
+    errors::IoError,
+    metrics::{MetricsState, gather_runtime_metrics},
+    notify::ServiceNotifier,
+    signal::{SignalError, SignalStream},
 };
 
 /// Error type returned by uxum handle.
@@ -45,12 +51,19 @@ pub enum HandleError {
     /// Error running HTTPS server.
     #[error("HTTPS server error: {0}")]
     TlsServer(IoError),
+    /// Error running SPIFFE HTTPS server.
+    #[cfg(feature = "spiffe")]
+    #[error("SPIFFE HTTPS server error: {0}")]
+    SpiffeServer(IoError),
     /// Server task error.
     #[error("Server task error: {0}")]
     ServerTask(#[from] tokio::task::JoinError),
     /// No server is currently running.
     #[error("No server is currently running")]
     NotRunning,
+    /// Signal handler error.
+    #[error(transparent)]
+    SignalHandler(#[from] SignalError),
     /// Custom error from application initialization.
     #[error("Custom error: {0}")]
     Custom(Box<dyn std::error::Error + Send + Sync>),
@@ -85,19 +98,19 @@ pub struct Handle {
     /// Metrics provider.
     metrics_provider: Option<SdkMeterProvider>,
     /// Internal [`axum_server`] control handle.
-    handle: AxumHandle,
+    handle: AxumHandle<SocketAddr>,
     /// Service supervisor notification.
     notify: ServiceNotifier,
     /// Service supervisor notification task.
     service_watchdog: Option<JoinHandle<()>>,
     /// UNIX signal handler task.
     signal_handler: Option<JoinHandle<()>>,
-    /// Plain HTTP server task.
-    http_task: Option<JoinHandle<Result<(), HandleError>>>,
-    /// HTTPS server task.
-    https_task: Option<JoinHandle<Result<(), HandleError>>>,
+    /// Task join handles for started server tasks.
+    server_tasks: Vec<JoinHandle<Result<(), HandleError>>>,
     /// Runtime metrics recording task.
     rt_metrics_task: Option<JoinHandle<()>>,
+    /// Metrics container and factory.
+    metrics: Option<MetricsState>,
 }
 
 impl Drop for Handle {
@@ -124,9 +137,16 @@ impl Drop for Handle {
 
 impl Handle {
     /// Set up background service tasks.
-    fn prepare(&mut self, server: &ServerBuilder) -> Result<(), HandleError> {
+    fn prepare(&mut self) -> Result<(), HandleError> {
         if self.signal_handler.is_none() {
-            self.signal_handler = Some(server.spawn_signal_handler(self.handle.clone())?);
+            let signal_handler = match self.spawn_signal_handler() {
+                Ok(sh) => sh,
+                Err(err) => {
+                    self.notify.custom_status(err.to_string());
+                    return Err(err);
+                }
+            };
+            self.signal_handler = Some(signal_handler);
         }
         if self.service_watchdog.is_none() {
             self.service_watchdog = Some(tokio::spawn(self.notify.watchdog_task()));
@@ -134,8 +154,46 @@ impl Handle {
         Ok(())
     }
 
+    /// Launch a task that captures common UNIX signals.
+    ///
+    /// This will gracefully shut down all servers if signal type is appropriate.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if some signal handler failed to register.
+    fn spawn_signal_handler(&self) -> Result<JoinHandle<()>, HandleError> {
+        let span = debug_span!("signal_handler");
+        let mut sig = SignalStream::new()?;
+        let handle = self.handle.clone();
+        Ok(tokio::spawn(
+            async move {
+                loop {
+                    match sig.next().await {
+                        Ok(sig) if sig.is_shutdown() => {
+                            info!("received {}, shutting down server", sig.name());
+                            // FIXME: configure duration.
+                            handle.graceful_shutdown(Some(Duration::from_secs(5)));
+                            break;
+                        }
+                        Ok(sig) => {
+                            debug!("don't know what to do with signal {}, ignoring", sig.name());
+                        }
+                        Err(err) => {
+                            error!("error in signal handler: {err}");
+                        }
+                    }
+                }
+            }
+            .instrument(span),
+        ))
+    }
+
     /// Start axum server tasks.
-    async fn start_servers<A>(&mut self, server: ServerBuilder, app: A) -> Result<(), HandleError>
+    async fn start_servers<A>(
+        &mut self,
+        servers: Vec<ServerBuilder>,
+        app: A,
+    ) -> Result<(), HandleError>
     where
         A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
             + tower::Service<SocketAddr>
@@ -145,26 +203,59 @@ impl Handle {
         A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
         A::MakeFuture: Send,
     {
-        if server.has_tls_config() {
-            ensure_default_crypto_provider();
-            self.https_task = Some(tokio::spawn(
-                server
-                    .clone()
-                    .build_tls()
-                    .await?
-                    .handle(self.handle.clone())
-                    .serve(app.clone())
-                    .map_err(|err| HandleError::TlsServer(err.into())),
-            ));
+        for server in servers {
+            self.start_server(server, app.clone()).await?;
         }
-        self.http_task = Some(tokio::spawn(
-            server
-                .build()
-                .await?
-                .handle(self.handle.clone())
-                .serve(app)
-                .map_err(|err| HandleError::Server(err.into())),
-        ));
+        Ok(())
+    }
+
+    /// Start single axum server task.
+    async fn start_server<A>(&mut self, server: ServerBuilder, app: A) -> Result<(), HandleError>
+    where
+        A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
+            + tower::Service<SocketAddr>
+            + Clone
+            + Send
+            + 'static,
+        A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
+        A::MakeFuture: Send,
+    {
+        let task = match server.kind().clone() {
+            ServerKind::Plain => {
+                let task = server
+                    .build()
+                    .await
+                    .inspect_err(|err| self.notify.custom_status(err.to_string()))?
+                    .handle(self.handle.clone())
+                    .serve(app)
+                    .map_err(|err| HandleError::Server(err.into()));
+                tokio::spawn(task)
+            }
+            ServerKind::Tls { tls } => {
+                ensure_default_crypto_provider();
+                let task = server
+                    .build_tls(&tls)
+                    .await
+                    .inspect_err(|err| self.notify.custom_status(err.to_string()))?
+                    .handle(self.handle.clone())
+                    .serve(app)
+                    .map_err(|err| HandleError::TlsServer(err.into()));
+                tokio::spawn(task)
+            }
+            #[cfg(feature = "spiffe")]
+            ServerKind::Spiffe { spiffe } => {
+                ensure_default_crypto_provider();
+                let task = server
+                    .build_spiffe(&spiffe, self.metrics.as_ref().map(|m| m.spiffe_metrics()))
+                    .await
+                    .inspect_err(|err| self.notify.custom_status(err.to_string()))?
+                    .handle(self.handle.clone())
+                    .serve(app)
+                    .map_err(|err| HandleError::SpiffeServer(err.into()));
+                tokio::spawn(task)
+            }
+        };
+        self.server_tasks.push(task);
         Ok(())
     }
 
@@ -173,7 +264,7 @@ impl Handle {
     /// # Errors
     ///
     /// Returns `Err` if caught an error when initializing server tasks.
-    pub async fn start<A>(&mut self, server: ServerBuilder, app: A) -> Result<(), HandleError>
+    pub async fn start<A>(&mut self, servers: Vec<ServerBuilder>, app: A) -> Result<(), HandleError>
     where
         A: MakeService<SocketAddr, http::Request<hyper::body::Incoming>>
             + tower::Service<SocketAddr>
@@ -183,8 +274,8 @@ impl Handle {
         A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
         A::MakeFuture: Send,
     {
-        self.prepare(&server)?;
-        self.start_servers(server, app).await?;
+        self.prepare()?;
+        self.start_servers(servers, app).await?;
         self.notify.on_ready();
         Ok(())
     }
@@ -197,11 +288,9 @@ impl Handle {
     pub async fn shutdown(&mut self) -> Result<(), HandleError> {
         self.notify.on_shutdown();
         self.handle.shutdown();
-        if let Some(task) = self.http_task.take() {
-            task.await??;
-        }
-        if let Some(task) = self.https_task.take() {
-            task.await??;
+        let server_tasks = std::mem::take(&mut self.server_tasks);
+        for res in futures::future::join_all(server_tasks).await {
+            res??;
         }
         Ok(())
     }
@@ -217,11 +306,9 @@ impl Handle {
     ) -> Result<(), HandleError> {
         self.notify.on_shutdown();
         self.handle.graceful_shutdown(graceful);
-        if let Some(task) = self.http_task.take() {
-            task.await??;
-        }
-        if let Some(task) = self.https_task.take() {
-            task.await??;
+        let server_tasks = std::mem::take(&mut self.server_tasks);
+        for res in futures::future::join_all(server_tasks).await {
+            res??;
         }
         Ok(())
     }
@@ -229,10 +316,8 @@ impl Handle {
     /// Immediately abort execution of the server.
     pub fn abort(&mut self) {
         self.notify.on_shutdown();
-        if let Some(task) = self.http_task.take() {
-            task.abort();
-        }
-        if let Some(task) = self.https_task.take() {
+        let server_tasks = std::mem::take(&mut self.server_tasks);
+        for task in server_tasks {
             task.abort();
         }
     }
@@ -248,7 +333,7 @@ impl Handle {
     /// * One of server tasks finished with an error.
     pub async fn run<A>(
         &mut self,
-        server: ServerBuilder,
+        servers: Vec<ServerBuilder>,
         app: A,
         graceful: Option<Duration>,
     ) -> Result<(), HandleError>
@@ -261,7 +346,7 @@ impl Handle {
         A::Response: tower::Service<http::Request<hyper::body::Incoming>>,
         A::MakeFuture: Send,
     {
-        self.start(server, app).await?;
+        self.start(servers, app).await?;
         self.wait(graceful).await
     }
 
@@ -273,31 +358,32 @@ impl Handle {
     ///
     /// Returns `Err` if one of server tasks finished with an error.
     pub async fn wait(&mut self, graceful: Option<Duration>) -> Result<(), HandleError> {
-        let http_fut = self.http_task.take();
-        let https_fut = self.https_task.take();
-        match (http_fut, https_fut) {
-            (None, None) => Err(HandleError::NotRunning),
-            (Some(task), None) => task.await?,
-            (None, Some(task)) => task.await?,
-            (Some(http), Some(https)) => {
-                let mut tasks = FuturesUnordered::new();
-                tasks.push(http);
-                tasks.push(https);
-                match tasks.next().await {
-                    // Gracefully shutdown other tasks and return result of the one which exited
-                    // first.
-                    Some(ret) => {
-                        self.handle.graceful_shutdown(graceful);
-                        while let Some(other_ret) = tasks.next().await {
-                            let _ = other_ret?;
-                        }
-                        ret?
-                    }
-                    // This should not happen normally.
-                    None => Ok(()),
-                }
-            }
+        if self.server_tasks.is_empty() {
+            return Err(HandleError::NotRunning);
         }
+        let server_tasks = std::mem::take(&mut self.server_tasks);
+        let mut tasks: FuturesUnordered<_> = server_tasks.into_iter().collect();
+        match tasks.next().await {
+            // Gracefully shutdown other tasks and return result of the one which exited
+            // first.
+            Some(ret) => {
+                self.handle.graceful_shutdown(graceful);
+                while let Some(other_ret) = tasks.next().await {
+                    let _ = other_ret?;
+                }
+                ret?
+            }
+            // This should not happen normally.
+            None => Ok(()),
+        }
+    }
+
+    /// Send custom status update notification to process supervisor.
+    ///
+    /// This call will just print the status message to log if uxum was compiled without `systemd`
+    /// feature flag, or if supervisor wasn't detected at runtime.
+    pub fn custom_status(&self, status: impl AsRef<str>) {
+        self.notify.custom_status(status);
     }
 }
 
@@ -309,7 +395,7 @@ impl AppConfig {
     /// You can start, stop, control and monitor application with this handle.
     ///
     /// Note that this call configures and finalizes logging, tracing and metrics subsystems
-    /// so if you want to make changes to those programmatically - should do it before creating
+    /// so if you want to make changes to those programmatically - you should do it before creating
     /// the [`Handle`].
     ///
     /// # Errors
@@ -333,7 +419,8 @@ impl AppConfig {
             registry.init();
             (None, None)
         };
-        let (metrics_provider, rt_metrics_task) = if let Some(mcfg) = self.metrics.as_ref() {
+        let (metrics, metrics_provider, rt_metrics_task) = if let Some(mcfg) = self.metrics.as_ref()
+        {
             let (metrics_provider, prom_exporter) = mcfg.build_provider(otel_res).await?;
             let meter = metrics_provider.meter("uxum");
             let metrics_state = mcfg.build_state(&meter, prom_exporter);
@@ -342,11 +429,11 @@ impl AppConfig {
                 mcfg.runtime_metrics_interval,
                 token.clone(),
             ));
-            self.metrics_state = Some(metrics_state);
+            self.metrics_state = Some(metrics_state.clone());
             opentelemetry::global::set_meter_provider(metrics_provider.clone());
-            (Some(metrics_provider), Some(rt_task))
+            (Some(metrics_state), Some(metrics_provider), Some(rt_task))
         } else {
-            (None, None)
+            (None, None, None)
         };
         let handle = AxumHandle::new();
         let notify = ServiceNotifier::new();
@@ -360,9 +447,9 @@ impl AppConfig {
             notify,
             service_watchdog: None,
             signal_handler: None,
-            http_task: None,
-            https_task: None,
+            server_tasks: Vec::with_capacity(1),
             rt_metrics_task,
+            metrics,
         })
     }
 }

@@ -5,6 +5,8 @@ logging:
       targets:
         h2: INFO
         hyper: INFO
+        opentelemetry-otlp: INFO
+        opentelemetry_sdk: INFO
         rdkafka: INFO
         tonic: INFO
         tower: INFO
@@ -56,6 +58,13 @@ handlers:
 telemetry:
   labels:
     env: example
+metrics:
+  exporters:
+    - type: prometheus
+      labels: some
+      included_labels:
+        - env
+        - process.pid
 tracing:
   exporters:
     - type: otlp
@@ -68,12 +77,8 @@ tracing:
     inactivity: true
     thread_info: true
   level: TRACE
-  # Whether to include HTTP headers in tracing spans and logs. Can be helpful
-  # if sensitive data is present in headers (i.e. authentication data).
   include_headers: false
-  # Level at which request start log is emitted
   request_level: DEBUG
-  # Level at which request finish log is emitted
   response_level: INFO
 http_clients:
   tracing:
@@ -93,7 +98,7 @@ auth:
         realm: UXUM_REALM
         algo: HS256
         key:
-          raw_hmac_secret: hunter2
+          raw_hmac_secret: hunter2hunter2hunter2hunter2hunter2
         validate:
           required_claims:
             - exp
@@ -135,9 +140,13 @@ auth:
         - perm3
         - perm4
         - maintenance
-server:
-  listen: 127.0.0.1:8080
-  tls:
+servers:
+  - kind: plain
+    listen: 127.0.0.1:8080
+  - kind: tls
     listen: 127.0.0.1:8443
-    cert: examples/advanced_server/tls.crt
-    key: examples/advanced_server/tls.key
+    tls:
+      cert: examples/advanced_server/tls.crt
+      key: examples/advanced_server/tls.key
+  - kind: spiffe
+    listen: 127.0.0.1:8088

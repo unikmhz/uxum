@@ -139,10 +139,16 @@ impl RuntimeConfig {
             format!("{prefix}-{thread_id}")
         })
         .on_thread_start(|| {
-            trace!(thread_id = gettid::gettid(), "started runtime thread");
+            let thread = std::thread::current();
+            let name = thread.name();
+            let tid = gettid::gettid();
+            trace!(name, tid, "started runtime thread");
         })
         .on_thread_stop(|| {
-            trace!(thread_id = gettid::gettid(), "stopping runtime thread");
+            let thread = std::thread::current();
+            let name = thread.name();
+            let tid = gettid::gettid();
+            trace!(name, tid, "stopping runtime thread");
         });
         rb
     }

@@ -3,8 +3,8 @@
 use std::{
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -12,7 +12,7 @@ use axum::{
     error_handling::HandleErrorLayer,
     extract::State,
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{self, Router},
 };
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,7 @@ use tracing::{debug_span, info};
 
 use crate::{
     auth::{AuthExtractor, AuthLayer, AuthProvider},
+    behavior::{AppBehavior, StandardAppBehavior},
     builder::app::error_handler,
     watchdog::{Watchdog, WatchdogConfig},
 };
@@ -91,14 +92,15 @@ impl ProbeConfig {
     }
 
     /// Build Axum router containing all probe and maintenance methods.
-    pub fn build_router(
+    pub fn build_router<B: AppBehavior>(
         &self,
+        behavior: B,
         auth_provider: Box<dyn AuthProvider>,
         auth_extractor: Box<dyn AuthExtractor>,
     ) -> Router {
         // TODO: add toggle for probes, and possibly for maintenance mode.
         let _span = debug_span!("build_probes").entered();
-        let state = ProbeState::new(self.start_in_maintenance, self.watchdog.as_ref());
+        let state = ProbeState::new(behavior, self.start_in_maintenance, self.watchdog.as_ref());
         Router::new()
             .route(&self.readiness_path, routing::get(readiness_probe))
             .route(&self.liveness_path, routing::get(liveness_probe))
@@ -122,30 +124,32 @@ impl ProbeConfig {
 
 /// Shared state for probes and maintenance mode API.
 #[derive(Clone)]
-pub struct ProbeState(Arc<ProbeStateInner>);
+pub struct ProbeState<B>(Arc<ProbeStateInner<B>>);
 
-impl Deref for ProbeState {
-    type Target = ProbeStateInner;
+impl<B> Deref for ProbeState<B> {
+    type Target = ProbeStateInner<B>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Default for ProbeState {
+impl Default for ProbeState<StandardAppBehavior> {
     fn default() -> Self {
         Self(Arc::new(ProbeStateInner {
+            behavior: StandardAppBehavior,
             in_maintenance: AtomicBool::new(true),
             watchdog: None,
         }))
     }
 }
 
-impl ProbeState {
+impl<B> ProbeState<B> {
     /// Create new [`ProbeState`] with optional [`WatchdogConfig`].
     #[must_use]
-    pub fn new(in_maint: bool, watchdog: Option<&WatchdogConfig>) -> Self {
+    pub fn new(behavior: B, in_maint: bool, watchdog: Option<&WatchdogConfig>) -> Self {
         Self(Arc::new(ProbeStateInner {
+            behavior,
             in_maintenance: AtomicBool::new(in_maint),
             watchdog: watchdog.map(|wc| {
                 let mut watchdog: Watchdog = wc.clone().into();
@@ -157,7 +161,8 @@ impl ProbeState {
 }
 
 /// Inner struct for probes/maintenance shared state.
-pub struct ProbeStateInner {
+pub struct ProbeStateInner<B> {
+    behavior: B,
     /// Maintenance mode flag.
     in_maintenance: AtomicBool,
     /// Optional runtime watchdog for use in liveness probes.
@@ -167,28 +172,28 @@ pub struct ProbeStateInner {
 /// Readiness probe handler.
 ///
 /// For use in k8s-like deployments.
-async fn readiness_probe(state: State<ProbeState>) -> impl IntoResponse {
+async fn readiness_probe<B: AppBehavior>(state: State<ProbeState<B>>) -> Response {
     match state.in_maintenance.load(Ordering::Relaxed) {
-        true => StatusCode::SERVICE_UNAVAILABLE,
-        false => StatusCode::OK,
+        true => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        false => state.behavior.readiness_probe().await.into_response(),
     }
 }
 
 /// Liveness probe handler.
 ///
 /// For use in k8s-like deployments.
-async fn liveness_probe(state: State<ProbeState>) -> impl IntoResponse {
+async fn liveness_probe<B: AppBehavior>(state: State<ProbeState<B>>) -> Response {
     match &state.watchdog {
         Some(watchdog) => match watchdog.is_alive() {
-            true => StatusCode::OK,
-            false => StatusCode::SERVICE_UNAVAILABLE,
+            true => state.behavior.liveness_probe().await.into_response(),
+            false => StatusCode::SERVICE_UNAVAILABLE.into_response(),
         },
-        None => StatusCode::OK,
+        None => state.behavior.liveness_probe().await.into_response(),
     }
 }
 
 /// Enable maintenance mode.
-async fn maintenance_on(state: State<ProbeState>) -> impl IntoResponse {
+async fn maintenance_on<B>(state: State<ProbeState<B>>) -> impl IntoResponse {
     if !state.in_maintenance.swap(true, Ordering::Relaxed) {
         info!("maintenance mode enabled");
     }
@@ -196,7 +201,7 @@ async fn maintenance_on(state: State<ProbeState>) -> impl IntoResponse {
 }
 
 /// Disable maintenance mode.
-async fn maintenance_off(state: State<ProbeState>) -> impl IntoResponse {
+async fn maintenance_off<B>(state: State<ProbeState<B>>) -> impl IntoResponse {
     if state.in_maintenance.swap(false, Ordering::Relaxed) {
         info!("maintenance mode disabled");
     }

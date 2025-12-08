@@ -7,6 +7,7 @@
     clippy::doc_markdown,
     clippy::missing_errors_doc
 )]
+#![cfg_attr(test, deny(warnings))]
 
 #[cfg(feature = "async")]
 pub mod r#async;

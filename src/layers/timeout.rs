@@ -11,7 +11,7 @@ use std::{
 
 use axum::{
     body::Body,
-    http::{header::HeaderValue, Request, Response, StatusCode},
+    http::{Request, Response, StatusCode, header::HeaderValue},
     response::IntoResponse,
 };
 use iso8601_duration::Duration as IsoDuration;
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{
     task::futures::TaskLocalFuture,
-    time::{sleep_until, Instant, Sleep},
+    time::{Instant, Sleep, sleep_until},
 };
 use tower::{BoxError, Layer, Service};
 use tracing::warn;

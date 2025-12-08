@@ -3,7 +3,7 @@
 use axum::{body::Body, http::Request};
 use opentelemetry::{propagation::Extractor, trace::TraceContextExt};
 use tower_http::{request_id::RequestId, trace::MakeSpan};
-use tracing::{field::Empty, Level, Span};
+use tracing::{Level, Span, field::Empty};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 const DEFAULT_MESSAGE_LEVEL: Level = Level::DEBUG;
@@ -59,6 +59,9 @@ impl MakeSpan<Body> for CustomMakeSpan {
             .extensions()
             .get::<RequestId>()
             .and_then(|id| id.header_value().to_str().ok());
+        let parent_context = opentelemetry::global::get_text_map_propagator(|prop| {
+            prop.extract(&HeaderExtractor(request.headers()))
+        });
         // This ugly macro is needed, unfortunately, because `tracing::span!`
         // required the level argument to be static. Meaning we can't just pass
         // `self.level`.
@@ -93,13 +96,24 @@ impl MakeSpan<Body> for CustomMakeSpan {
             }
         }
 
-        match self.level {
+        let span = match self.level {
             Level::ERROR => make_span!(Level::ERROR),
             Level::WARN => make_span!(Level::WARN),
             Level::INFO => make_span!(Level::INFO),
             Level::DEBUG => make_span!(Level::DEBUG),
             Level::TRACE => make_span!(Level::TRACE),
+        };
+        let _ = span.set_parent(parent_context);
+        let context = span.context();
+        let span_ref = context.span();
+        let span_ctx = span_ref.span_context();
+        if span_ctx.is_valid() {
+            let trace_id = span_ctx.trace_id();
+            let span_id = span_ctx.span_id();
+            span.record("trace_id", trace_id.to_string());
+            span.record("span_id", span_id.to_string());
         }
+        span
     }
 }
 
@@ -128,19 +142,4 @@ impl Extractor for HeaderExtractor<'_> {
             .map(|value| value.as_str())
             .collect::<Vec<_>>()
     }
-}
-
-pub(crate) fn register_request(req: Request<Body>) -> Request<Body> {
-    // TODO: don't lookup trace/span IDs, use values pre-extracted by tracing-opentelemetry.
-    // TODO: don't send trace/span IDs as redundant attributes in otel traces.
-    let parent_context = opentelemetry::global::get_text_map_propagator(|prop| {
-        prop.extract(&HeaderExtractor(req.headers()))
-    });
-    let span = Span::current();
-    span.set_parent(parent_context);
-    let trace_id = span.context().span().span_context().trace_id();
-    let span_id = span.context().span().span_context().span_id();
-    span.record("trace_id", trace_id.to_string());
-    span.record("span_id", span_id.to_string());
-    req
 }

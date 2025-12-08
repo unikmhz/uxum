@@ -2,9 +2,15 @@
 name: Continuous Integration
 on:
   push:
-    branches: [ main, init ]
+    branches:
+      - 'main'
+      - 'init'
+      - 'stable/**'
   pull_request:
-    branches: [ main, init ]
+    branches:
+      - 'main'
+      - 'init'
+      - 'stable/**'
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
@@ -41,4 +47,4 @@ jobs:
       - name: Install protoc
         uses: arduino/setup-protoc@v3
       - name: Run tests
-        run: cargo test --verbose --all
+        run: cargo test --workspace --all-features --verbose --all
