@@ -277,17 +277,6 @@ impl AppBuilder {
         let _build_span = debug_span!("build_app").entered();
         let mut rtr = Router::new();
 
-        let metrics_state = self.metrics().cloned();
-        if let (Some(m_state), Some(m_cfg)) = (&metrics_state, &self.config.metrics) {
-            rtr = rtr.merge(m_cfg.build_router(m_state));
-        }
-
-        // Add probes and management mode API.
-        rtr = rtr.merge(self.config.probes.build_router(
-            clone_box(self.auth_provider.as_ref()),
-            clone_box(self.auth_extractor.as_ref()),
-        ));
-
         // A set to ensure uniqueness of handler names.
         let mut handler_names = HashSet::new();
         let mut grouped: BTreeMap<&str, Vec<&dyn HandlerExt>> = BTreeMap::new();
@@ -318,6 +307,40 @@ impl AppBuilder {
             rtr = rtr.merge(self.grpc_services.clone().routes().into_axum_router());
         }
 
+        // TODO: allow customizing fallback handler.
+        rtr = rtr.fallback(fallback_handler);
+
+        // Don't add tracing to probe and metric handlers.
+        let tracing_config = self.config.tracing.as_ref();
+        let include_headers = tracing_config.is_some_and(|t| t.include_headers());
+        let request_level =
+            tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
+        let response_level =
+            tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
+        rtr = rtr.layer(
+            // TODO: factor out tracing for GRPC.
+            TraceLayer::new_for_http()
+                .make_span_with(CustomMakeSpan::new().include_headers(include_headers))
+                .on_request(DefaultOnRequest::new().level(request_level))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(response_level)
+                        .include_headers(include_headers)
+                        .latency_unit(LatencyUnit::Micros),
+                ),
+        );
+
+        let metrics_state = self.metrics().cloned();
+        if let (Some(m_state), Some(m_cfg)) = (&metrics_state, &self.config.metrics) {
+            rtr = rtr.merge(m_cfg.build_router(m_state));
+        }
+
+        // Add probes and management mode API.
+        rtr = rtr.merge(self.config.probes.build_router(
+            clone_box(self.auth_provider.as_ref()),
+            clone_box(self.auth_extractor.as_ref()),
+        ));
+
         // Add RapiDoc and/or OpenAPI specification generator if enabled.
         if let Some(ref mut api_doc) = self.config.api_doc {
             let disabled = self
@@ -334,9 +357,6 @@ impl AppBuilder {
             let auth = self.auth_extractor.security_schemes();
             rtr = rtr.merge(api_doc.build_router(auth)?);
         }
-
-        // TODO: allow customizing fallback handler.
-        rtr = rtr.fallback(fallback_handler);
 
         // Wrap router in global layers.
         let final_rtr = self.wrap_global_layers(rtr, metrics_state);
@@ -400,30 +420,12 @@ impl AppBuilder {
     /// Wrap router in global [`tower`] layers.
     fn wrap_global_layers(&self, rtr: Router, metrics: Option<MetricsState>) -> Router {
         // [`tower`] layers that are executed for any request.
-        let tracing_config = self.config.tracing.as_ref();
-        let include_headers = tracing_config.is_some_and(|t| t.include_headers());
-        let request_level =
-            tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
-        let response_level =
-            tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
         let mut sensitive_headers = vec![header::AUTHORIZATION];
         sensitive_headers.append(&mut self.auth_extractor.sensitive_headers());
         let global_layers = ServiceBuilder::new()
             .set_x_request_id(MakeRequestUuid)
             .layer(RecordRequestIdLayer::new())
             .sensitive_headers(sensitive_headers)
-            .layer(
-                // TODO: factor out tracing for GRPC.
-                TraceLayer::new_for_http()
-                    .make_span_with(CustomMakeSpan::new().include_headers(include_headers))
-                    .on_request(DefaultOnRequest::new().level(request_level))
-                    .on_response(
-                        DefaultOnResponse::new()
-                            .level(response_level)
-                            .include_headers(include_headers)
-                            .latency_unit(LatencyUnit::Micros),
-                    ),
-            )
             .option_layer(metrics)
             .option_layer(if self.config.tracing.is_some() {
                 Some(MapRequestLayer::new(crate::logging::span::register_request))
