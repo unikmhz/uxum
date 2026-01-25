@@ -3,9 +3,11 @@ use std::{convert::Infallible, time::Duration};
 use crate::sync::*;
 
 /// Dummy pool for testing purposes.
+#[allow(dead_code)]
 pub(crate) struct DummyPool;
 
 /// Dummy resource for testing purposes.
+#[allow(dead_code)]
 pub(crate) struct DummyResource;
 
 impl InstrumentablePool<'_> for DummyPool {
