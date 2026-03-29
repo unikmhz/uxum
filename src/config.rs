@@ -27,7 +27,7 @@ use crate::{
 #[non_exhaustive]
 pub struct ServiceConfig<C = ()>
 where
-    C: Clone + std::fmt::Debug + PartialEq,
+    C: Clone + std::fmt::Debug,
 {
     /// Application configuration.
     #[serde(flatten)]
@@ -42,7 +42,7 @@ where
 
 impl<C> ServiceConfig<C>
 where
-    C: Clone + std::fmt::Debug + PartialEq,
+    C: Clone + std::fmt::Debug,
 {
     /// Create builder for service configuration.
     pub fn builder() -> ServiceConfigBuilder<C> {
@@ -63,7 +63,7 @@ pub enum ServiceConfigError {
 #[must_use]
 pub struct ServiceConfigBuilder<C>
 where
-    C: Clone + std::fmt::Debug + PartialEq,
+    C: Clone + std::fmt::Debug,
 {
     builder: config::ConfigBuilder<config::builder::DefaultState>,
     _type: PhantomData<C>,
@@ -71,7 +71,7 @@ where
 
 impl<C> ServiceConfigBuilder<C>
 where
-    C: Clone + std::fmt::Debug + PartialEq,
+    C: Clone + std::fmt::Debug,
 {
     /// Alternative method to construct a service configuration builder.
     pub fn new() -> Self {
@@ -84,7 +84,7 @@ where
 
 impl<C> Default for ServiceConfigBuilder<C>
 where
-    C: Clone + std::fmt::Debug + PartialEq,
+    C: Clone + std::fmt::Debug,
 {
     fn default() -> Self {
         Self::new()
@@ -93,7 +93,7 @@ where
 
 impl<C> ServiceConfigBuilder<C>
 where
-    C: Clone + std::fmt::Debug + PartialEq + for<'de> Deserialize<'de>,
+    C: Clone + std::fmt::Debug + for<'de> Deserialize<'de>,
 {
     /// Try to build configuration object from preconfigured sources.
     ///
