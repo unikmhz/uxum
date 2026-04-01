@@ -3,12 +3,12 @@
 use aliri::{jwt, Jwks};
 use aliri_oauth2::Authority;
 use aliri_tower::{self, Oauth2Authorizer};
+use axum::body::Body;
 use tower_http::validate_request::{ValidateRequest, ValidateRequestHeaderLayer};
 use uxum::{
     prelude::*,
     reexport::{tokio, tower, tracing_subscriber},
 };
-use axum::body::Body;
 
 /// Application entry point.
 #[tokio::main]
@@ -25,9 +25,8 @@ async fn main() {
         .expect("Server error");
 }
 
-fn jwt_auth_layer() -> ValidateRequestHeaderLayer<
-    impl ValidateRequest<Body, ResponseBody = Body> + Clone,
-> {
+fn jwt_auth_layer(
+) -> ValidateRequestHeaderLayer<impl ValidateRequest<Body, ResponseBody = Body> + Clone> {
     let validator = jwt::CoreValidator::default();
     let authority = Authority::new(Jwks::default(), validator);
     let authorizer = Oauth2Authorizer::new().with_terse_error_handler::<axum::body::Body>();
