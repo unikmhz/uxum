@@ -73,9 +73,37 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
     );
 
     let state = detect_state(&input);
-    let into_service = match state {
-        Some(s) => quote! { super::#fn_ident.with_state(::uxum::state::get::<#s>()) },
-        None => quote! { super::#fn_ident.into_service() },
+
+    let service_with_layer = if let Some(layer_fn) = data.layer {
+        match state {
+            Some(s) => {
+                quote! {
+                    {
+                        let service = super::#fn_ident.with_state(::uxum::state::get::<#s>());
+                        let layer = #layer_fn();
+                        tower::ServiceBuilder::new()
+                            .layer(layer)
+                            .service(service)
+                    }
+                }
+            }
+            None => {
+                quote! {
+                    {
+                        let service = super::#fn_ident.into_service();
+                        let layer = #layer_fn();
+                        tower::ServiceBuilder::new()
+                            .layer(layer)
+                            .service(service)
+                    }
+                }
+            }
+        }
+    } else {
+        match state {
+            Some(s) => quote! { super::#fn_ident.with_state(::uxum::state::get::<#s>()) },
+            None => quote! { super::#fn_ident.into_service() },
+        }
     };
 
     quote! {
@@ -94,7 +122,7 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
                         handler::{Handler, HandlerWithoutStateExt},
                     },
                     http,
-                    hyper::{Request, Response},
+                    hyper::{Request as HRequest, Response as HResponse},
                     inventory,
                     okapi,
                     openapi3,
@@ -148,8 +176,8 @@ pub fn handler(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 #[inline]
                 #[must_use]
-                fn service(&self) -> BoxCloneSyncService<Request<Body>, Response<Body>, Infallible> {
-                    BoxCloneSyncService::new(#into_service)
+                fn service(&self) -> BoxCloneSyncService<HRequest<Body>, HResponse<Body>, Infallible> {
+                    BoxCloneSyncService::new(#service_with_layer)
                 }
 
                 #[inline]

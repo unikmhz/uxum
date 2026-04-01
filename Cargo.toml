@@ -17,6 +17,7 @@ resolver = "2"
 members = [
     "examples/advanced_server",
     "examples/basic_server",
+    "examples/custom_layer",
     "examples/inner_service",
     "examples/minimal",
     "examples/redis-kv",
@@ -37,7 +38,7 @@ sign-tag = false
 tag-message = "uxum {{version}}"
 
 [dependencies]
-uxum-macros = { path = "uxum-macros", version = "=0.4.1" }
+uxum-macros = { path = "uxum-macros", version = "=0.4.2" }
 
 argon2 = { version = "0.5", optional = true }
 askama = "0.14"
