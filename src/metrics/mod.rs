@@ -5,7 +5,7 @@ use std::{
     future::Future,
     ops::Deref,
     pin::Pin,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
@@ -874,10 +874,10 @@ where
                 ));
             }
         }
-        for cap_header in this.state.capture_headers {
+        for cap_header in &this.state.capture_headers {
             if let Some(val) = headers.get(cap_header).and_then(|val| val.to_str().ok()) {
                 labels.push(KeyValue::new(
-                    format!("http.response.header.{user_header}"),
+                    format!("http.response.header.{cap_header}"),
                     val.to_owned(),
                 ));
             }
