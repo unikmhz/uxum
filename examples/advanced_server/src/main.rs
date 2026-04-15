@@ -431,9 +431,21 @@ mod hello {
                 &self,
                 req: Request<SayHelloRequest>,
             ) -> Result<Response<SayHelloResponse>, Status> {
-                Ok(Response::new(SayHelloResponse {
-                    line: format!("Hello, {}", req.get_ref().name),
-                }))
+                if rand::random_bool(0.5) {
+                    Ok(Response::new(SayHelloResponse {
+                        line: format!("Hello, {}", req.get_ref().name),
+                    }))
+                } else if rand::random_bool(0.5) {
+                    let mut resp = Response::new(SayHelloResponse {
+                        line: format!("Hi, {}", req.get_ref().name),
+                    });
+                    let meta = resp.metadata_mut();
+                    meta.insert("uxum-probability", "0.25".parse().unwrap());
+
+                    Ok(resp)
+                } else {
+                    Err(Status::cancelled("**Ignore**"))
+                }
             }
         }
     }

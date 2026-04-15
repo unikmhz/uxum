@@ -85,6 +85,9 @@ http_clients:
       closed_len: 10
       half_open_len: 3
       open_wait: 10s
+metrics:
+  capture_headers:
+    - uxum-probability
 auth:
   extractor:
     type: stacked

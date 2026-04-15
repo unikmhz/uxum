@@ -5,7 +5,7 @@ use std::{
     future::Future,
     ops::Deref,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
@@ -99,6 +99,9 @@ pub struct MetricsBuilder {
         with = "humantime_serde"
     )]
     pub runtime_metrics_interval: Duration,
+    /// List of HTTP response header names to capture and include as labels in metrics.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capture_headers: Vec<String>,
 }
 
 impl Default for MetricsBuilder {
@@ -108,6 +111,7 @@ impl Default for MetricsBuilder {
             duration_buckets: Self::default_duration_buckets(),
             size_buckets: Self::default_size_buckets(),
             runtime_metrics_interval: Self::default_runtime_metrics_interval(),
+            capture_headers: Vec::new(),
         }
     }
 }
@@ -352,11 +356,14 @@ impl MetricsBuilder {
             global_queue_depth,
         };
 
+        let capture_headers = self.capture_headers.clone();
+
         MetricsState {
             http_server,
             http_client,
             runtime,
             prom,
+            capture_headers,
         }
     }
 
@@ -596,6 +603,8 @@ pub struct MetricsState {
     runtime: RuntimeMetrics,
     /// Prometheus exporter.
     prom: Option<PrometheusExporter>,
+    /// List of HTTP response header names to capture and include as labels in metrics.
+    capture_headers: Vec<String>,
 }
 
 /// Container for HTTP server metrics.
@@ -815,12 +824,12 @@ where
         let this = self.project();
         let resp_result = ready!(this.inner.poll(cx));
 
-        let kv_method = KeyValue::new("http.request.method", this.method.to_string());
-        let kv_scheme = KeyValue::new("url.scheme", this.scheme.clone());
-        this.state
-            .http_server
-            .requests_active
-            .add(-1, &[kv_method.clone(), kv_scheme.clone()]);
+        let mut labels = vec![
+            KeyValue::new("http.request.method", this.method.to_string()),
+            KeyValue::new("url.scheme", this.scheme.clone()),
+        ];
+
+        this.state.http_server.requests_active.add(-1, &labels);
 
         let resp = resp_result?;
         let handler = resp.extensions().get::<HandlerName>();
@@ -828,22 +837,51 @@ where
         let status = resp.status().as_str().to_owned();
         let response_size = resp.size_hint().upper().unwrap_or(0);
 
-        let labels = [
-            kv_method,
-            kv_scheme,
-            KeyValue::new("http.response.status_code", status),
-            KeyValue::new(
-                "http.route",
-                this.path.as_ref().map_or(Cow::Borrowed(""), |path| {
-                    Cow::Owned(path.as_str().to_owned())
-                }),
-            ),
-            KeyValue::new("uxum.handler", handler.map_or("", |hdl| hdl.as_str())),
-        ];
+        labels.push(KeyValue::new("http.response.status_code", status));
+        labels.push(KeyValue::new(
+            "http.route",
+            this.path.as_ref().map_or(Cow::Borrowed(""), |path| {
+                Cow::Owned(path.as_str().to_owned())
+            }),
+        ));
+        labels.push(KeyValue::new(
+            "uxum.handler",
+            handler.map_or("", |hdl| hdl.as_str()),
+        ));
         // server.address?
         // server.port?
         // network.protocol.name?
         // network.protocol.version?
+        let headers = resp.headers();
+        #[cfg(feature = "grpc")]
+        {
+            let content_type = headers
+                .get("content-type")
+                .and_then(|val| val.to_str().ok())
+                .unwrap_or("http");
+
+            if content_type.starts_with("application/grpc") {
+                let grpc_status_code = headers
+                    .get("grpc-status")
+                    // return status code INTERNAL instead of panicking
+                    .map(|val| val.to_str().unwrap_or("13"))
+                    // tonic will not add a grpc-status code to headers in the event of success
+                    .unwrap_or("0");
+
+                labels.push(KeyValue::new(
+                    "http.response.grpc_status_code",
+                    grpc_status_code.to_owned(),
+                ));
+            }
+        }
+        for cap_header in this.state.capture_headers {
+            if let Some(val) = headers.get(cap_header).and_then(|val| val.to_str().ok()) {
+                labels.push(KeyValue::new(
+                    format!("http.response.header.{user_header}"),
+                    val.to_owned(),
+                ));
+            }
+        }
         this.state.http_server.requests_total.add(1, &labels);
         this.state
             .http_server
