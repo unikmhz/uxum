@@ -46,6 +46,11 @@ use crate::{
     telemetry::OtlpProtocol,
 };
 
+/// Container for custom key-value labels to be **merged** with existing metric labels.
+/// These labels are added to the existing set without overwriting original ones.
+#[derive(Clone)]
+pub struct AdditionalMetricLabels(pub Vec<KeyValue>);
+
 /// Error type used in metrics subsystem.
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -99,9 +104,6 @@ pub struct MetricsBuilder {
         with = "humantime_serde"
     )]
     pub runtime_metrics_interval: Duration,
-    /// List of HTTP response header names to capture and include as labels in metrics.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    capture_headers: Vec<String>,
 }
 
 impl Default for MetricsBuilder {
@@ -111,7 +113,6 @@ impl Default for MetricsBuilder {
             duration_buckets: Self::default_duration_buckets(),
             size_buckets: Self::default_size_buckets(),
             runtime_metrics_interval: Self::default_runtime_metrics_interval(),
-            capture_headers: Vec::new(),
         }
     }
 }
@@ -356,14 +357,11 @@ impl MetricsBuilder {
             global_queue_depth,
         };
 
-        let capture_headers = self.capture_headers.clone();
-
         MetricsState {
             http_server,
             http_client,
             runtime,
             prom,
-            capture_headers,
         }
     }
 
@@ -603,8 +601,6 @@ pub struct MetricsState {
     runtime: RuntimeMetrics,
     /// Prometheus exporter.
     prom: Option<PrometheusExporter>,
-    /// List of HTTP response header names to capture and include as labels in metrics.
-    capture_headers: Vec<String>,
 }
 
 /// Container for HTTP server metrics.
@@ -852,9 +848,9 @@ where
         // server.port?
         // network.protocol.name?
         // network.protocol.version?
-        let headers = resp.headers();
         #[cfg(feature = "grpc")]
         {
+            let headers = resp.headers();
             let content_type = headers
                 .get("content-type")
                 .and_then(|val| val.to_str().ok())
@@ -874,12 +870,9 @@ where
                 ));
             }
         }
-        for cap_header in &this.state.capture_headers {
-            if let Some(val) = headers.get(cap_header).and_then(|val| val.to_str().ok()) {
-                labels.push(KeyValue::new(
-                    format!("http.response.header.{cap_header}"),
-                    val.to_owned(),
-                ));
+        if let Some(custom_labels) = resp.extensions().get::<AdditionalMetricLabels>() {
+            for kv in &custom_labels.0 {
+                labels.push(kv.clone());
             }
         }
         this.state.http_server.requests_total.add(1, &labels);
