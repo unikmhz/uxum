@@ -317,6 +317,11 @@ impl AppBuilder {
             tracing_config.map_or(tracing::Level::DEBUG, |t| t.request_level().into());
         let response_level =
             tracing_config.map_or(tracing::Level::INFO, |t| t.response_level().into());
+        rtr = if self.config.tracing.is_some() {
+            rtr.layer(MapRequestLayer::new(crate::logging::span::register_request))
+        } else {
+            rtr
+        };
         rtr = rtr.layer(
             // TODO: factor out tracing for GRPC.
             TraceLayer::new_for_http()
@@ -427,11 +432,6 @@ impl AppBuilder {
             .layer(RecordRequestIdLayer::new())
             .sensitive_headers(sensitive_headers)
             .option_layer(metrics)
-            .option_layer(if self.config.tracing.is_some() {
-                Some(MapRequestLayer::new(crate::logging::span::register_request))
-            } else {
-                None
-            })
             .propagate_x_request_id()
             .layer(SetResponseHeaderLayer::if_not_present(
                 header::SERVER,
