@@ -72,7 +72,7 @@ pub use self::{
         timeout::{HandlerTimeoutConfig, TimeoutError, CURRENT_DEADLINE},
     },
     logging::LoggingConfig,
-    metrics::{MetricsBuilder, MetricsError, MetricsState},
+    metrics::{AdditionalMetricLabels, MetricsBuilder, MetricsError, MetricsState},
     notify::ServiceNotifier,
     probes::{ProbeConfig, ProbeState},
     response::{GetResponseSchemas, ResponseSchema},

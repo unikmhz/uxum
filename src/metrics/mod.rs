@@ -46,6 +46,11 @@ use crate::{
     telemetry::OtlpProtocol,
 };
 
+/// Container for custom key-value labels to be **merged** with existing metric labels.
+/// These labels are added to the existing set without overwriting original ones.
+#[derive(Clone)]
+pub struct AdditionalMetricLabels(pub Vec<KeyValue>);
+
 /// Error type used in metrics subsystem.
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -815,12 +820,12 @@ where
         let this = self.project();
         let resp_result = ready!(this.inner.poll(cx));
 
-        let kv_method = KeyValue::new("http.request.method", this.method.to_string());
-        let kv_scheme = KeyValue::new("url.scheme", this.scheme.clone());
-        this.state
-            .http_server
-            .requests_active
-            .add(-1, &[kv_method.clone(), kv_scheme.clone()]);
+        let mut labels = vec![
+            KeyValue::new("http.request.method", this.method.to_string()),
+            KeyValue::new("url.scheme", this.scheme.clone()),
+        ];
+
+        this.state.http_server.requests_active.add(-1, &labels);
 
         let resp = resp_result?;
         let handler = resp.extensions().get::<HandlerName>();
@@ -828,22 +833,48 @@ where
         let status = resp.status().as_str().to_owned();
         let response_size = resp.size_hint().upper().unwrap_or(0);
 
-        let labels = [
-            kv_method,
-            kv_scheme,
-            KeyValue::new("http.response.status_code", status),
-            KeyValue::new(
-                "http.route",
-                this.path.as_ref().map_or(Cow::Borrowed(""), |path| {
-                    Cow::Owned(path.as_str().to_owned())
-                }),
-            ),
-            KeyValue::new("uxum.handler", handler.map_or("", |hdl| hdl.as_str())),
-        ];
+        labels.push(KeyValue::new("http.response.status_code", status));
+        labels.push(KeyValue::new(
+            "http.route",
+            this.path.as_ref().map_or(Cow::Borrowed(""), |path| {
+                Cow::Owned(path.as_str().to_owned())
+            }),
+        ));
+        labels.push(KeyValue::new(
+            "uxum.handler",
+            handler.map_or("", |hdl| hdl.as_str()),
+        ));
         // server.address?
         // server.port?
         // network.protocol.name?
         // network.protocol.version?
+        #[cfg(feature = "grpc")]
+        {
+            let headers = resp.headers();
+            let content_type = headers
+                .get("content-type")
+                .and_then(|val| val.to_str().ok())
+                .unwrap_or("http");
+
+            if content_type.starts_with("application/grpc") {
+                let grpc_status_code = headers
+                    .get("grpc-status")
+                    // return status code INTERNAL instead of panicking
+                    .map(|val| val.to_str().unwrap_or("13"))
+                    // tonic will not add a grpc-status code to headers in the event of success
+                    .unwrap_or("0");
+
+                labels.push(KeyValue::new(
+                    "http.response.grpc_status_code",
+                    grpc_status_code.to_owned(),
+                ));
+            }
+        }
+        if let Some(custom_labels) = resp.extensions().get::<AdditionalMetricLabels>() {
+            for kv in &custom_labels.0 {
+                labels.push(kv.clone());
+            }
+        }
         this.state.http_server.requests_total.add(1, &labels);
         this.state
             .http_server

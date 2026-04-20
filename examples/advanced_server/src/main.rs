@@ -421,6 +421,8 @@ mod hello {
             hello_service_server::HelloService, SayHelloRequest, SayHelloResponse,
         };
         use tonic::{Request, Response, Status};
+        use uxum::reexport::opentelemetry::KeyValue;
+        use uxum::AdditionalMetricLabels;
 
         #[derive(Debug)]
         pub struct Hello;
@@ -431,9 +433,23 @@ mod hello {
                 &self,
                 req: Request<SayHelloRequest>,
             ) -> Result<Response<SayHelloResponse>, Status> {
-                Ok(Response::new(SayHelloResponse {
-                    line: format!("Hello, {}", req.get_ref().name),
-                }))
+                if rand::random_bool(0.5) {
+                    Ok(Response::new(SayHelloResponse {
+                        line: format!("Hello, {}", req.get_ref().name),
+                    }))
+                } else if rand::random_bool(0.5) {
+                    let mut resp = Response::new(SayHelloResponse {
+                        line: format!("Hi, {}", req.get_ref().name),
+                    });
+                    let custom_labels =
+                        AdditionalMetricLabels(vec![KeyValue::new("http.response.hi_there", "1")]);
+                    let ext = resp.extensions_mut();
+                    ext.insert(custom_labels);
+
+                    Ok(resp)
+                } else {
+                    Err(Status::cancelled("**Ignore**"))
+                }
             }
         }
     }
