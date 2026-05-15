@@ -26,7 +26,7 @@ tag-message = "uxum-macros {{version}}"
 
 [dependencies]
 convert_case = "0.8"
-darling = "0.20.10"
+darling = "0.21.3"
 mime = "0.3"
 proc-macro2 = "1.0"
 proc-macro-error = "1.0"
