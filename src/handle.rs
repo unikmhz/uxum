@@ -1,6 +1,5 @@
 //! Handle object to start, stop and control the service.
 
-use std::{net::SocketAddr, time::Duration};
 use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::Router;
 use axum_server::{service::MakeService, Handle as AxumHandle};
@@ -13,6 +12,8 @@ use opentelemetry_sdk::{
     metrics::SdkMeterProvider,
     trace::{SdkTracerProvider, Tracer},
 };
+use std::convert::Infallible;
+use std::{net::SocketAddr, time::Duration};
 use thiserror::Error;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -173,13 +174,13 @@ impl Handle {
     }
 
     /// Start axum server tasks.
-    /// Https is handled by the custom Listener, passed directly
-    /// into the method.
-    async fn start_servers_with_custom_listener<L>(
+    /// Https task implements a custom accept loop with passed
+    /// custom Tls listener.
+    async fn start_servers_with_tls_listener<L>(
         &mut self,
         server: ServerBuilder,
         app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
-        mut listener: L,
+        mut tls_listener: L,
     ) -> Result<(), HandleError>
     where
         L: axum::serve::Listener<Addr = SocketAddr> + Send + 'static,
@@ -190,38 +191,33 @@ impl Handle {
 
         self.https_task = Some(tokio::spawn(async move {
             let builder = Builder::new(TokioExecutor::new());
-
             loop {
                 tokio::select! {
                     biased;
                     _ = token.cancelled() => {
-                        println!("TLS server shutting down");
                         break;
                     }
                     // All the retry/error/handshake logic is INSIDE listener.accept()
-                    (stream, addr) = listener.accept() => {
-                        let s= MakeService::<SocketAddr, http::Request<hyper::body::Incoming>>::make_service(&mut app_clone, addr)
+                    (stream, addr) = tls_listener.accept() => {
+                        let svc= MakeService
+                            ::<SocketAddr, http::Request<hyper::body::Incoming>>
+                            ::make_service(&mut app_clone, addr)
                             .await
-                            .unwrap(); // TODO: fix unwrap!
-
-                        let hyper_svc= TowerToHyperService::new(
-                             MakeService::<SocketAddr, http::Request<hyper::body::Incoming>>
-                                ::make_service(&mut app_clone, addr)
-                                .await
-                                .expect("fix me! change to return!")
-                        );
-
+                            .unwrap_or_else(|e: Infallible| match e {});
+                        let svc= TowerToHyperService::new(svc);
                         let builder = builder.clone();
+
                         tokio::spawn(async move {
                             let io = TokioIo::new(stream);
                             if let Err(e) = builder
-                                .serve_connection_with_upgrades(io, hyper_svc)
+                                .serve_connection_with_upgrades(io, svc)
                                 .await
                             {
                                 eprintln!("Connection error: {}", e);
                             }
                         });
-                    }}
+                    }
+                }
             }
 
             Ok::<(), HandleError>(())
@@ -332,6 +328,34 @@ impl Handle {
         A::MakeFuture: Send,
     {
         self.start(server, app).await?;
+        self.wait(graceful).await
+    }
+
+    /// Start the server and block execution until one of the server tasks exits.
+    ///
+    /// Will gracefully shutdown remaining server tasks.
+    ///
+    /// Should be used when you need using a custom Tls listener
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// * Caught an error when initializing server tasks.
+    /// * One of server tasks finished with an error.
+    pub async fn run_with_tls_listener<A, L>(
+        &mut self,
+        server: ServerBuilder,
+        app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
+        graceful: Option<Duration>,
+        tls_listener: L,
+    ) -> Result<(), HandleError>
+    where
+        L: axum::serve::Listener<Addr = SocketAddr> + Send + 'static,
+        L::Io: Unpin + Send + 'static,
+    {
+        self.prepare(&server)?;
+        self.start_servers_with_tls_listener(server, app, tls_listener).await?;
+        self.notify.on_ready();
         self.wait(graceful).await
     }
 
