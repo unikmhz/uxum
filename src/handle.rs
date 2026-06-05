@@ -1,7 +1,8 @@
 //! Handle object to start, stop and control the service.
 
 use std::{net::SocketAddr, time::Duration};
-
+use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
+use axum::Router;
 use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
 use opentelemetry::{metrics::MeterProvider as _, trace::TracerProvider as _};
@@ -157,6 +158,40 @@ impl Handle {
                     .map_err(|err| HandleError::TlsServer(err.into())),
             ));
         }
+        self.http_task = Some(tokio::spawn(
+            server
+                .build()
+                .await?
+                .handle(self.handle.clone())
+                .serve(app)
+                .map_err(|err| HandleError::Server(err.into())),
+        ));
+        Ok(())
+    }
+
+    /// Start axum server tasks.
+    /// Https is handled by the custom Listener, passed directly
+    /// into the method.
+    async fn start_servers_with_custom_listener<L>(
+        &mut self, server: ServerBuilder,
+        app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
+        listener: L,
+    ) -> Result<(), HandleError>
+    where
+        L: axum::serve::Listener + Send + 'static,
+        L::Io: Unpin + Send + 'static,
+        L::Addr: Send + 'static,
+    {
+        let handle = self.handle.clone();
+        let app_clone = app.clone();
+        self.https_task = Some(tokio::spawn(async move {
+            axum::serve(listener, app_clone)
+                .with_graceful_shutdown(async move {
+                    handle.graceful_shutdown(None);
+                })
+                .await
+                .map_err(|err| HandleError::TlsServer(err.into()))
+        }));
         self.http_task = Some(tokio::spawn(
             server
                 .build()
