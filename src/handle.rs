@@ -5,6 +5,9 @@ use axum::extract::connect_info::IntoMakeServiceWithConnectInfo;
 use axum::Router;
 use axum_server::{service::MakeService, Handle as AxumHandle};
 use futures::{stream::FuturesUnordered, StreamExt, TryFutureExt};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
+use hyper_util::service::TowerToHyperService;
 use opentelemetry::{metrics::MeterProvider as _, trace::TracerProvider as _};
 use opentelemetry_sdk::{
     metrics::SdkMeterProvider,
@@ -173,25 +176,57 @@ impl Handle {
     /// Https is handled by the custom Listener, passed directly
     /// into the method.
     async fn start_servers_with_custom_listener<L>(
-        &mut self, server: ServerBuilder,
+        &mut self,
+        server: ServerBuilder,
         app: IntoMakeServiceWithConnectInfo<Router, SocketAddr>,
-        listener: L,
+        mut listener: L,
     ) -> Result<(), HandleError>
     where
-        L: axum::serve::Listener + Send + 'static,
+        L: axum::serve::Listener<Addr = SocketAddr> + Send + 'static,
         L::Io: Unpin + Send + 'static,
-        L::Addr: Send + 'static,
     {
-        let handle = self.handle.clone();
-        let app_clone = app.clone();
+        let token = self.token.clone();
+        let mut app_clone = app.clone();
+
         self.https_task = Some(tokio::spawn(async move {
-            axum::serve(listener, app_clone)
-                .with_graceful_shutdown(async move {
-                    handle.graceful_shutdown(None);
-                })
-                .await
-                .map_err(|err| HandleError::TlsServer(err.into()))
+            let builder = Builder::new(TokioExecutor::new());
+
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => {
+                        println!("TLS server shutting down");
+                        break;
+                    }
+                    // All the retry/error/handshake logic is INSIDE listener.accept()
+                    (stream, addr) = listener.accept() => {
+                        let s= MakeService::<SocketAddr, http::Request<hyper::body::Incoming>>::make_service(&mut app_clone, addr)
+                            .await
+                            .unwrap(); // TODO: fix unwrap!
+
+                        let hyper_svc= TowerToHyperService::new(
+                             MakeService::<SocketAddr, http::Request<hyper::body::Incoming>>
+                                ::make_service(&mut app_clone, addr)
+                                .await
+                                .expect("fix me! change to return!")
+                        );
+
+                        let builder = builder.clone();
+                        tokio::spawn(async move {
+                            let io = TokioIo::new(stream);
+                            if let Err(e) = builder
+                                .serve_connection_with_upgrades(io, hyper_svc)
+                                .await
+                            {
+                                eprintln!("Connection error: {}", e);
+                            }
+                        });
+                    }}
+            }
+
+            Ok::<(), HandleError>(())
         }));
+
         self.http_task = Some(tokio::spawn(
             server
                 .build()
