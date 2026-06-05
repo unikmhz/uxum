@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.9.4"
+version = "0.9.5"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -92,7 +92,10 @@ schemars = { version = "0.8", features = ["bytes", "chrono", "preserve_order", "
 scrypt = { version = "0.11", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["alloc", "arbitrary_precision", "preserve_order"] }
-socket2 = { version = "0.6" }
+# NOTE: pinned to an exact patch version — socket2 changes frequently and has
+# broken backwards compatibility across patch releases. The `all` feature is
+# required for the socket options used in `builder::server` (TOS, MSS, buffers).
+socket2 = { version = "=0.6.4", features = ["all"] }
 thiserror = "2.0"
 tonic = { version = "0.14", features = ["tls-native-roots"], optional = true }
 tokio = { version = "1.44", features = ["full"] }

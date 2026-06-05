@@ -213,9 +213,12 @@ impl ServerBuilder {
     {
         let (sock, addr) = socket(addr_conf).await?;
         let sref = SockRef::from(&sock);
-        let domain = sref
-            .domain()
-            .map_err(|err| ServerBuilderError::GetDomain(err.into()))?;
+        // NOTE: socket2's `SockRef::domain()` is only available on Linux/Android/FreeBSD/Fuchsia,
+        // so derive the domain from the resolved address instead (portable, no syscall).
+        let domain = match addr {
+            SocketAddr::V4(_) => socket2::Domain::IPV4,
+            SocketAddr::V6(_) => socket2::Domain::IPV6,
+        };
         if let Some(tos) = self.ip.tos {
             match domain {
                 socket2::Domain::IPV4 => sref.set_tos_v4(tos),
