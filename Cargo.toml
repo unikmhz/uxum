@@ -97,7 +97,7 @@ smartstring = "1.0"
 # NOTE: pinned to an exact patch version — socket2 changes frequently and has
 #       broken backwards compatibility across patch releases. The `all` feature is
 #       required for the socket options used in `builder::server` (TOS, MSS, buffers).
-socket2 = { version = "=0.6.4", features = ["all"] }
+socket2 = { version = "=0.6.5", features = ["all"] }
 spiffe = { version = "0.16", features = ["tracing"], optional = true }
 spiffe-rustls = { version = "0.7", default-features = false, features = ["aws-lc-rs", "parking-lot"], optional = true }
 spiffe-rustls-tokio = { version = "0.4", optional = true }
