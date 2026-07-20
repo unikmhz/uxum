@@ -99,7 +99,7 @@ smartstring = "1.0"
 #       required for the socket options used in `builder::server` (TOS, MSS, buffers).
 socket2 = { version = "=0.6.4", features = ["all"] }
 spiffe = { version = "0.16", features = ["tracing"], optional = true }
-spiffe-rustls = { version = "0.7", default-features = false, features = ["aws-lc-rs", "parking-lot"], optional = true }
+spiffe-rustls = { version = "0.8", default-features = false, features = ["aws-lc-rs", "parking-lot"], optional = true }
 spiffe-rustls-tokio = { version = "0.4", optional = true }
 thiserror = "2.0"
 thread-priority = "3.1"
