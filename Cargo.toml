@@ -45,7 +45,7 @@ askama = "0.16"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "matched-path", "tokio"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
-base64 = "0.22"
+base64 = "0.23"
 bytes = { version = "1.12", features = ["serde"] }
 config = { version = "0.15", features = ["yaml"] }
 dashmap = "6.2"
