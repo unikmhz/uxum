@@ -63,7 +63,7 @@ hyper = { version = "1.10", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["http1", "http2", "server"] }
 inventory = "0.3"
 iso8601-duration = "0.2"
-jsonwebtoken = { version = "10", features = ["aws_lc_rs", "use_pem"], optional = true }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs", "use_pem"], optional = true }
 maplit = "1.0"
 mime = "0.3"
 okapi = { version = "0.7", features = ["preserve_order"] }
