@@ -25,7 +25,7 @@ sign-tag = false
 tag-message = "uxum-macros {{version}}"
 
 [dependencies]
-convert_case = "0.11"
+convert_case = "0.12"
 darling = "0.23"
 mime = "0.3"
 proc-macro2 = "1.0"
