@@ -15,5 +15,5 @@ aliri = "0.6.4"
 aliri_tower = "0.6.1"
 aliri_oauth2 = "0.10.2"
 # TODO: unpin/bump tower-http after aliri crate updates.
-tower-http = { version = "=0.5.2", features = ["validate-request"] }
+tower-http = { version = "=0.7.1", features = ["validate-request"] }
 tracing = { version = "0.1", features = ["std"] }
