@@ -2,7 +2,9 @@
 
 use std::{
     borrow::{Borrow, BorrowMut},
+    convert::Infallible,
     ops::{Deref, DerefMut},
+    str::FromStr,
 };
 
 /// User ID.
@@ -19,6 +21,14 @@ impl From<String> for UserId {
 impl From<&str> for UserId {
     fn from(value: &str) -> Self {
         Self(value.to_string())
+    }
+}
+
+impl FromStr for UserId {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from(s))
     }
 }
 

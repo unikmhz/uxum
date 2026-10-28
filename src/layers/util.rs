@@ -3,6 +3,7 @@
 use std::{
     hash::Hash,
     net::{IpAddr, SocketAddr},
+    str::FromStr,
 };
 
 use axum::extract::ConnectInfo;
@@ -19,7 +20,7 @@ pub struct ExtractionError;
 
 /// Key extraction trait for use in various limiting layers.
 pub(crate) trait KeyExtractor {
-    type Key: Hash + Eq + Clone;
+    type Key: Hash + Eq + Clone + FromStr;
 
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, ExtractionError>;
 }
@@ -40,17 +41,25 @@ impl KeyExtractor for UserIdKeyExtractor {
 }
 
 /// Use client IP address as key.
+///
+/// IPv4-mapped IPv6 addresses, as reported by dual-stack listeners, are converted to IPv4,
+/// so that configured IPv4 keys match them.
 pub(crate) struct PeerIpKeyExtractor;
 
 impl KeyExtractor for PeerIpKeyExtractor {
     type Key = IpAddr;
 
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, ExtractionError> {
-        maybe_connect_info(req).ok_or(ExtractionError)
+        maybe_connect_info(req)
+            .map(|ip| ip.to_canonical())
+            .ok_or(ExtractionError)
     }
 }
 
 /// Use original client IP address as key.
+///
+/// IPv4-mapped IPv6 addresses, as reported by dual-stack listeners, are converted to IPv4,
+/// so that configured IPv4 keys match them.
 pub(crate) struct SmartIpKeyExtractor;
 
 impl KeyExtractor for SmartIpKeyExtractor {
@@ -62,6 +71,7 @@ impl KeyExtractor for SmartIpKeyExtractor {
             .or_else(|| maybe_x_real_ip(headers))
             .or_else(|| maybe_forwarded(headers))
             .or_else(|| maybe_connect_info(req))
+            .map(|ip| ip.to_canonical())
             .ok_or(ExtractionError)
     }
 }
