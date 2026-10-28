@@ -81,7 +81,7 @@ impl Middleware for TracingMiddleware {
             let scheme = url.scheme();
             let host = url.host_str().unwrap_or("");
             let host_port = url.port_or_known_default().unwrap_or(0) as i64;
-            let otel_name = format!("{} {}", &method, url.path());
+            let otel_name = format!("{} {}", method, url.path());
             let header_default = &::http::HeaderValue::from_static("");
             let user_agent = format!(
                 "{:?}",
