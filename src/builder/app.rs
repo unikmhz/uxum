@@ -49,7 +49,7 @@ use crate::{
     config::AppConfig,
     errors,
     http_client::HttpClientError,
-    layers::{ext::HandlerName, request_id::RecordRequestIdLayer},
+    layers::{ext::HandlerName, rate::RateLimitLayer, request_id::RecordRequestIdLayer},
     logging::span::CustomMakeSpan,
     metrics::{MetricsBuilder, MetricsError, MetricsState},
     state,
@@ -506,8 +506,9 @@ impl<B: AppBehavior> AppBuilder<B> {
             })
             // Rate limiting layer.
             .option_layer(
-                service_cfg.and_then(|cfg| cfg.rate_limit.as_ref())
-                    .map(|rcfg| rcfg.make_layer()),
+                service_cfg
+                    .filter(|cfg| !cfg.rate_limit.is_empty())
+                    .map(|cfg| RateLimitLayer::from(cfg.rate_limit.as_slice())),
             )
             // CORS layer.
             .option_layer(cors_layer)

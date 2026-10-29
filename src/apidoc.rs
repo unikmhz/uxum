@@ -371,8 +371,8 @@ impl ApiDocBuilder {
             routing::get(get_spec).layer(Extension(spec)),
         );
         if self.enable_ui {
-            let js_map_path = format!("{}.map", &self.js_path);
-            let index_path = format!("{}/index.html", &self.apidoc_path);
+            let js_map_path = format!("{}.map", self.js_path);
+            let index_path = format!("{}/index.html", self.apidoc_path);
             rtr = rtr.merge(
                 Router::new()
                     .route(&self.apidoc_path, routing::get(get_rapidoc_index))

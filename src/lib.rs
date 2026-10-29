@@ -58,7 +58,7 @@ pub use self::{
     layers::{
         cors::CorsConfig,
         ext::{Deadline, HandlerName, ListenerInfo, ListenerProtocol},
-        rate::{HandlerRateLimitConfig, RateLimitError},
+        rate::{HandlerRateLimitConfig, QuotaOverride, RateLimitError},
         request_id::CURRENT_REQUEST_ID,
         timeout::{CURRENT_DEADLINE, HandlerTimeoutConfig, TimeoutError},
     },

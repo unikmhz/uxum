@@ -10,7 +10,11 @@ use crate::{
     auth::AuthConfig,
     builder::server::ServerBuilder,
     http_client::HttpClientConfig,
-    layers::{cors::CorsConfig, rate::HandlerRateLimitConfig, timeout::HandlerTimeoutConfig},
+    layers::{
+        cors::CorsConfig,
+        rate::{HandlerRateLimitConfig, deserialize_rate_limits},
+        timeout::HandlerTimeoutConfig,
+    },
     logging::LoggingConfig,
     metrics::{MetricsBuilder, MetricsState},
     probes::ProbeConfig,
@@ -245,8 +249,16 @@ pub struct HandlerConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cors: Option<CorsConfig>,
     /// Rate limiter configuration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rate_limit: Option<HandlerRateLimitConfig>,
+    ///
+    /// Either a single limit or a list of limits. Requests have to pass all of them, in order.
+    /// Tokens taken by a limit are not returned if a later one rejects the request, so list
+    /// narrower limits (like per-user) before wider ones (like global).
+    #[serde(
+        default,
+        deserialize_with = "deserialize_rate_limits",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub rate_limit: Vec<HandlerRateLimitConfig>,
     /// Throttling configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub throttle: Option<u8>,

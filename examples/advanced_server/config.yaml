@@ -78,7 +78,13 @@ handlers:
   hello_world:
     disabled: false
     rate_limit:
-      rps: 1
+      - key: user_id
+        rps: 1
+        overrides:
+          super:
+            rps: 10
+      - key: global
+        rps: 100
   call_inner:
     cors:
       origins: any
