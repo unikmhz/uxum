@@ -10,7 +10,7 @@ use std::{
 use futures::future::pending;
 use reqwest::{
     Method,
-    header::{CONTENT_TYPE, HeaderValue},
+    header::{CONTENT_ENCODING, CONTENT_TYPE, HeaderValue},
 };
 use reqwest_middleware::ClientWithMiddleware;
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
@@ -26,7 +26,7 @@ use url::Url;
 use crate::{
     errors::IoError,
     http_client::HttpClientError,
-    logging::{LoggingFormat, LoggingHttpConfig},
+    logging::{LoggingFormat, LoggingHttpCompression, LoggingHttpConfig},
     metrics::MetricsState,
 };
 
@@ -88,6 +88,8 @@ struct HttpLogAppenderThread {
     ignore_flush: bool,
     /// Enable optional periodic forced flush of accumulated logs.
     periodic_flush: Option<Duration>,
+    /// Compression to apply to request bodies.
+    compression: Option<LoggingHttpCompression>,
 }
 
 /// Type which inhabits HTTP log queue.
@@ -146,6 +148,7 @@ impl HttpLogAppender {
             debug: config.debug,
             ignore_flush: config.ignore_flush,
             periodic_flush: config.periodic_flush,
+            compression: config.compression,
         };
         let thread_num = THREAD_COUNTER.fetch_and(1, Ordering::Relaxed);
         let writer_thread = std::thread::Builder::new()
@@ -258,7 +261,7 @@ async fn http_logger_task(mut params: HttpLogAppenderThread) -> Result<(), HttpL
                 }
             } => {
                 if !buffered.is_empty() {
-                    send_logs(&params.client, &params.method, &params.endpoint, &params.content_type, &buffered).await;
+                    send_logs(&params, &buffered).await;
                     buffered.clear();
                 }
             }
@@ -266,14 +269,14 @@ async fn http_logger_task(mut params: HttpLogAppenderThread) -> Result<(), HttpL
                 Some(msg) => match msg {
                     HttpLog::Flush => {
                         if !params.ignore_flush && !buffered.is_empty() {
-                            send_logs(&params.client, &params.method, &params.endpoint, &params.content_type, &buffered).await;
+                            send_logs(&params, &buffered).await;
                             buffered.clear();
                         }
                     }
                     HttpLog::Message { data } => {
                         buffered.push(data);
                         if buffered.len() >= params.max_batch_size {
-                            send_logs(&params.client, &params.method, &params.endpoint, &params.content_type, &buffered).await;
+                            send_logs(&params, &buffered).await;
                             buffered.clear();
                         }
                     }
@@ -290,38 +293,29 @@ async fn http_logger_task(mut params: HttpLogAppenderThread) -> Result<(), HttpL
     }
     if !buffered.is_empty() {
         for chunk in buffered.chunks(params.max_batch_size) {
-            send_logs(
-                &params.client,
-                &params.method,
-                &params.endpoint,
-                &params.content_type,
-                chunk,
-            )
-            .await;
+            send_logs(&params, chunk).await;
         }
     }
     Ok(())
 }
 
-async fn send_logs(
-    client: &ClientWithMiddleware,
-    method: &Method,
-    url: &Url,
-    ct: &HeaderValue,
-    logs: &[Vec<u8>],
-) {
+async fn send_logs(params: &HttpLogAppenderThread, logs: &[Vec<u8>]) {
     let mut body = Vec::with_capacity(logs.iter().map(|line| line.len()).sum());
-    // XXX: might be nicer when write_all_vectored() is stabilized.
     for line in logs {
         body.extend_from_slice(line.as_slice());
     }
-    let resp = client
-        .request(method.clone(), url.clone())
-        .header(CONTENT_TYPE, ct)
-        .body(body)
-        .send()
-        .await;
-    let resp = match resp {
+    let (body, compression_failed) = compress_body(body, params.compression);
+    let mut request = params
+        .client
+        .request(params.method.clone(), params.endpoint.clone())
+        .header(CONTENT_TYPE, &params.content_type);
+
+    // compressed bodies are sent without Content-Encoding, and `identity` marks
+    // the uncompressed fallback used when compression was requested but failed
+    if compression_failed {
+        request = request.header(CONTENT_ENCODING, HeaderValue::from_static("identity"));
+    }
+    let resp = match request.body(body).send().await {
         Ok(r) => r,
         Err(err) => {
             eprintln!("Unable to send HTTP logs: {err}");
@@ -331,4 +325,121 @@ async fn send_logs(
     if let Err(err) = resp.error_for_status() {
         eprintln!("Error response received after sending HTTP logs: {err}");
     };
+}
+
+/// Compress request body if compression is configured.
+///
+/// Returns the (possibly compressed) body and a flag set when compression was
+/// requested but failed; on failure the original uncompressed body is returned
+/// so the caller can mark it with `Content-Encoding: identity`.
+fn compress_body(body: Vec<u8>, compression: Option<LoggingHttpCompression>) -> (Vec<u8>, bool) {
+    let Some(compression) = compression else {
+        return (body, false);
+    };
+    match compression {
+        #[cfg(feature = "http-log-gzip")]
+        LoggingHttpCompression::Gzip => {
+            use flate2::{Compression, write::GzEncoder};
+            use std::io::Write as _;
+
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            if encoder.write_all(&body).is_ok() {
+                if let Ok(compressed) = encoder.finish() {
+                    return (compressed, false);
+                }
+            }
+            eprintln!("HTTP log appender: gzip compression failed, sending uncompressed");
+            (body, true)
+        }
+        #[cfg(feature = "http-log-zstd")]
+        LoggingHttpCompression::Zstd => {
+            use std::io::Write as _;
+            use zstd::stream::write::Encoder;
+
+            match Encoder::new(Vec::new(), 0) {
+                Ok(mut encoder) => {
+                    if encoder.write_all(&body).is_ok() {
+                        if let Ok(compressed) = encoder.finish() {
+                            return (compressed, false);
+                        }
+                    }
+                    eprintln!("HTTP log appender: zstd compression failed, sending uncompressed");
+                    (body, true)
+                }
+                Err(_) => {
+                    eprintln!("HTTP log appender: zstd encoder init failed, sending uncompressed");
+                    (body, true)
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_compression_returns_body_unchanged() {
+        let body = b"line1\nline2\n".to_vec();
+        let (out, failed) = compress_body(body.clone(), None);
+        assert!(!failed);
+        assert_eq!(out, body);
+    }
+
+    #[cfg(feature = "http-log-gzip")]
+    #[test]
+    fn gzip_roundtrip() {
+        let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
+        let (compressed, failed) = compress_body(body.clone(), Some(LoggingHttpCompression::Gzip));
+        assert!(!failed);
+        assert_ne!(compressed, body);
+
+        use std::io::Read as _;
+        let mut decoder = flate2::read::GzDecoder::new(&compressed[..]);
+        let mut decoded = Vec::new();
+        decoder
+            .read_to_end(&mut decoded)
+            .expect("valid gzip stream");
+        assert_eq!(decoded, body);
+    }
+
+    #[cfg(feature = "http-log-zstd")]
+    #[test]
+    fn zstd_roundtrip() {
+        let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
+        let (compressed, failed) = compress_body(body.clone(), Some(LoggingHttpCompression::Zstd));
+        assert!(!failed);
+
+        use std::io::Read as _;
+        let mut decoder =
+            zstd::stream::read::Decoder::new(&compressed[..]).expect("zstd decoder init");
+        let mut decoded = Vec::new();
+        decoder
+            .read_to_end(&mut decoded)
+            .expect("valid zstd stream");
+        assert_eq!(decoded, body);
+    }
+
+    #[cfg(feature = "http-log-gzip")]
+    #[test]
+    fn http_config_parses_compression_gzip() {
+        #[derive(serde::Deserialize)]
+        struct TestCfg {
+            compression: Option<LoggingHttpCompression>,
+        }
+        let cfg: TestCfg = serde_json::from_str(r#"{"compression": "gzip"}"#).expect("valid json");
+        assert_eq!(cfg.compression, Some(LoggingHttpCompression::Gzip));
+    }
+
+    #[cfg(feature = "http-log-zstd")]
+    #[test]
+    fn http_config_parses_compression_zstd() {
+        #[derive(serde::Deserialize)]
+        struct TestCfg {
+            compression: Option<LoggingHttpCompression>,
+        }
+        let cfg: TestCfg = serde_json::from_str(r#"{"compression": "zstd"}"#).expect("valid json");
+        assert_eq!(cfg.compression, Some(LoggingHttpCompression::Zstd));
+    }
 }

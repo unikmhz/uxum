@@ -564,6 +564,23 @@ impl LoggingDirectoryConfig {
     }
 }
 
+/// Compression algorithm for HTTP log output.
+///
+/// Requires the corresponding crate feature to be enabled for deserialization
+/// of the variant: `http-log-gzip` for [`Self::Gzip`], `http-log-zstd` for
+/// [`Self::Zstd`].
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
+#[serde(rename_all = "snake_case")]
+pub enum LoggingHttpCompression {
+    /// Gzip compression.
+    #[cfg(feature = "http-log-gzip")]
+    Gzip,
+    /// Zstd compression.
+    #[cfg(feature = "http-log-zstd")]
+    Zstd,
+}
+
 /// Configuration of remote HTTP output.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
@@ -600,6 +617,12 @@ pub struct LoggingHttpConfig {
     /// Enable optional periodic forced flush of accumulated logs.
     #[serde(default, with = "humantime_serde")]
     pub periodic_flush: Option<Duration>,
+    /// Compression applied to request bodies with logs.
+    ///
+    /// When compression is enabled but fails for a batch, the batch is sent
+    /// uncompressed with `Content-Encoding: identity`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression: Option<LoggingHttpCompression>,
 }
 
 impl LoggingHttpConfig {

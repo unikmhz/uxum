@@ -171,7 +171,9 @@ impl ListenerProtocol {
     pub fn as_scheme(&self) -> &'static str {
         match self {
             Self::Http => "http",
-            Self::HttpsTls | Self::HttpsSpiffe | Self::Quic => "https",
+            Self::HttpsTls | Self::Quic => "https",
+            #[cfg(feature = "spiffe")]
+            Self::HttpsSpiffe => "https",
         }
     }
 
