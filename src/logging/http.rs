@@ -343,7 +343,7 @@ fn compress_body(
         return (body, None);
     };
     match compression {
-        #[cfg(feature = "http-log-gzip")]
+        #[cfg(feature = "http_log_gzip")]
         LoggingHttpCompression::Gzip => {
             use flate2::{Compression, write::GzEncoder};
             use std::io::Write as _;
@@ -357,7 +357,7 @@ fn compress_body(
             eprintln!("HTTP log appender: gzip compression failed, sending uncompressed");
             (body, None)
         }
-        #[cfg(feature = "http-log-zstd")]
+        #[cfg(feature = "http_log_zstd")]
         LoggingHttpCompression::Zstd => {
             use std::io::Write as _;
             use zstd::stream::write::Encoder;
@@ -393,7 +393,7 @@ mod tests {
         assert_eq!(out, body);
     }
 
-    #[cfg(feature = "http-log-gzip")]
+    #[cfg(feature = "http_log_gzip")]
     #[test]
     fn gzip_roundtrip() {
         let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
@@ -414,7 +414,7 @@ mod tests {
         assert_eq!(decoded, body);
     }
 
-    #[cfg(feature = "http-log-zstd")]
+    #[cfg(feature = "http_log_zstd")]
     #[test]
     fn zstd_roundtrip() {
         let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
@@ -435,7 +435,7 @@ mod tests {
         assert_eq!(decoded, body);
     }
 
-    #[cfg(feature = "http-log-gzip")]
+    #[cfg(feature = "http_log_gzip")]
     #[test]
     fn http_config_parses_compression_gzip() {
         #[derive(serde::Deserialize)]
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(cfg.compression, Some(LoggingHttpCompression::Gzip));
     }
 
-    #[cfg(feature = "http-log-zstd")]
+    #[cfg(feature = "http_log_zstd")]
     #[test]
     fn http_config_parses_compression_zstd() {
         #[derive(serde::Deserialize)]

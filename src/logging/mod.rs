@@ -567,17 +567,17 @@ impl LoggingDirectoryConfig {
 /// Compression algorithm for HTTP log output.
 ///
 /// Requires the corresponding crate feature to be enabled for deserialization
-/// of the variant: `http-log-gzip` for [`Self::Gzip`], `http-log-zstd` for
+/// of the variant: `http_log_gzip` for [`Self::Gzip`], `http_log_zstd` for
 /// [`Self::Zstd`].
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[non_exhaustive]
 #[serde(rename_all = "snake_case")]
 pub enum LoggingHttpCompression {
     /// Gzip compression.
-    #[cfg(feature = "http-log-gzip")]
+    #[cfg(feature = "http_log_gzip")]
     Gzip,
     /// Zstd compression.
-    #[cfg(feature = "http-log-zstd")]
+    #[cfg(feature = "http_log_zstd")]
     Zstd,
 }
 
