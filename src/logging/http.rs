@@ -351,7 +351,7 @@ fn compress_body(
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
             if encoder.write_all(&body).is_ok() {
                 if let Ok(compressed) = encoder.finish() {
-                    return (compressed, HeaderValue::from_static("gzip"));
+                    return (compressed, Some(HeaderValue::from_static("gzip")));
                 }
             }
             eprintln!("HTTP log appender: gzip compression failed, sending uncompressed");
@@ -366,7 +366,7 @@ fn compress_body(
                 Ok(mut encoder) => {
                     if encoder.write_all(&body).is_ok() {
                         if let Ok(compressed) = encoder.finish() {
-                            return (compressed, HeaderValue::from_static("zstd"));
+                            return (compressed, Some(HeaderValue::from_static("zstd")));
                         }
                     }
                     eprintln!("HTTP log appender: zstd compression failed, sending uncompressed");
@@ -398,7 +398,7 @@ mod tests {
     fn gzip_roundtrip() {
         let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
         let (compressed, hdr) = compress_body(body.clone(), Some(LoggingHttpCompression::Gzip));
-        assert_eq!(
+        assert!(
             hdr.is_some(),
             "content-encoding header is None for successfully compressed body"
         );
@@ -419,7 +419,7 @@ mod tests {
     fn zstd_roundtrip() {
         let body = b"{\"level\":\"INFO\"}\n{\"level\":\"ERROR\"}\n".to_vec();
         let (compressed, hdr) = compress_body(body.clone(), Some(LoggingHttpCompression::Zstd));
-        assert_eq!(
+        assert!(
             hdr.is_some(),
             "content-encoding header is None for successfully compressed body"
         );
