@@ -34,6 +34,8 @@ An opinionated backend service framework based on axum.
  * `spiffe`: support mTLS transport with SPIFFE authentication and authorization.
  * `systemd`: enable systemd integration for service notifications and watchdog support (Linux only).
  * `full`: kitchen sink mode, enable every feature.
+ * `http_log_gzip`: support GZIP-compression of the logs request body (relevant only for logs http-delivery).
+ * `http_log_zstd`: support ZSTD-compression of the logs request body (relevant only for logs http-delivery).
 
 ## Quick start guide
 
