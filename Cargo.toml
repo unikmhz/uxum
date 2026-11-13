@@ -1,6 +1,6 @@
 [package]
 name = "uxum"
-version = "0.10.0-rc.4"
+version = "0.10.0-rc.5"
 authors = ["Alex Unigovsky <unik@devrandom.ru>"]
 license = "MIT OR Apache-2.0"
 edition = "2024"
@@ -51,6 +51,7 @@ config = { version = "0.15", features = ["yaml"] }
 dashmap = "6.2"
 deboog = "0.4"
 dyn-clone = "1.0"
+flate2 = { version = "1.1", optional = true }
 forwarded-header-value = "0.1"
 fs-err = { version = "3.3", features = ["tokio"] }
 futures = "0.3"
@@ -105,7 +106,7 @@ thiserror = "2.0"
 thread-priority = "3.1"
 tonic = { version = "0.14", features = ["tls-native-roots"], optional = true }
 tokio = { version = "1.52", features = ["full"] }
-tokio-rustls = { version = "0.26", optional = true }
+tokio-rustls = "0.26"
 tokio-util = "0.7"
 tower = { version = "0.5", features = ["buffer", "filter", "limit", "retry", "timeout", "util"] }
 tower-http = { version = "0.7", features = ["catch-panic", "cors", "request-id", "sensitive-headers", "set-header", "trace", "util"] }
@@ -120,6 +121,7 @@ url = { version = "2.5", features = ["serde"] }
 zeroize = { version = "1.9", features = ["zeroize_derive"] }
 reqwest-retry = "0.9.1"
 retry-policies = "0.5.2"
+zstd = { version = "0.14", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0"
@@ -136,9 +138,11 @@ hash_argon2 = ["dep:argon2"]
 hash_pbkdf2 = ["dep:pbkdf2"]
 hash_scrypt = ["dep:scrypt"]
 hash_all = ["hash_argon2", "hash_pbkdf2", "hash_scrypt"]
+http_log_gzip = ["dep:flate2"]
+http_log_zstd = ["dep:zstd"]
 jwt = ["dep:jsonwebtoken"]
 kafka = ["dep:rdkafka"]
-spiffe = ["dep:spiffe", "dep:spiffe-rustls", "dep:spiffe-rustls-tokio", "dep:tokio-rustls"]
+spiffe = ["dep:spiffe", "dep:spiffe-rustls", "dep:spiffe-rustls-tokio"]
 systemd = ["dep:libsystemd"]
 
 [target.'cfg(target_os = "linux")'.dependencies]

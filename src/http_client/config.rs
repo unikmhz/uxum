@@ -460,7 +460,7 @@ pub enum HttpClientRedirectPolicy {
     /// Redirects will be followed up to a preconfigured limit.
     Limited {
         /// Max number of redirects to follow.
-        #[serde(flatten, default = "HttpClientRedirectPolicy::default_redirect_limit")]
+        #[serde(default = "HttpClientRedirectPolicy::default_redirect_limit")]
         redirect_limit: usize,
     },
 }
