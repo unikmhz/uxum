@@ -436,7 +436,10 @@ impl AppConfig {
             );
             (Some(tracer), Some(tracer_provider))
         } else {
-            registry.init();
+            // `HierarchicalRecord` layer must be registered even if `tracing` config is absent,
+            // cause `set_user_name()` in the auth layer calls `record_hierarchical()`, which
+            // panics if the layer is missing from the global subscriber.
+            registry.with(HierarchicalRecord::default()).init();
             (None, None)
         };
         let handle = AxumHandle::new();
@@ -455,5 +458,23 @@ impl AppConfig {
             rt_metrics_task,
             metrics,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn hierarchical_record_layer_installed_without_tracing_config() {
+        let mut config = AppConfig::default();
+        let handle = config.handle().await.unwrap();
+        let installed =
+            tracing::dispatcher::get_default(|d| d.downcast_ref::<HierarchicalRecord>().is_some());
+        assert!(
+            installed,
+            "HierarchicalRecord layer missing from global subscriber"
+        );
+        drop(handle);
     }
 }

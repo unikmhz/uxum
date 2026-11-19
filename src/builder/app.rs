@@ -514,7 +514,7 @@ impl<B: AppBehavior> AppBuilder<B> {
             .option_layer(cors_layer)
             // Timeout layer.
             .option_layer(service_cfg.map(|cfg| cfg.timeout.clone()).unwrap_or_default().make_layer())
-            .service(handler.service().map_err(|err| err.into()))
+            .service(handler.service().map_err(|err| match err {}))
     }
 
     /// Generate a value to be used in HTTP Server header.
