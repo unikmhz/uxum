@@ -602,6 +602,14 @@ pub struct LoggingHttpConfig {
     /// Max count of log messages to batch together and send in a single request.
     #[serde(default = "LoggingHttpConfig::default_max_batch_size")]
     pub max_batch_size: NonZeroUsize,
+    /// Max count of batches to keep in flight towards the remote endpoint.
+    ///
+    /// Sending is performed by a dedicated task which does not block reading of
+    /// the internal queue. Once this many batches are awaiting delivery, new
+    /// batches wait inside the internal queue, exerting back-pressure instead of
+    /// dropping log messages.
+    #[serde(default = "LoggingHttpConfig::default_in_flight_batches")]
+    pub in_flight_batches: NonZeroUsize,
     /// Do not disable tracing spans and events inside HTTP log appender thread if true.
     #[serde(default)]
     pub debug: bool,
@@ -647,6 +655,14 @@ impl LoggingHttpConfig {
     fn default_max_batch_size() -> NonZeroUsize {
         // SAFETY: always succeeds.
         NonZeroUsize::new(256).unwrap()
+    }
+
+    /// Default value for [`Self::in_flight_batches`].
+    #[must_use]
+    #[inline]
+    fn default_in_flight_batches() -> NonZeroUsize {
+        // SAFETY: always succeeds.
+        NonZeroUsize::new(8).unwrap()
     }
 }
 
