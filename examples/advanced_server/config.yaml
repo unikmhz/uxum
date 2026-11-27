@@ -42,6 +42,7 @@ logging:
         endpoint: http://localhost:8989/log
         queue: 20
         max_batch_size: 10
+        in_flight_batches: 8
         back_pressure: false
         ignore_flush: true
         periodic_flush: 10s

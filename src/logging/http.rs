@@ -30,6 +30,9 @@ use crate::{
     metrics::MetricsState,
 };
 
+/// Type alias for bytes batch
+type BytesBatch = Vec<Vec<u8>>;
+
 /// HTTP log appender error.
 #[derive(Debug, thiserror::Error)]
 pub enum HttpLogAppenderError {
@@ -66,12 +69,9 @@ pub struct HttpLogAppender {
     back_pressure: bool,
 }
 
-/// Parameters passed into log sender thread.
-struct HttpLogAppenderThread {
-    /// Receiver end of message queue.
-    rx: Receiver<HttpLog>,
-    /// Signal thread termination.
-    token: CancellationToken,
+/// Parameters used by the sender task to deliver log batches to remote collector.
+#[derive(Clone)]
+struct HttpLogSenderParams {
     /// HTTP client to use when calling remote log collector endpoint.
     client: ClientWithMiddleware,
     /// URL to send aggregated logs to.
@@ -80,16 +80,28 @@ struct HttpLogAppenderThread {
     method: Method,
     /// Content-type header value to use when calling [`Self::endpoint`].
     content_type: HeaderValue,
+    /// Compression to apply to request bodies.
+    compression: Option<LoggingHttpCompression>,
+}
+
+/// Parameters passed into log sender thread.
+struct HttpLogAppenderThread {
+    /// Receiver end of message queue.
+    rx: Receiver<HttpLog>,
+    /// Signal thread termination.
+    token: CancellationToken,
+    /// Parameters for the sender task which performs HTTP requests.
+    sender: HttpLogSenderParams,
     /// Max count of log messages to batch together and send in a single request.
     max_batch_size: usize,
+    /// Max count of batches to keep in flight towards the remote collector.
+    in_flight_batches: usize,
     /// Do not disable tracing spans and events inside HTTP log appender thread if true.
     debug: bool,
     /// Do not initiate new HTTP request on receiving flush operation.
     ignore_flush: bool,
     /// Enable optional periodic forced flush of accumulated logs.
     periodic_flush: Option<Duration>,
-    /// Compression to apply to request bodies.
-    compression: Option<LoggingHttpCompression>,
 }
 
 /// Type which inhabits HTTP log queue.
@@ -140,17 +152,20 @@ impl HttpLogAppender {
         let thread_params = HttpLogAppenderThread {
             rx,
             token: token.clone(),
-            client,
-            endpoint: config.endpoint.clone(),
-            method,
-            content_type,
+            sender: HttpLogSenderParams {
+                client,
+                endpoint: config.endpoint.clone(),
+                method,
+                content_type,
+                compression: config.compression,
+            },
             max_batch_size: config.max_batch_size.get(),
+            in_flight_batches: config.in_flight_batches.get(),
             debug: config.debug,
             ignore_flush: config.ignore_flush,
             periodic_flush: config.periodic_flush,
-            compression: config.compression,
         };
-        let thread_num = THREAD_COUNTER.fetch_and(1, Ordering::Relaxed);
+        let thread_num = THREAD_COUNTER.fetch_add(1, Ordering::Relaxed);
         let writer_thread = std::thread::Builder::new()
             .name(format!("http-logger-{thread_num}"))
             .spawn_with_priority(ThreadPriority::Min, move |setprio| {
@@ -160,6 +175,7 @@ impl HttpLogAppender {
                 http_logger_thread(thread_params)
             })
             .map_err(|err| HttpLogAppenderError::Thread(err.into()))?;
+
         Ok(Self {
             tx,
             token,
@@ -243,7 +259,22 @@ async fn http_logger_task(mut params: HttpLogAppenderThread) -> Result<(), HttpL
         .debug
         .not()
         .then(|| tracing::subscriber::set_default(NoSubscriber::new()));
-    let mut buffered = Vec::with_capacity(params.max_batch_size);
+
+    // Sender side of the pipeline: a separate task which delivers batches to the
+    // remote collector while the receiving loop below keeps draining the message
+    // queue, so a slow HTTP round-trip never stops the queue from being read.
+    let (mut batch_tx, batch_rx) = channel::<BytesBatch>(params.in_flight_batches);
+    let send_params = params.sender.clone();
+    let sender_task = tokio::spawn(async move {
+        let mut batch_rx = batch_rx;
+        while let Some(batch) = batch_rx.recv().await {
+            send_logs(&send_params, &batch).await;
+        }
+    });
+
+    let batch_size = params.max_batch_size;
+    let mut buffered: BytesBatch = Vec::with_capacity(batch_size);
+    let mut chunk: Vec<HttpLog> = Vec::with_capacity(batch_size);
     let mut interval = params.periodic_flush.map(|dur| {
         let mut interval = interval(dur);
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -260,46 +291,70 @@ async fn http_logger_task(mut params: HttpLogAppenderThread) -> Result<(), HttpL
                     None => pending().await,
                 }
             } => {
-                if !buffered.is_empty() {
-                    send_logs(&params, &buffered).await;
-                    buffered.clear();
+                if !ship_buffered(&mut batch_tx, &mut buffered, batch_size).await {
+                    break;
                 }
             }
-            msg = params.rx.recv() => match msg {
-                Some(msg) => match msg {
-                    HttpLog::Flush => {
-                        if !params.ignore_flush && !buffered.is_empty() {
-                            send_logs(&params, &buffered).await;
-                            buffered.clear();
-                        }
-                    }
-                    HttpLog::Message { data } => {
-                        buffered.push(data);
-                        if buffered.len() >= params.max_batch_size {
-                            send_logs(&params, &buffered).await;
-                            buffered.clear();
-                        }
+            received = params.rx.recv_many(&mut chunk, batch_size) => {
+                if received == 0 {
+                    // Queue closed and drained.
+                    break;
+                }
+                let mut flush_requested = false;
+                for msg in chunk.drain(..) {
+                    match msg {
+                        HttpLog::Flush => flush_requested = true,
+                        HttpLog::Message { data } => buffered.push(data),
                     }
                 }
-                None => break,
+                let need_ship = buffered.len() >= batch_size
+                    || (flush_requested && !params.ignore_flush);
+                // todo: investigate the 2 lines bellow
+                if need_ship && !ship_buffered(&mut batch_tx, &mut buffered, batch_size).await
+                {
+                    break;
+                }
             }
         }
     }
-    // Slurping leftovers and sending them if need be.
+    // Slurp leftovers from the queue and hand them to the sender in batches.
     while let Ok(msg) = params.rx.try_recv() {
         if let HttpLog::Message { data } = msg {
             buffered.push(data);
+            if buffered.len() >= batch_size
+                && !ship_buffered(&mut batch_tx, &mut buffered, batch_size).await
+            {
+                break;
+            }
         }
     }
-    if !buffered.is_empty() {
-        for chunk in buffered.chunks(params.max_batch_size) {
-            send_logs(&params, chunk).await;
-        }
+    // Ship the final partial batch, if any. Dropping `batch_tx` afterward
+    // signals the sender task to finish once the last batch is delivered.
+    _ = ship_buffered(&mut batch_tx, &mut buffered, batch_size).await;
+    drop(batch_tx);
+    if let Err(err) = sender_task.await {
+        eprintln!("Error upon join internal logs sender task: {err}");
     }
+
     Ok(())
 }
 
-async fn send_logs(params: &HttpLogAppenderThread, logs: &[Vec<u8>]) {
+/// Hand the currently buffered messages over to the Sender task as a single batch.
+///
+/// Returns `false` if the sender task is gone (i.e. the batch channel is closed).
+async fn ship_buffered(tx: &mut Sender<BytesBatch>, buf: &mut BytesBatch, capacity: usize) -> bool {
+    if buf.is_empty() {
+        return true;
+    }
+    let batch = std::mem::replace(buf, Vec::with_capacity(capacity));
+    if let Err(err) = tx.send(batch).await {
+        eprintln!("Error upon transfer logs batch into internal queue: {err}");
+        return false;
+    };
+    true
+}
+
+async fn send_logs(params: &HttpLogSenderParams, logs: &[Vec<u8>]) {
     let mut body = Vec::with_capacity(logs.iter().map(|line| line.len()).sum());
     for line in logs {
         body.extend_from_slice(line.as_slice());
